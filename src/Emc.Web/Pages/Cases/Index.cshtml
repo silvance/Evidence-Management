@@ -1,0 +1,87 @@
+@page
+@model Emc.Web.Pages.Cases.IndexModel
+@{
+    ViewData["Title"] = "Cases";
+}
+
+<h1>Cases</h1>
+<p class="page-subtitle">
+    AR 195-5 para 2-3b requires the Army CI case control number to be recorded on the DA Form 4137
+    and the DA Form 4002.
+</p>
+
+<partial name="_Messages" model="Model.Messages" />
+
+@if (Model.CanCreateCase)
+{
+    <div class="panel">
+        <h2>New case</h2>
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+
+            <div class="form-row">
+                <label asp-for="Input.CaseControlNumber">Case control number</label>
+                <input asp-for="Input.CaseControlNumber" autocomplete="off" />
+                <span class="hint">AR 195-5 para 2-3b. Recorded on the DA Form 4137 and each DA Form 4002.</span>
+                <span asp-validation-for="Input.CaseControlNumber" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.Title">Title</label>
+                <input asp-for="Input.Title" autocomplete="off" />
+                <span asp-validation-for="Input.Title" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.Synopsis">Synopsis (optional)</label>
+                <textarea asp-for="Input.Synopsis"></textarea>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.EvidenceRoomId">Evidence room</label>
+                <select asp-for="Input.EvidenceRoomId"
+                        asp-items="@(new SelectList(Model.EvidenceRooms, nameof(Emc.Web.Pages.Cases.IndexModel.EvidenceRoomOption.Id), nameof(Emc.Web.Pages.Cases.IndexModel.EvidenceRoomOption.Name)))"></select>
+                <span class="hint">
+                    AR 195-5 para 2-4c runs the document-number series per evidence room, per
+                    calendar year.
+                </span>
+            </div>
+
+            <button type="submit">Create case</button>
+        </form>
+    </div>
+}
+
+<div class="panel">
+    <h2>Existing cases</h2>
+    @if (Model.Cases.Count == 0)
+    {
+        <p>No cases have been recorded.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Case control number</th>
+                    <th>Title</th>
+                    <th class="numeric">Vouchers</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Cases)
+            {
+                <tr>
+                    <td><span class="identifier">@item.CaseControlNumber</span></td>
+                    <td>@item.Title</td>
+                    <td class="numeric">@item.VoucherCount</td>
+                    <td>@(item.IsClosed ? "Closed" : "Open")</td>
+                    <td><a asp-page="./Details" asp-route-id="@item.Id">Open</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>

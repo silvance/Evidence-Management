@@ -70,6 +70,33 @@ public sealed class AppendOnlyViolationException : Exception
     public AppendOnlyViolationException(string message) : base(message) { }
 }
 
+/// <summary>
+/// Normalizes timestamps before they are stored and hashed.
+///
+/// The per-item hash chain (AUD-008) covers every field of an event, timestamps included. If a
+/// stored timestamp comes back with less precision than the value that was hashed, the chain
+/// breaks and reports tampering that never happened - and the precision depends on the column
+/// type and the provider. SQL Server datetimeoffset keeps 100ns; a datetime2(3) column, or
+/// EF's DateTimeOffsetToBinaryConverter, keeps milliseconds.
+///
+/// Rather than let the chain's validity depend on storage precision, accountability timestamps
+/// are truncated to whole milliseconds when the event is constructed. Every value is then
+/// hashed and stored at the same precision on any provider that keeps at least milliseconds.
+///
+/// A millisecond is far finer than anything AR 195-5 records: the DA Form 4137 and the evidence
+/// ledger use minutes (para 2-5b, "03 SEP 26 09:15").
+/// </summary>
+public static class AccountabilityTime
+{
+    private const long TicksPerMillisecond = TimeSpan.TicksPerMillisecond;
+
+    public static DateTimeOffset Normalize(DateTimeOffset value)
+        => new(value.Ticks - (value.Ticks % TicksPerMillisecond), value.Offset);
+
+    public static DateTimeOffset? Normalize(DateTimeOffset? value)
+        => value is null ? null : Normalize(value.Value);
+}
+
 public static class Guard
 {
     public static string NotBlank(string? value, string requirementId, string field)

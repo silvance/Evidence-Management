@@ -1,0 +1,129 @@
+@page "{id:int}"
+@model Emc.Web.Pages.Cases.DetailsModel
+@{
+    ViewData["Title"] = Model.CaseControlNumber;
+}
+
+<h1>Case <span class="identifier">@Model.CaseControlNumber</span></h1>
+<p class="page-subtitle">@Model.Title</p>
+
+<partial name="_Messages" model="Model.Messages" />
+
+@if (!string.IsNullOrWhiteSpace(Model.Synopsis))
+{
+    <div class="panel"><p>@Model.Synopsis</p></div>
+}
+
+<div class="panel">
+    <h2>Evidence vouchers (DA Form 4137)</h2>
+    @if (Model.Vouchers.Count == 0)
+    {
+        <p>No vouchers have been prepared for this case.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Identifier</th>
+                    <th>Status</th>
+                    <th class="numeric">Items</th>
+                    <th>Acquired</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var voucher in Model.Vouchers)
+            {
+                <tr>
+                    <td>
+                        <span class="identifier @(voucher.HasOfficialDocumentNumber ? "" : "identifier--temporary")">
+                            @voucher.DisplayIdentifier
+                        </span>
+                        @if (!voucher.HasOfficialDocumentNumber)
+                        {
+                            <span class="badge badge--draft">temporary</span>
+                        }
+                    </td>
+                    <td>@voucher.DerivedStatus</td>
+                    <td class="numeric">@voucher.ItemCount</td>
+                    <td>@voucher.AcquiredAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td>
+                    <td><a asp-page="/Vouchers/Details" asp-route-id="@voucher.Id">Open</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p class="regulatory-note">
+            Voucher status is derived from the status of the items it contains. AR 195-5
+            para 2-4h makes a voucher inactive only after <em>all</em> of its items have been
+            properly disposed, and para 2-5b(1)(d) contemplates different disposition dates for
+            different items on one form.
+        </p>
+    }
+</div>
+
+@if (Model.CanCreateVoucher)
+{
+    <div class="panel">
+        <h2>New draft DA Form 4137</h2>
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+
+            <div class="form-row">
+                <label asp-for="Input.ReceivingActivity">Receiving activity</label>
+                <input asp-for="Input.ReceivingActivity" autocomplete="off" />
+                <span asp-validation-for="Input.ReceivingActivity" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.ReceivingActivityLocation">Location</label>
+                <input asp-for="Input.ReceivingActivityLocation" autocomplete="off" />
+                <span asp-validation-for="Input.ReceivingActivityLocation" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.ReceivedFrom">Person or place from whom received</label>
+                <input asp-for="Input.ReceivedFrom" autocomplete="off" />
+                <span class="hint">AR 195-5 para 2-3b.</span>
+                <span asp-validation-for="Input.ReceivedFrom" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.AcquiredAtLocal">Date and time acquired (local)</label>
+                <input asp-for="Input.AcquiredAtLocal" type="datetime-local" />
+                <span class="hint">
+                    Local time, as it appears on the DA Form 4137. AR 195-5 para 2-4a expects the
+                    evidence to reach the custodian no later than the first working day after
+                    acquisition.
+                </span>
+            </div>
+
+            <div class="form-row form-row--checkbox">
+                <input asp-for="Input.IsRequestForAssistance" type="checkbox" />
+                <label asp-for="Input.IsRequestForAssistance">
+                    Collected in response to a request for assistance (RFA)
+                </label>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Input.RequestingOfficeCaseNumber">Requesting office case control number</label>
+                <input asp-for="Input.RequestingOfficeCaseNumber" autocomplete="off" />
+                <span class="hint">
+                    Required for an RFA. AR 195-5 para 2-3b: "both the seizing and requesting
+                    offices law enforcement report number will be recorded on the DA Form 4137 and
+                    DA Form 4002."
+                </span>
+            </div>
+
+            <p class="regulatory-note">
+                The voucher will be issued a temporary identifier
+                (<span class="identifier identifier--temporary">TMP-yyyyMMdd-Annn</span>) until
+                the evidence custodian assigns the official document number in the evidence
+                ledger. AR 195-5 para 2-4c reserves that assignment to the custodian, so this
+                application does not make it.
+            </p>
+
+            <button type="submit">Create draft voucher</button>
+        </form>
+    </div>
+}

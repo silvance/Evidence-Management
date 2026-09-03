@@ -1,10 +1,66 @@
-﻿@page
+@page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Home";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<h1>Evidence Management Companion</h1>
+<p class="page-subtitle">
+    An internal aid to the AR 195-5 evidence process. Version 1 supports the case, voucher,
+    evidence-item and item-history workflow.
+</p>
+
+<div class="panel">
+    <h2>What this application is</h2>
+    <p>
+        EMC assists the AR 195-5 process. Under <strong>AR 195-5 para 2-5c</strong>, an automated
+        system "used in conjunction with or to enhance the requirements of this regulation" needs
+        no approval. A <em>stand-alone</em> automated evidence ledger or accountability system
+        does — for counterintelligence organizations, from <strong>Army G-2X</strong>.
+    </p>
+    <p>
+        This application is the first kind. The bound evidence ledger
+        (<strong>para 2-5a</strong>) and the original DA Form 4137 (<strong>para 2-4d</strong>)
+        remain the authoritative records, and required signatures remain governed by the
+        regulation.
+    </p>
+
+    <h2>What it will not do</h2>
+    <ul>
+        <li>
+            <strong>It will not assign the evidence document number.</strong> Para 2-4c makes that
+            the evidence custodian's act, performed by order of precedence from the evidence
+            ledger. EMC issues a temporary identifier such as
+            <span class="identifier identifier--temporary">TMP-20260903-A014</span> and records
+            the official number, for example <span class="identifier">037-26</span>, once the
+            custodian has assigned it in the ledger.
+        </li>
+        <li>
+            <strong>It will not produce a signature.</strong> Paras 2-5b(2), 2-7b, 3-1b(2) and
+            2-8e(5) require handwritten signatures. EMC records that a paper certification was
+            executed; that record is not a signature.
+        </li>
+        <li>
+            <strong>It will not erase history.</strong> Para 2-5b(5) requires an erroneous entry
+            to be voided with a single line "so it may still be read" and initialed. EMC's
+            equivalent is a correction that preserves the original.
+        </li>
+    </ul>
+</div>
+
+<div class="panel">
+    <h2>Currently implemented</h2>
+    <ul>
+        <li>Create a case and a draft DA Form 4137</li>
+        <li>Add and edit evidence items while the voucher is a draft</li>
+        <li>Submit a voucher for custodian intake</li>
+        <li>Record the official evidence document number assigned in the ledger</li>
+        <li>Assign and re-assign evidence-room locations, retaining the full history</li>
+        <li>View a complete chronological item history, corrections included</li>
+    </ul>
+    <p class="regulatory-note">
+        Scanned-form ingestion, DA Form 4137 generation, disposition, inspections and inventories
+        are designed but not built. See <code>docs/requirements-traceability.md</code>.
+    </p>
+    <p><a class="button" asp-page="/Cases/Index">Go to cases</a></p>
 </div>

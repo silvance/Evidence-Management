@@ -1,0 +1,308 @@
+@page "{id:int}"
+@model Emc.Web.Pages.Vouchers.DetailsModel
+@{
+    ViewData["Title"] = Model.DisplayIdentifier;
+}
+
+<h1>
+    DA Form 4137
+    <span class="identifier @(Model.HasOfficialDocumentNumber ? "" : "identifier--temporary")">
+        @Model.DisplayIdentifier
+    </span>
+</h1>
+<p class="page-subtitle">
+    Case <a asp-page="/Cases/Details" asp-route-id="@Model.CaseId"><span class="identifier">@Model.CaseControlNumber</span></a>
+    @if (!string.IsNullOrWhiteSpace(Model.RequestingOfficeCaseNumber))
+    {
+        <text>&middot; requesting office <span class="identifier">@Model.RequestingOfficeCaseNumber</span> (RFA, AR 195-5 para 2-3b)</text>
+    }
+</p>
+
+<partial name="_Messages" model="Model.Messages" />
+
+@foreach (var warning in Model.AuthorizationWarnings)
+{
+    <div class="message message--warning" role="alert">
+        <strong>Custodian appointment.</strong> <span>@warning</span>
+    </div>
+}
+
+@if (!Model.HasOfficialDocumentNumber)
+{
+    <div class="message message--warning" role="note">
+        <strong>No official document number.</strong>
+        <span>
+            This voucher carries the temporary identifier
+            <span class="identifier identifier--temporary">@Model.TemporaryIdentifier</span>.
+            AR 195-5 para 2-4c requires the evidence custodian to assign the document number by
+            order of precedence from the evidence ledger on receipt of the evidence. This
+            application does not assign it.
+        </span>
+    </div>
+}
+
+<div class="panel">
+    <h2>Voucher</h2>
+    <table>
+        <tbody>
+            <tr><th>Status (derived)</th><td>@Model.DerivedStatus</td></tr>
+            <tr><th>Receiving activity</th><td>@Model.ReceivingActivity</td></tr>
+            <tr><th>Location</th><td>@Model.ReceivingActivityLocation</td></tr>
+            <tr><th>Received from</th><td>@Model.ReceivedFrom</td></tr>
+            <tr>
+                <th>Acquired</th>
+                <td>@Model.AcquiredAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="regulatory-note">
+        Status is derived from the items on this voucher, never stored. AR 195-5 para 2-4h makes a
+        voucher inactive only after <em>all</em> of its items have been properly disposed.
+    </p>
+</div>
+
+<div class="panel">
+    <h2>Description of articles</h2>
+    @if (Model.Items.Count == 0)
+    {
+        <p>
+            No items have been listed. AR 195-5 para 2-3a requires all physical evidence to be
+            inventoried and accounted for on the DA Form 4137, so at least one item is needed
+            before the voucher can be submitted.
+        </p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Description of articles</th>
+                    <th>Quantity</th>
+                    <th>Serial / unique identifier</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td class="numeric">@item.ItemNumber</td>
+                    <td>
+                        @item.DescriptionForForm
+                        @if (item.IsPossibleBiohazard)
+                        {
+                            <span class="badge badge--biohazard">AR 195-5 2-3l</span>
+                        }
+                        @if (item.IsSealed)
+                        {
+                            <span class="badge">sealed</span>
+                        }
+                    </td>
+                    <td>@item.Quantity</td>
+                    <td>
+                        @item.SerialNumber
+                        @if (!string.IsNullOrWhiteSpace(item.UniqueDeviceIdentifier))
+                        {
+                            <div class="identifier">@item.UniqueDeviceIdentifier</div>
+                        }
+                    </td>
+                    <td><span class="badge badge--@item.AccountabilityStatus.ToString().ToLowerInvariant()">@item.AccountabilityStatus</span></td>
+                    <td>
+                        <a asp-page="/Items/History" asp-route-id="@item.Id">History</a>
+                        @if (Model.CanEditDraft)
+                        {
+                            <form method="post" asp-page-handler="RemoveItem" asp-route-id="@Model.VoucherId" asp-route-itemId="@item.Id" style="display:inline">
+                                <button type="submit" class="secondary">Remove</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        @* AR 195-5 para 2-3d - LAST ITEM in capitals, centred, with lines to the margins. *@
+        <p style="text-align:center; font-weight:600; letter-spacing:0.05em;">
+            ———————————————— LAST ITEM ————————————————
+        </p>
+        <p class="regulatory-note">
+            AR 195-5 para 2-3d: "The words LAST ITEM will be placed in capital letters after the
+            last listed item on the next line below that item." Derived from position, so it
+            cannot be left behind when items change.
+        </p>
+    }
+</div>
+
+@if (Model.CanEditDraft)
+{
+    <div class="panel">
+        <h2>Add an item</h2>
+        <form method="post" asp-page-handler="AddItem" asp-route-id="@Model.VoucherId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+
+            <div class="form-row">
+                <label asp-for="NewItem.Description">Description of articles</label>
+                <textarea asp-for="NewItem.Description"></textarea>
+                <span class="hint">
+                    AR 195-5 para 2-3d: describe the item accurately, to the exclusion of any
+                    other item; descriptive information only, no supposition (not "suspected to be
+                    marijuana"); permanent characteristics; large numbers as approximations.
+                </span>
+                <span asp-validation-for="NewItem.Description" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="NewItem.Quantity">Quantity</label>
+                <input asp-for="NewItem.Quantity" autocomplete="off" />
+                <span class="hint">
+                    Approximations for large numbers, e.g. "approximately 100 tablets". Seized
+                    funds are recorded by exact denomination.
+                </span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="NewItem.SerialNumber">Serial number</label>
+                <input asp-for="NewItem.SerialNumber" autocomplete="off" />
+                <span class="hint">AR 195-5 para 2-3d: recorded if available.</span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="NewItem.UniqueDeviceIdentifier">IMEI or comparable unique device identifier</label>
+                <input asp-for="NewItem.UniqueDeviceIdentifier" autocomplete="off" />
+            </div>
+
+            <div class="form-row form-row--checkbox">
+                <input asp-for="NewItem.IsPossibleBiohazard" type="checkbox" />
+                <label asp-for="NewItem.IsPossibleBiohazard">
+                    Contains suspected blood or bodily fluids — the description will be annotated
+                    <strong>POSSIBLE BIOHAZARD</strong> (AR 195-5 para 2-3l)
+                </label>
+            </div>
+
+            <div class="form-row form-row--checkbox">
+                <input asp-for="NewItem.IsFungible" type="checkbox" />
+                <label asp-for="NewItem.IsFungible">Fungible evidence</label>
+            </div>
+
+            <div class="form-row form-row--checkbox">
+                <input asp-for="NewItem.IsSealed" type="checkbox" />
+                <label asp-for="NewItem.IsSealed">Sealed in an evidence container</label>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="NewItem.SealDescription">Sealing annotation</label>
+                <input asp-for="NewItem.SealDescription" autocomplete="off" />
+                <span class="hint">
+                    Required when sealed. AR 195-5 para 2-3c, for example "sealed in a paper sack
+                    which was marked for identification".
+                </span>
+            </div>
+
+            <button type="submit">Add item</button>
+        </form>
+    </div>
+}
+
+@if (Model.CanSubmit)
+{
+    <div class="panel">
+        <h2>Submit for custodian intake</h2>
+        <p>
+            AR 195-5 para 2-4a: except in unusual circumstances, the physical evidence is released
+            to the evidence custodian no later than the first working day after it is acquired.
+            Submitting here records the electronic voucher; it does not transfer physical custody.
+        </p>
+        <p class="regulatory-note">
+            Once submitted, items can no longer be edited. AR 195-5 para 2-3g has the custodian
+            have the submitting agent correct and initial errors on the form, and thereafter any
+            change is made through a correction that leaves the original readable (para 2-5b(5)).
+        </p>
+        <form method="post" asp-page-handler="Submit" asp-route-id="@Model.VoucherId">
+            <button type="submit">Submit for custodian intake</button>
+        </form>
+    </div>
+}
+
+@if (Model.DocumentNumbers.Count > 0)
+{
+    <div class="panel">
+        <h2>Evidence document number</h2>
+        <table>
+            <thead>
+                <tr><th>Number</th><th>Recorded</th><th>Status</th><th>Supersession reason</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var number in Model.DocumentNumbers)
+            {
+                <tr class="@(number.IsCurrent ? "" : "history-row--superseded")">
+                    <td><span class="identifier">@number.DocumentNumber</span></td>
+                    <td>@number.EnteredAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td>
+                    <td>@(number.IsCurrent ? "Current" : "Superseded")</td>
+                    <td>@number.SupersessionReason</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p class="regulatory-note">
+            AR 195-5 para 2-7g: on permanent transfer between evidence rooms the receiving
+            custodian enters the receiving room's next document number, and the prior number "will
+            be lined through in such a way that it remains legible." Superseded numbers are
+            therefore kept and shown, not removed.
+        </p>
+    </div>
+}
+
+@if (Model.CanRecordDocumentNumber)
+{
+    <div class="panel">
+        <h2>Record the official evidence document number</h2>
+        <form method="post" asp-page-handler="RecordDocumentNumber" asp-route-id="@Model.VoucherId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+
+            <div class="form-row">
+                <label asp-for="DocumentNumber.Value">Document number</label>
+                <input asp-for="DocumentNumber.Value" placeholder="037-26" autocomplete="off" />
+                <span class="hint">
+                    AR 195-5 para 2-4c: two groups of digits separated by a hyphen — a sequence
+                    beginning at 001 for the first DA Form 4137 received for the calendar year,
+                    then the two-digit year.
+                </span>
+                <span asp-validation-for="DocumentNumber.Value" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="DocumentNumber.ReceivedAtLocal">Date and time received (local)</label>
+                <input asp-for="DocumentNumber.ReceivedAtLocal" type="datetime-local" />
+            </div>
+
+            @if (Model.HasOfficialDocumentNumber)
+            {
+                <div class="form-row">
+                    <label asp-for="DocumentNumber.SupersessionReason">Reason for superseding the current number</label>
+                    <input asp-for="DocumentNumber.SupersessionReason" autocomplete="off" />
+                    <span class="hint">Required. AR 195-5 para 2-7g.</span>
+                </div>
+            }
+
+            <div class="form-row form-row--checkbox">
+                <input asp-for="DocumentNumber.AttestedAssignedInAuthoritativeLedger" type="checkbox" />
+                <label asp-for="DocumentNumber.AttestedAssignedInAuthoritativeLedger">
+                    <strong>
+                        I confirm this document number was assigned by order of precedence in the
+                        authoritative evidence ledger (AR 195-5 paras 2-4c and 2-5a).
+                    </strong>
+                </label>
+            </div>
+
+            <p class="regulatory-note">
+                This application operates as a companion under AR 195-5 para 2-5c and does not
+                assign document numbers. Your confirmation, your name and the time are recorded
+                with the entry.
+            </p>
+
+            <button type="submit">Record document number</button>
+        </form>
+    </div>
+}

@@ -55,7 +55,9 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     {
         ArgumentNullException.ThrowIfNull(configurationBuilder);
 
-        if (Database.IsSqlite())
+        // Provider detected by name rather than with Database.IsSqlite(), so the production
+        // assembly carries no SQLite package reference at all - SQLite is a test-only concern.
+        if (Database.ProviderName?.Contains("Sqlite", StringComparison.Ordinal) == true)
         {
             configurationBuilder
                 .Properties<DateTimeOffset>()

@@ -1,0 +1,172 @@
+/* Evidence Management Companion.
+   Deliberately plain: a dense, legible, printable internal application, not a product. */
+
+:root {
+    --ink: #1a1a1a;
+    --ink-muted: #555;
+    --rule: #c9c9c9;
+    --surface: #fff;
+    --surface-alt: #f4f4f4;
+    --accent: #14355c;
+    --warning-bg: #fff4d6;
+    --warning-rule: #b8860b;
+    --error-bg: #fdecea;
+    --error-rule: #a4262c;
+    --success-bg: #e8f4ea;
+    --success-rule: #2c7a3f;
+    --superseded: #8a6d00;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, Verdana, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--ink);
+    background: var(--surface-alt);
+}
+
+/* SEC-003. The accredited classification level, driven from configuration. AR 195-5 delegates
+   classified handling to AR 380-5; this banner exists so the level is never ambiguous. */
+.classification-banner {
+    background: #007a33;
+    color: #fff;
+    text-align: center;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 3px;
+    text-transform: uppercase;
+}
+
+.site-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 18px;
+}
+
+.site-header a { color: #fff; text-decoration: none; font-weight: 600; }
+.site-header a:hover { text-decoration: underline; }
+.site-header__org { margin-left: 12px; font-weight: 400; opacity: 0.85; }
+.site-header__nav { display: flex; gap: 18px; align-items: baseline; }
+.site-header__user { opacity: 0.85; }
+
+/* EMC-003. Shown on every page: AR 195-5 2-5a and 2-5c make the bound ledger and the original
+   DA Form 4137 authoritative in companion mode. */
+.authoritative-notice {
+    background: #fffbe6;
+    border-top: 1px solid var(--warning-rule);
+    border-bottom: 1px solid var(--warning-rule);
+    padding: 8px 18px;
+    font-size: 13px;
+}
+
+.authoritative-notice--error { background: var(--error-bg); border-color: var(--error-rule); }
+
+.site-main { padding: 18px; max-width: 1200px; }
+.site-footer { padding: 12px 18px; color: var(--ink-muted); font-size: 12px; }
+
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 22px 0 8px; }
+.page-subtitle { color: var(--ink-muted); margin: 0 0 18px; }
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 16px;
+    margin-bottom: 18px;
+}
+
+table { border-collapse: collapse; width: 100%; background: var(--surface); }
+th, td { border: 1px solid var(--rule); padding: 6px 8px; text-align: left; vertical-align: top; }
+th { background: var(--surface-alt); font-weight: 600; }
+td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+
+.form-row { margin-bottom: 12px; max-width: 720px; }
+.form-row label { display: block; font-weight: 600; margin-bottom: 3px; }
+.form-row input[type="text"],
+.form-row input[type="datetime-local"],
+.form-row select,
+.form-row textarea {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid var(--rule);
+    font: inherit;
+}
+.form-row textarea { min-height: 80px; }
+.form-row .hint { display: block; color: var(--ink-muted); font-size: 12px; margin-top: 3px; }
+.form-row--checkbox { display: flex; gap: 8px; align-items: flex-start; }
+.form-row--checkbox label { font-weight: 400; }
+
+.field-validation-error { color: var(--error-rule); font-size: 12px; display: block; }
+
+button, .button {
+    font: inherit;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+button.secondary, .button.secondary { background: var(--surface); color: var(--accent); }
+
+.message { padding: 10px 12px; margin-bottom: 12px; border-left: 4px solid; }
+.message--error { background: var(--error-bg); border-color: var(--error-rule); }
+.message--warning { background: var(--warning-bg); border-color: var(--warning-rule); }
+.message--success { background: var(--success-bg); border-color: var(--success-rule); }
+.message__requirement { color: var(--ink-muted); font-size: 12px; margin-left: 6px; }
+
+/* Identifiers are compared character by character by people under time pressure. */
+.identifier { font-family: Consolas, "Courier New", monospace; font-weight: 600; }
+.identifier--temporary { color: var(--ink-muted); font-weight: 400; }
+
+.badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border: 1px solid var(--rule);
+    background: var(--surface-alt);
+    font-size: 12px;
+}
+.badge--biohazard { background: #ffe8e8; border-color: var(--error-rule); font-weight: 700; }
+.badge--draft { background: #eee; }
+.badge--inevidenceroom { background: var(--success-bg); border-color: var(--success-rule); }
+
+/* AR 195-5 2-5b(5) - a struck-through ledger entry must still be READABLE. A superseded event
+   is marked and dimmed, never hidden (AUD-006). */
+.history-row--superseded td { background: #fcf8e8; color: var(--superseded); }
+.history-row--superseded .history-summary { text-decoration: line-through; }
+.history-row--correction td { background: #eef3fa; }
+
+.corrected-marker {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--superseded);
+    padding: 0 5px;
+    margin-left: 6px;
+}
+
+.chain-status { padding: 8px 12px; margin-bottom: 12px; border: 1px solid; }
+.chain-status--intact { background: var(--success-bg); border-color: var(--success-rule); }
+.chain-status--broken { background: var(--error-bg); border-color: var(--error-rule); font-weight: 600; }
+
+.regulatory-note {
+    font-size: 12px;
+    color: var(--ink-muted);
+    border-left: 3px solid var(--rule);
+    padding-left: 10px;
+    margin: 10px 0;
+}
+
+@media print {
+    .site-header, .site-footer, button, .button { display: none; }
+    body { background: #fff; }
+}

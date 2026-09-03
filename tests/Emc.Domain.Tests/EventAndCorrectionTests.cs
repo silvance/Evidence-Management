@@ -284,3 +284,79 @@ public class EventAndCorrectionTests
         public CustodyEvent Modified { get; }
     }
 }
+
+/// <summary>
+/// Regression tests for AccountabilityTime.
+///
+/// The per-item hash chain covers timestamps, so if a stored timestamp comes back with less
+/// precision than the value that was hashed, verification reports tampering that never happened.
+/// Storage precision varies by column type and provider (SQL Server datetimeoffset keeps 100ns;
+/// datetime2(3) and EF's DateTimeOffsetToBinaryConverter keep milliseconds), so accountability
+/// timestamps are normalized to whole milliseconds at construction instead.
+///
+/// This was found by a web-host test using real wall-clock times; the earlier tests happened to
+/// use timestamps with no sub-millisecond component and so passed for the wrong reason.
+/// </summary>
+public class AccountabilityTimeTests
+{
+    [Fact]
+    public void EventTimestampsAreNormalizedToWholeMilliseconds()
+    {
+        var ragged = new DateTimeOffset(2026, 9, 3, 9, 15, 30, TimeSpan.FromHours(-4))
+            .AddTicks(1234567);
+
+        var statusEvent = new StatusEvent(
+            AccountabilityStatus.Draft, AccountabilityStatus.Acquired, "reason",
+            ragged, ragged.ToUniversalTime(), 1);
+
+        Assert.Equal(0, statusEvent.OccurredAtUtc.Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.Equal(0, statusEvent.OccurredAtLocal.Ticks % TimeSpan.TicksPerMillisecond);
+        Assert.Equal(0, statusEvent.RecordedAtUtc.Ticks % TimeSpan.TicksPerMillisecond);
+    }
+
+    [Fact]
+    public void NormalizationPreservesTheOffset()
+    {
+        // The offset must survive: AR 195-5 records LOCAL time on the DA Form 4137 and in the
+        // ledger ("03 SEP 26 09:15"), so EMC must be able to render what the paper says.
+        var local = new DateTimeOffset(2026, 9, 3, 9, 15, 30, TimeSpan.FromHours(-4)).AddTicks(9999);
+
+        var normalized = AccountabilityTime.Normalize(local);
+
+        Assert.Equal(TimeSpan.FromHours(-4), normalized.Offset);
+        Assert.Equal(9, normalized.Hour);
+        Assert.Equal(15, normalized.Minute);
+    }
+
+    [Fact]
+    public void AHashSurvivesAMillisecondPrecisionRoundTrip()
+    {
+        // Simulates storage that keeps only milliseconds. The hash must be unchanged, or the
+        // chain would break on read.
+        var ragged = DateTimeOffset.UtcNow;
+
+        var original = new StatusEvent(
+            AccountabilityStatus.Draft, AccountabilityStatus.Acquired, "reason",
+            ragged, ragged, 1);
+
+        original.AssignSequence(1, 1);
+        var hash = EventHashChain.ComputeHash(original, null);
+
+        var truncated = new DateTimeOffset(
+            original.OccurredAtLocal.Ticks
+                - (original.OccurredAtLocal.Ticks % TimeSpan.TicksPerMillisecond),
+            original.OccurredAtLocal.Offset);
+
+        var roundTripped = new StatusEvent(
+            AccountabilityStatus.Draft, AccountabilityStatus.Acquired, "reason",
+            truncated, truncated, 1);
+
+        roundTripped.AssignSequence(1, 1);
+
+        Assert.Equal(hash, EventHashChain.ComputeHash(roundTripped, null));
+    }
+
+    [Fact]
+    public void NullTimestampsNormalizeToNull()
+        => Assert.Null(AccountabilityTime.Normalize((DateTimeOffset?)null));
+}

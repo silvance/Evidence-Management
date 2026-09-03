@@ -30,10 +30,15 @@ public abstract class ItemEvent : Entity, IAppendOnly
         int recordedByUserId,
         string? notes)
     {
-        OccurredAtUtc = occurredAtLocal.ToUniversalTime();
-        OccurredAtLocal = occurredAtLocal;
-        OccurredAtOffset = occurredAtLocal.Offset;
-        RecordedAtUtc = recordedAtUtc;
+        // Normalized to whole milliseconds so the hashed value and the stored value agree on
+        // any provider - see AccountabilityTime. Without this the chain would report tampering
+        // whenever storage truncated sub-millisecond ticks.
+        var occurred = AccountabilityTime.Normalize(occurredAtLocal);
+
+        OccurredAtUtc = occurred.ToUniversalTime();
+        OccurredAtLocal = occurred;
+        OccurredAtOffset = occurred.Offset;
+        RecordedAtUtc = AccountabilityTime.Normalize(recordedAtUtc);
         RecordedByUserId = recordedByUserId;
         Notes = Guard.TrimToNull(notes);
         HashSchemaVersion = CurrentHashSchemaVersion;

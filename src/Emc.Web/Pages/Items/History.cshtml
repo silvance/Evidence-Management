@@ -1,0 +1,246 @@
+@page "{id:int}"
+@model Emc.Web.Pages.Items.HistoryModel
+@{
+    var view = Model.View!;
+    ViewData["Title"] = $"{view.VoucherIdentifier} item {view.ItemNumber}";
+}
+
+<h1>
+    Item @view.ItemNumber of <span class="identifier">@view.VoucherIdentifier</span>
+</h1>
+<p class="page-subtitle">
+    Case <span class="identifier">@view.CaseControlNumber</span> &middot;
+    <a asp-page="/Vouchers/Details" asp-route-id="@Model.VoucherId">back to voucher</a>
+</p>
+
+<partial name="_Messages" model="Model.Messages" />
+
+@* AUD-008. The chain is verified on every view, so a break surfaces where someone will see it
+   rather than only when an integrity report is deliberately run. *@
+@if (view.ChainVerification.IsIntact)
+{
+    <div class="chain-status chain-status--intact">
+        Integrity check passed — @view.ChainVerification.EventsChecked entries verified against
+        this item's hash chain.
+    </div>
+}
+else
+{
+    <div class="chain-status chain-status--broken" role="alert">
+        <p>
+            INTEGRITY CHECK FAILED. This item's accountability history does not match its hash
+            chain, which means one or more entries were altered, inserted or removed outside this
+            application. Notify the responsible CI supervisor and the system owner. Do not rely on
+            this history until the discrepancy has been explained.
+        </p>
+        <ul>
+            @foreach (var problem in view.ChainVerification.Problems)
+            {
+                <li>Entry #@problem.EventId (sequence @problem.SequenceNumber): @problem.Message</li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="panel">
+    <h2>Item</h2>
+    <table>
+        <tbody>
+            <tr><th>Description of articles</th><td>@view.DescriptionForForm</td></tr>
+            <tr><th>Accountability status</th><td>@view.AccountabilityStatus</td></tr>
+            <tr>
+                <th>Current location</th>
+                <td>@(view.CurrentLocationPath ?? "Not recorded")</td>
+            </tr>
+            <tr>
+                <th>Current custody</th>
+                <td>@(view.CurrentCustodyHolder ?? "Not recorded")</td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="regulatory-note">
+        Current location and current custody are derived from the event history below, never
+        stored as maintained state. AR 195-5's glossary defines chain of custody as "a
+        chronological written record reflecting the release and receipt of evidence from initial
+        acquisition until final disposition."
+    </p>
+</div>
+
+<div class="panel">
+    <h2>Chronological history</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Occurred (local)</th>
+                <th>Entry</th>
+                <th>Recorded by</th>
+                <th>Entered</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in view.History)
+        {
+            var rowClass = row.IsSuperseded
+                ? "history-row--superseded"
+                : row.Kind == ItemEventKind.Correction ? "history-row--correction" : null;
+
+            <tr class="@rowClass">
+                <td class="numeric">@row.SequenceNumber</td>
+                <td>@row.OccurredAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td>
+                <td>
+                    <span class="history-summary">@row.Summary</span>
+                    @if (row.IsSuperseded)
+                    {
+                        <span class="corrected-marker">corrected by #@row.SupersededByEventId</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(row.Notes))
+                    {
+                        <div class="regulatory-note">@row.Notes</div>
+                    }
+                    @if (row.Kind == ItemEventKind.Correction)
+                    {
+                        <div class="regulatory-note">
+                            Corrects entry #@row.CorrectsEventId.
+                            @if (!string.IsNullOrWhiteSpace(row.CorrectionMfrReference))
+                            {
+                                <text>MFR @row.CorrectionMfrReference (AR 195-5 para 1-7c(3)).</text>
+                            }
+                            else
+                            {
+                                <text>
+                                    No MFR reference recorded — AR 195-5 para 1-7c(3) requires an
+                                    MFR outlining the error and the corrective action, filed with
+                                    the DA Form 4137.
+                                </text>
+                            }
+                        </div>
+                    }
+                </td>
+                <td>@row.RecordedByName</td>
+                <td>@row.RecordedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    <p class="regulatory-note">
+        A corrected entry is struck through and kept, never removed. AR 195-5 para 2-5b(5):
+        "Erroneous entries will be voided with one line drawn through the entry (so it may still
+        be read) and initialed by the custodian. No liquid correction type products, correction
+        tape, stick-on labels, or erasures are authorized." Occurrence time is what the DA Form
+        4137 records; entry time is when this application learned of it.
+    </p>
+</div>
+
+@if (Model.CanAssignLocation)
+{
+    <div class="panel">
+        <h2>Record an evidence-room location</h2>
+        <form method="post" asp-page-handler="AssignLocation" asp-route-id="@view.ItemId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+
+            <div class="form-row">
+                <label asp-for="Location.StorageLocationId">Location</label>
+                <select asp-for="Location.StorageLocationId"
+                        asp-items="@(new SelectList(Model.Locations, nameof(Emc.Web.Pages.Items.HistoryModel.LocationOption.Id), nameof(Emc.Web.Pages.Items.HistoryModel.LocationOption.Path)))">
+                    <option value="">— select —</option>
+                </select>
+                <span asp-validation-for="Location.StorageLocationId" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Location.OccurredAtLocal">Date and time (local)</label>
+                <input asp-for="Location.OccurredAtLocal" type="datetime-local" />
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Location.Reason">Reason</label>
+                <input asp-for="Location.Reason" autocomplete="off" />
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Location.Notes">Notes</label>
+                <textarea asp-for="Location.Notes"></textarea>
+            </div>
+
+            <p class="regulatory-note">
+                AR 195-5 para 2-4e requires the <em>current</em> location to be recorded in pencil
+                in the location block of the DA Form 4137, kept current "by erasing the previous
+                entry and noting the new location." This application retains the full history as a
+                deliberate design and integrity control — the regulation does not require it, and
+                this history may legitimately differ from the paper form, which by design shows
+                only the current location.
+            </p>
+
+            <button type="submit">Record location</button>
+        </form>
+    </div>
+}
+
+@if (Model.CanRecordCorrection)
+{
+    <div class="panel">
+        <h2>Record a correction</h2>
+        <form method="post" asp-page-handler="RecordCorrection" asp-route-id="@view.ItemId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+
+            <div class="form-row">
+                <label asp-for="Correction.CorrectedEventId">Entry to correct</label>
+                <select asp-for="Correction.CorrectedEventId">
+                    <option value="">— select —</option>
+                    @foreach (var row in view.History.Where(r => !r.IsSuperseded))
+                    {
+                        <option value="@row.EventId">#@row.SequenceNumber — @row.Summary</option>
+                    }
+                </select>
+                <span asp-validation-for="Correction.CorrectedEventId" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.FieldName">Field corrected</label>
+                <input asp-for="Correction.FieldName" autocomplete="off" />
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.OriginalValue">Value as originally recorded</label>
+                <input asp-for="Correction.OriginalValue" autocomplete="off" />
+                <span class="hint">Retained verbatim. The original entry is never overwritten.</span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.CorrectedValue">Corrected value</label>
+                <input asp-for="Correction.CorrectedValue" autocomplete="off" />
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.Reason">Reason for the correction</label>
+                <textarea asp-for="Correction.Reason"></textarea>
+                <span asp-validation-for="Correction.Reason" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.MfrReference">MFR reference</label>
+                <input asp-for="Correction.MfrReference" autocomplete="off" />
+                <span class="hint">
+                    AR 195-5 para 1-7c(3): an MFR outlining the error and the corrective action,
+                    filed with the proper DA Form 4137, with a copy in the case file.
+                </span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.SupervisorNotifiedUserId">Supervisor notified</label>
+                <select asp-for="Correction.SupervisorNotifiedUserId"
+                        asp-items="@(new SelectList(Model.Supervisors, nameof(Emc.Web.Pages.Items.HistoryModel.UserOption.Id), nameof(Emc.Web.Pages.Items.HistoryModel.UserOption.DisplayName)))">
+                    <option value="">— none recorded —</option>
+                </select>
+                <span class="hint">
+                    AR 195-5 para 1-7c(3) requires the responsible CI supervisor to be informed
+                    immediately. A correction without an MFR reference and a supervisor
+                    notification is still recorded, but is flagged for review.
+                </span>
+            </div>
+
+            <button type="submit">Record correction</button>
+        </form>
+    </div>
+}

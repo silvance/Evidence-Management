@@ -1,0 +1,29 @@
+@model Emc.Web.Pages.PageMessages
+@*
+    Warnings are shown prominently but never block. Several AR 195-5-derived checks are advisory
+    by design - a document-number gap (VCH-009), a possible supposition phrase (ITEM-003), an
+    alternate custodian past the 1-4i window (IAM-006) - because EMC is a companion and the
+    custodian holds the authoritative record.
+*@
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="message message--error" role="alert">
+        <strong>Not recorded.</strong>
+        <span>@Model.Error</span>
+        @if (!string.IsNullOrEmpty(Model.RequirementId))
+        {
+            <span class="message__requirement">[@Model.RequirementId]</span>
+        }
+    </div>
+}
+@if (!string.IsNullOrEmpty(Model.Success))
+{
+    <div class="message message--success" role="status">@Model.Success</div>
+}
+@foreach (var warning in Model.Warnings)
+{
+    <div class="message message--warning" role="alert">
+        <strong>Review required.</strong>
+        <span>@warning</span>
+    </div>
+}

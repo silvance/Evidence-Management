@@ -75,7 +75,7 @@ public class CorrectionEvent : ItemEvent
         CorrectedValue = correctedValue;
         MfrReference = Guard.TrimToNull(mfrReference);
         SupervisorNotifiedUserId = supervisorNotifiedUserId;
-        SupervisorNotifiedAtUtc = supervisorNotifiedAtUtc;
+        SupervisorNotifiedAtUtc = AccountabilityTime.Normalize(supervisorNotifiedAtUtc);
     }
 
     public override ItemEventKind Kind => ItemEventKind.Correction;
