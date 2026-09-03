@@ -98,6 +98,7 @@ items ("a box containing tools") to be listed as one item with one DA Form 4002.
 | `StatusEvent` | **[DESIGN].** Records each `AccountabilityStatus` transition with actor and reason so the workflow itself is auditable. |
 | `DocumentNumberEvent` | **[REG] 2-4c, 2-7g.** Item-visible record that the voucher's official number was assigned or superseded. |
 | `CorrectionEvent` | **[REG-modelled] 2-5b(5), 1-7c(3).** See §5. |
+| `VoucherReviewAction` | **✚ ADDED. [REG] 2-3g.** One step of the custodian's pre-acceptance review — submitted, returned (with what the custodian identified), corrected by the submitting agent (with what was corrected and the attestation that the paper form was corrected and initialed), resubmitted, accepted. Append-only; SQL trigger. `EvidenceVoucher.ReviewStage` is the one stored workflow state on the voucher; `IsSubmitted` is derived from it. Distinct from `CorrectionEvent`: that is the 1-7c(3) path for an accepted record. |
 | `AuditEvent` | **▲ CHANGED — narrowed.** Security/administrative audit **only**: sign-in, role change, permission denial, export, source-document download, integrity verification, configuration change. The accountability record lives in `ItemEvent`. Rationale: `docs/architecture.md` §4.5. |
 
 ### 2.4 Custody parties — a necessary correction to the original model
@@ -422,7 +423,7 @@ alone.
 
 | # | Invariant | Basis |
 |---|---|---|
-| I-10 | Items may be added, edited or removed **only** while the voucher is `Draft` | 2-3g **[REG]** |
+| I-10 | Items may be added, edited or removed **only** while the voucher is a draft or has been returned by the custodian for correction under 2-3g | 2-3g **[REG]** |
 | I-11 | Only a user with an **active `CustodianAppointment`** for that evidence room may accept evidence, transcribe the document number, or assign a location | 1-4g(1), 1-4i, 2-4c **[REG]** |
 | I-12 | An item cannot reach `InEvidenceRoom` without an official document number on its voucher | 2-4c **[REG]** |
 | I-13 | `ApplicationAdministrator` alone grants **no** accountability permission | **[DESIGN]** |
@@ -437,6 +438,9 @@ alone.
 | I-30 | A correction to a field that names a row carries the replacement identifier, and its display text is read from that row | **[DESIGN]** |
 | I-31 | A corrected storage location resolves within the item's own evidence room, on the same terms as an assigned one | 2-4c, 2-4e **[DESIGN]** |
 | I-32 | A correction records the value it changed as well as the original; which correction to a field is current is decided by server-assigned append order, never by a user-supplied occurrence time | 1-7c(3), 2-5b(5) **[CONTROL]** |
+| I-33 | A voucher's review stage moves only Draft → Submitted → (Returned → Corrected → Resubmitted)* → Accepted; each step is an append-only `VoucherReviewAction` with actor and time | 2-3g, 2-4c **[REG]** |
+| I-34 | Only the submitting agent records the correction to, or resubmits, a returned voucher; an accepted voucher is never returned | 2-3g **[REG]** |
+| I-35 | EMC records the agent's attestation that the paper form was corrected and initialed; it supplies no initials | 2-3g, 2-5c **[REG]** |
 | I-15 | A `CorrectionEvent` must carry a reason; a post-acceptance correction must also carry the MFR reference and the supervisor notification, and is refused without them | 1-7c(3) **[REG]** |
 | I-16 | Voucher status is always computed; there is no settable status column | 2-4h **[REG]** |
 | I-17 | Terminal-state items accept no further custody or location events except corrections | **[DESIGN]** |

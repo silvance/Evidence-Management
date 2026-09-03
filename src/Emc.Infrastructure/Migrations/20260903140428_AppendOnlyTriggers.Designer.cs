@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903135141_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260903140428_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -191,9 +191,6 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<bool>("IsRequestForAssistance")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("IsSubmitted")
-                        .HasColumnType("bit");
-
                     b.Property<int>("PreparedByUserId")
                         .HasColumnType("int");
 
@@ -219,6 +216,9 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<string>("RequestingOfficeCaseNumber")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("ReviewStage")
+                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("SubmittedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -296,6 +296,45 @@ namespace Emc.Infrastructure.Migrations
                         .HasDatabaseName("UX_DocumentNumber_NeverReusedPerRoomPerYear");
 
                     b.ToTable("OfficialDocumentNumberAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Narrative")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool?>("PaperFormCorrectedAndInitialedAttested")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ResultingStage")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("VoucherId", "OccurredAtUtc");
+
+                    b.ToTable("VoucherReviewActions", (string)null);
                 });
 
             modelBuilder.Entity("Emc.Domain.Configuration.AuditEvent", b =>
@@ -1222,6 +1261,23 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Voucher");
                 });
 
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>
+                {
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Cases.EvidenceVoucher", "Voucher")
+                        .WithMany("ReviewActions")
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Voucher");
+                });
+
             modelBuilder.Entity("Emc.Domain.Events.CustodyParty", b =>
                 {
                     b.HasOne("Emc.Domain.Identity.User", "User")
@@ -1386,6 +1442,8 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("DocumentNumberAssignments");
 
                     b.Navigation("Items");
+
+                    b.Navigation("ReviewActions");
                 });
 #pragma warning restore 612, 618
         }

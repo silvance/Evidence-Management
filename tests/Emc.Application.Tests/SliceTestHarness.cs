@@ -67,6 +67,8 @@ public sealed class SliceTestHarness : IDisposable
 
     public int OtherRoomLocationId { get; private set; }
     public int AgentUserId { get; private set; }
+    public int SecondAgentUserId { get; private set; }
+    public string AgentPrintedNameAndGrade { get; private set; } = string.Empty;
     public int CustodianUserId { get; private set; }
     public int AlternateCustodianUserId { get; private set; }
     public int AdministratorUserId { get; private set; }
@@ -99,6 +101,9 @@ public sealed class SliceTestHarness : IDisposable
     /// <summary>Signs in as an agent in this harness's evidence room (AR 195-5 2-3b).</summary>
     public void SignInAsAgent()
         => CurrentUser.SignIn(AgentUserId, "SA SMITH, JOHN A.", EvidenceRoomId, EmcRoles.Agent);
+
+    public void SignInAsSecondAgent()
+        => CurrentUser.SignIn(SecondAgentUserId, "SA PATEL, ANIKA R.", EvidenceRoomId, EmcRoles.Agent);
 
     /// <summary>Signs in as the appointed primary evidence custodian (AR 195-5 1-4g(1), 1-4h).</summary>
     public void SignInAsCustodian()
@@ -146,11 +151,20 @@ public sealed class SliceTestHarness : IDisposable
 
         EvidenceRoomId = room.Id;
         AgentUserId = agent.Id;
+        AgentPrintedNameAndGrade = agent.PrintedNameAndGrade;
         CustodianUserId = custodian.Id;
         AlternateCustodianUserId = alternate.Id;
         AdministratorUserId = administrator.Id;
         CommanderUserId = commander.Id;
         CommanderPrintedNameAndGrade = commander.PrintedNameAndGrade;
+
+        // A second agent in the same room, for "only the SUBMITTING agent" (AR 195-5 2-3g).
+        var secondAgent = NewUser("PATEL, ANIKA R.", "SA");
+        Db.Users.Add(secondAgent);
+        Db.SaveChanges();
+        GrantRoleInRoom(secondAgent.Id, EmcRoles.Agent, room.Id);
+        Db.SaveChanges();
+        SecondAgentUserId = secondAgent.Id;
 
         GrantRoleInRoom(agent.Id, EmcRoles.Agent, room.Id);
         GrantRoleInRoom(custodian.Id, EmcRoles.PrimaryEvidenceCustodian, room.Id);

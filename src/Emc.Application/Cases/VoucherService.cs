@@ -40,6 +40,16 @@ public sealed record UpdateItemRequest(
     bool IsSealed,
     string? SealDescription);
 
+/// <summary>AR 195-5 2-3g - the custodian returns the form, stating what is wrong with it.</summary>
+public sealed record ReturnVoucherForCorrectionRequest(int VoucherId, string ErrorsIdentified);
+
+/// <summary>
+/// AR 195-5 2-3g - the submitting agent records the correction. The attestation is that the
+/// PAPER form was corrected and initialed; EMC supplies no initials (VCH-019, AUD-013).
+/// </summary>
+public sealed record RecordAgentCorrectionRequest(
+    int VoucherId, string WhatWasCorrected, bool PaperFormCorrectedAndInitialedAttested);
+
 public interface IVoucherService
 {
     Task<OperationResult<int>> CreateDraftAsync(CreateVoucherRequest request, CancellationToken ct = default);
@@ -47,6 +57,15 @@ public interface IVoucherService
     Task<OperationResult> UpdateItemAsync(UpdateItemRequest request, CancellationToken ct = default);
     Task<OperationResult> RemoveItemAsync(int itemId, CancellationToken ct = default);
     Task<OperationResult> SubmitForCustodianIntakeAsync(int voucherId, CancellationToken ct = default);
+
+    /// <summary>AR 195-5 2-3g. Custodian only; before acceptance only.</summary>
+    Task<OperationResult> ReturnForCorrectionAsync(ReturnVoucherForCorrectionRequest request, CancellationToken ct = default);
+
+    /// <summary>AR 195-5 2-3g. The submitting agent only.</summary>
+    Task<OperationResult> RecordAgentCorrectionAsync(RecordAgentCorrectionRequest request, CancellationToken ct = default);
+
+    /// <summary>Puts the corrected form before the custodian again. The submitting agent only.</summary>
+    Task<OperationResult> ResubmitForCustodianIntakeAsync(int voucherId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -353,6 +372,172 @@ public sealed class VoucherService : IVoucherService
             + "is acquired. Submitting this voucher does not transfer physical custody.");
     }
 
+    public async Task<OperationResult> ReturnForCorrectionAsync(
+        ReturnVoucherForCorrectionRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var voucher = await LoadVoucherWithItemsAsync(request.VoucherId, ct);
+        if (voucher is null)
+        {
+            return OperationResult.Failure("Voucher not found.", "VCH-001");
+        }
+
+        // A custodian act (2-3g: "Evidence custodians will review ..."), so it needs an active
+        // appointment, not merely a custodian role (IAM-005).
+        var decision = await _authorization.AuthorizeAsync(
+            EmcPermissions.ReturnVoucherForCorrection, voucher.EvidenceRoomId, ct);
+
+        if (!decision.IsAllowed)
+        {
+            return (await DenyAsync<bool>(decision, nameof(EvidenceVoucher), voucher.DisplayIdentifier, ct))
+                .ToUntyped();
+        }
+
+        var now = _clock.UtcNow;
+
+        try
+        {
+            voucher.ReturnForCorrection(_currentUser.UserId, request.ErrorsIdentified, now);
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        // Each item goes back to the agent's custody state. The transition is on the record with
+        // the custodian's reason, so the item's own history shows the return (invariant I-22).
+        foreach (var item in voucher.Items.OrderBy(i => i.ItemNumber))
+        {
+            if (item.AccountabilityStatus == AccountabilityStatus.AwaitingCustodian)
+            {
+                await AppendStatusAsync(
+                    item, AccountabilityStatus.Acquired,
+                    "Voucher returned by the evidence custodian to the submitting agent to correct "
+                    + "and initial errors (AR 195-5 2-3g): " + request.ErrorsIdentified.Trim(),
+                    now, ct);
+            }
+        }
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded,
+            nameof(EvidenceVoucher), voucher.DisplayIdentifier,
+            previousValue: "Awaiting custodian intake",
+            newValue: "Returned to submitting agent for correction",
+            reason: request.ErrorsIdentified);
+
+        await _db.SaveChangesAsync(ct);
+
+        return OperationResult.Success(
+            "AR 195-5 para 2-3g: the submitting agent corrects and initials all errors on the "
+            + "DA Form 4137, then resubmits it. Items on this voucher may be edited until then.");
+    }
+
+    public async Task<OperationResult> RecordAgentCorrectionAsync(
+        RecordAgentCorrectionRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var voucher = await LoadVoucherWithItemsAsync(request.VoucherId, ct);
+        if (voucher is null)
+        {
+            return OperationResult.Failure("Voucher not found.", "VCH-001");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(
+            EmcPermissions.EditDraftVoucher, voucher.EvidenceRoomId, ct);
+
+        if (!decision.IsAllowed)
+        {
+            return (await DenyAsync<bool>(decision, nameof(EvidenceVoucher), voucher.DisplayIdentifier, ct))
+                .ToUntyped();
+        }
+
+        try
+        {
+            // The domain checks that the caller IS the submitting agent (2-3g), not merely
+            // someone with agent permissions in the room.
+            voucher.RecordCorrectionBySubmittingAgent(
+                _currentUser.UserId,
+                request.WhatWasCorrected,
+                request.PaperFormCorrectedAndInitialedAttested,
+                _clock.UtcNow);
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded,
+            nameof(EvidenceVoucher), voucher.DisplayIdentifier,
+            previousValue: "Returned to submitting agent for correction",
+            newValue: "Corrected by submitting agent; paper form corrected and initialed (attested)",
+            reason: request.WhatWasCorrected);
+
+        await _db.SaveChangesAsync(ct);
+        return OperationResult.Success();
+    }
+
+    public async Task<OperationResult> ResubmitForCustodianIntakeAsync(
+        int voucherId, CancellationToken ct = default)
+    {
+        var voucher = await LoadVoucherWithItemsAsync(voucherId, ct);
+        if (voucher is null)
+        {
+            return OperationResult.Failure("Voucher not found.", "VCH-001");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(
+            EmcPermissions.SubmitVoucherForIntake, voucher.EvidenceRoomId, ct);
+
+        if (!decision.IsAllowed)
+        {
+            return (await DenyAsync<bool>(decision, nameof(EvidenceVoucher), voucher.DisplayIdentifier, ct))
+                .ToUntyped();
+        }
+
+        var now = _clock.UtcNow;
+
+        try
+        {
+            voucher.Resubmit(_currentUser.UserId, now);
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        // Items added while the voucher was with the agent start from Draft; the rest were
+        // returned to Acquired. All end up awaiting the custodian again.
+        foreach (var item in voucher.Items.OrderBy(i => i.ItemNumber))
+        {
+            if (item.AccountabilityStatus == AccountabilityStatus.Draft)
+            {
+                await AppendStatusAsync(
+                    item, AccountabilityStatus.Acquired,
+                    "Evidence acquired by the preparing agent (AR 195-5 2-1a, 2-3b).", now, ct);
+            }
+
+            if (item.AccountabilityStatus == AccountabilityStatus.Acquired)
+            {
+                await AppendStatusAsync(
+                    item, AccountabilityStatus.AwaitingCustodian,
+                    "Corrected voucher resubmitted for evidence custodian intake (AR 195-5 2-3g, 2-4a).",
+                    now, ct);
+            }
+        }
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded,
+            nameof(EvidenceVoucher), voucher.DisplayIdentifier,
+            previousValue: "Corrected by submitting agent",
+            newValue: "Resubmitted for custodian intake");
+
+        await _db.SaveChangesAsync(ct);
+        return OperationResult.Success();
+    }
+
     private async Task AppendStatusAsync(
         EvidenceItem item,
         AccountabilityStatus target,
@@ -414,8 +599,9 @@ public sealed class VoucherService : IVoucherService
 
     private Task<EvidenceVoucher?> LoadVoucherWithItemsAsync(int voucherId, CancellationToken ct)
         => _db.EvidenceVouchers
-            .Include(v => v.Items)
+            .Include(v => v.Items).ThenInclude(i => i.Events)
             .Include(v => v.DocumentNumberAssignments)
+            .Include(v => v.ReviewActions)
             .FirstOrDefaultAsync(v => v.Id == voucherId, ct);
 
     private async Task<OperationResult<T>> DenyAsync<T>(

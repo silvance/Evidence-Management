@@ -29,6 +29,12 @@ public static class EmcPermissions
 
     // --- Evidence room surface (AR 195-5 1-4h, 2-4c, 2-4e, 2-7) ---
     public const string AcceptEvidenceIntake = "evidence.accept";
+
+    /// <summary>
+    /// AR 195-5 2-3g - the custodian returns a submitted DA Form 4137 to the submitting agent to
+    /// correct and initial errors. A custodian act, so it needs an active appointment.
+    /// </summary>
+    public const string ReturnVoucherForCorrection = "voucher.return-for-correction";
     public const string RecordOfficialDocumentNumber = "evidence.record-document-number";
     public const string AssignStorageLocation = "evidence.assign-location";
     public const string RecordCustodyEvent = "evidence.record-custody";
@@ -96,6 +102,7 @@ public static class EmcPermissions
         new HashSet<string>(StringComparer.Ordinal)
         {
             AcceptEvidenceIntake,
+            ReturnVoucherForCorrection,
             RecordOfficialDocumentNumber,
             AssignStorageLocation,
             RecordCustodyEvent,
@@ -126,6 +133,7 @@ public static class EmcPermissions
             SubmitVoucherForIntake,
             UploadSourceDocument,
             AcceptEvidenceIntake,
+            ReturnVoucherForCorrection,
             RecordOfficialDocumentNumber,
             AssignStorageLocation,
             RecordCustodyEvent,

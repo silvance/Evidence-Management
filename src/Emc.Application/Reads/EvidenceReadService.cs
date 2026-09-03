@@ -1,5 +1,6 @@
 using Emc.Application.Abstractions;
 using Emc.Application.Authorization;
+using Emc.Domain.Cases;
 using Emc.Domain.Common;
 using Microsoft.EntityFrameworkCore;
 
@@ -44,7 +45,20 @@ public sealed record VoucherDetailView(
     string ReceivedFrom,
     DateTimeOffset AcquiredAtLocal,
     IReadOnlyList<ItemListRow> Items,
-    IReadOnlyList<DocumentNumberRow> DocumentNumbers);
+    IReadOnlyList<DocumentNumberRow> DocumentNumbers,
+
+    /// <summary>AR 195-5 2-3g - where the form stands in the custodian's review, and how it got there.</summary>
+    VoucherReviewStage ReviewStage = VoucherReviewStage.Draft,
+    IReadOnlyList<VoucherReviewActionRow>? ReviewActions = null,
+    int? SubmittedByUserId = null);
+
+public sealed record VoucherReviewActionRow(
+    VoucherReviewActionKind Kind,
+    VoucherReviewStage ResultingStage,
+    string ActorName,
+    DateTimeOffset OccurredAtUtc,
+    string? Narrative,
+    bool? PaperFormCorrectedAndInitialedAttested);
 
 public sealed record ItemListRow(
     int Id,
@@ -222,6 +236,7 @@ public sealed class EvidenceReadService : IEvidenceReadService
             .Include(v => v.Case)
             .Include(v => v.Items)
             .Include(v => v.DocumentNumberAssignments)
+            .Include(v => v.ReviewActions)
             .FirstOrDefaultAsync(v => v.Id == voucherId, ct);
 
         if (voucher?.Case is null)
@@ -259,6 +274,21 @@ public sealed class EvidenceReadService : IEvidenceReadService
                 a.DocumentNumber, a.EnteredAtUtc, a.Id == currentAssignmentId, a.SupersessionReason))
             .ToList();
 
+        var actorIds = voucher.ReviewActions.Select(a => a.ActorUserId).Distinct().ToList();
+        var actorNames = await _db.Users
+            .AsNoTracking()
+            .Where(u => actorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.PrintedNameAndGrade, ct);
+
+        var reviewActions = voucher.ReviewActions
+            .OrderBy(a => a.OccurredAtUtc)
+            .ThenBy(a => a.Id)
+            .Select(a => new VoucherReviewActionRow(
+                a.Kind, a.ResultingStage,
+                actorNames.GetValueOrDefault(a.ActorUserId, "(unknown user)"),
+                a.OccurredAtUtc, a.Narrative, a.PaperFormCorrectedAndInitialedAttested))
+            .ToList();
+
         return new VoucherDetailView(
             voucher.Id,
             voucher.CaseId,
@@ -276,7 +306,10 @@ public sealed class EvidenceReadService : IEvidenceReadService
             voucher.ReceivedFrom,
             voucher.AcquiredAtLocal,
             items,
-            numbers);
+            numbers,
+            voucher.ReviewStage,
+            reviewActions,
+            voucher.SubmittedByUserId);
     }
 
     public async Task<int?> GetReadableItemEvidenceRoomIdAsync(int itemId, CancellationToken ct = default)

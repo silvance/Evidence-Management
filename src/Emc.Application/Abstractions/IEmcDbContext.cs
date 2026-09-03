@@ -24,6 +24,7 @@ public interface IEmcDbContext
     DbSet<StorageLocation> StorageLocations { get; }
     DbSet<Case> Cases { get; }
     DbSet<EvidenceVoucher> EvidenceVouchers { get; }
+    DbSet<VoucherReviewAction> VoucherReviewActions { get; }
     DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments { get; }
     DbSet<EvidenceItem> EvidenceItems { get; }
     DbSet<ItemEvent> ItemEvents { get; }

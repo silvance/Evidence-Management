@@ -205,6 +205,107 @@
     </div>
 }
 
+@if (Model.ReviewActions.Count > 0)
+{
+    <div class="panel">
+        <h2>Custodian review (AR 195-5 para 2-3g)</h2>
+        <p>Stage: <strong>@Model.ReviewStage</strong></p>
+        <table>
+            <thead>
+                <tr><th>Action</th><th>By</th><th>When</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var action in Model.ReviewActions)
+            {
+                <tr>
+                    <td>@action.Kind</td>
+                    <td>@action.ActorName</td>
+                    <td>@action.OccurredAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+                    <td>
+                        @action.Narrative
+                        @if (action.PaperFormCorrectedAndInitialedAttested == true)
+                        {
+                            <div class="regulatory-note">
+                                Agent attested that the paper DA Form 4137 was corrected and
+                                initialed. The application records the attestation; it supplies
+                                no initials.
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p class="regulatory-note">
+            AR 195-5 para 2-3g: "Evidence custodians will review the DA Form 4137 submitted with
+            evidence and have the submitting DALEO or Army CI agent correct and initial all
+            errors." This is the record of that review. It is not the para 1-7c(3) process,
+            which applies to an incorrect entry found after acceptance.
+        </p>
+    </div>
+}
+
+@if (Model.CanReturnForCorrection)
+{
+    <div class="panel">
+        <h2>Return to the submitting agent for correction</h2>
+        <form method="post" asp-page-handler="ReturnForCorrection" asp-route-id="@Model.VoucherId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+            <div class="form-row">
+                <label asp-for="Return.ErrorsIdentified">Errors identified</label>
+                <textarea asp-for="Return.ErrorsIdentified"></textarea>
+                <span class="hint">
+                    AR 195-5 para 2-3g. State what the submitting agent is to correct and
+                    initial on the form. This is recorded and shown to the agent.
+                </span>
+                <span asp-validation-for="Return.ErrorsIdentified" class="field-validation-error"></span>
+            </div>
+            <button type="submit">Return for correction</button>
+        </form>
+    </div>
+}
+
+@if (Model.CanRecordAgentCorrection)
+{
+    <div class="panel">
+        <h2>Record the correction</h2>
+        <p class="regulatory-note">
+            Only the agent who submitted this voucher may record the correction (AR 195-5
+            para 2-3g). Edit the items above as needed first; then record here what was
+            corrected on the paper form.
+        </p>
+        <form method="post" asp-page-handler="RecordAgentCorrection" asp-route-id="@Model.VoucherId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+            <div class="form-row">
+                <label asp-for="AgentCorrection.WhatWasCorrected">What was corrected</label>
+                <textarea asp-for="AgentCorrection.WhatWasCorrected"></textarea>
+                <span asp-validation-for="AgentCorrection.WhatWasCorrected" class="field-validation-error"></span>
+            </div>
+            <div class="form-row">
+                <label>
+                    <input asp-for="AgentCorrection.PaperFormCorrectedAndInitialedAttested" />
+                    I corrected and initialed the errors on the paper DA Form 4137.
+                </label>
+                <span class="hint">
+                    An attestation that the paper form was corrected and initialed as para 2-3g
+                    requires. The application does not supply initials or a signature.
+                </span>
+            </div>
+            <button type="submit">Record correction</button>
+        </form>
+    </div>
+}
+
+@if (Model.CanResubmit)
+{
+    <div class="panel">
+        <h2>Resubmit for custodian intake</h2>
+        <form method="post" asp-page-handler="Resubmit" asp-route-id="@Model.VoucherId">
+            <button type="submit">Resubmit corrected voucher</button>
+        </form>
+    </div>
+}
+
 @if (Model.CanSubmit)
 {
     <div class="panel">

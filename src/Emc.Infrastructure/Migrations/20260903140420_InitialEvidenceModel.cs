@@ -283,7 +283,7 @@ namespace Emc.Infrastructure.Migrations
                     AcquiredAtOffset = table.Column<TimeSpan>(type: "time", nullable: false),
                     CreatedByUserId = table.Column<int>(type: "int", nullable: false),
                     CreatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    IsSubmitted = table.Column<bool>(type: "bit", nullable: false),
+                    ReviewStage = table.Column<int>(type: "int", nullable: false),
                     SubmittedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     SubmittedByUserId = table.Column<int>(type: "int", nullable: true),
                     Remarks = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
@@ -467,6 +467,37 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_OfficialDocumentNumberAssignments_OfficialDocumentNumberAssignments_SupersedesAssignmentId",
                         column: x => x.SupersedesAssignmentId,
                         principalTable: "OfficialDocumentNumberAssignments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "VoucherReviewActions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    VoucherId = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    ResultingStage = table.Column<int>(type: "int", nullable: false),
+                    ActorUserId = table.Column<int>(type: "int", nullable: false),
+                    OccurredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Narrative = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    PaperFormCorrectedAndInitialedAttested = table.Column<bool>(type: "bit", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VoucherReviewActions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_VoucherReviewActions_EvidenceVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_VoucherReviewActions_Users_ActorUserId",
+                        column: x => x.ActorUserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -769,6 +800,16 @@ namespace Emc.Infrastructure.Migrations
                 table: "Users",
                 column: "UserPrincipalName",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VoucherReviewActions_ActorUserId",
+                table: "VoucherReviewActions",
+                column: "ActorUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VoucherReviewActions_VoucherId_OccurredAtUtc",
+                table: "VoucherReviewActions",
+                columns: new[] { "VoucherId", "OccurredAtUtc" });
         }
 
         /// <inheritdoc />
@@ -797,6 +838,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "SystemConfigurations");
+
+            migrationBuilder.DropTable(
+                name: "VoucherReviewActions");
 
             migrationBuilder.DropTable(
                 name: "CustodyParties");

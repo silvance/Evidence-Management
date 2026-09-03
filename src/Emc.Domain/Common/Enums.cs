@@ -64,7 +64,13 @@ public enum VoucherDerivedStatus
     Active = 3,
 
     /// <summary>AR 195-5 2-4h — all items disposed. Only then does the voucher become inactive.</summary>
-    Inactive = 4
+    Inactive = 4,
+
+    /// <summary>
+    /// AR 195-5 2-3g — the custodian returned the form to the submitting agent to correct and
+    /// initial errors; not yet accepted. Derived from <see cref="Emc.Domain.Cases.VoucherReviewStage"/>.
+    /// </summary>
+    ReturnedForCorrection = 5
 }
 
 /// <summary>

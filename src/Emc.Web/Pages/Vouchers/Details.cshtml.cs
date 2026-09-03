@@ -3,6 +3,7 @@ using System.Text.Json;
 using Emc.Application.Authorization;
 using Emc.Application.Cases;
 using Emc.Application.Reads;
+using Emc.Domain.Cases;
 using Emc.Domain.Common;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -57,6 +58,13 @@ public class DetailsModel : PageModel
     public bool CanSubmit { get; private set; }
     public bool CanRecordDocumentNumber { get; private set; }
 
+    /// <summary>AR 195-5 2-3g - the custodian's pre-acceptance review of the form.</summary>
+    public VoucherReviewStage ReviewStage { get; private set; }
+    public IReadOnlyList<VoucherReviewActionRow> ReviewActions { get; private set; } = [];
+    public bool CanReturnForCorrection { get; private set; }
+    public bool CanRecordAgentCorrection { get; private set; }
+    public bool CanResubmit { get; private set; }
+
     /// <summary>
     /// Advisories attached to an ALLOWED decision - most importantly the LOCAL notice that an
     /// alternate custodian is within a few days of the end of the AR 195-5 para 1-4i
@@ -73,6 +81,12 @@ public class DetailsModel : PageModel
 
     [BindProperty]
     public DocumentNumberInput DocumentNumber { get; set; } = new();
+
+    [BindProperty]
+    public ReturnInput Return { get; set; } = new();
+
+    [BindProperty]
+    public AgentCorrectionInput AgentCorrection { get; set; } = new();
 
     public async Task<IActionResult> OnGetAsync(int id)
         => await LoadAsync(id) ? Page() : NotFound();
@@ -128,6 +142,57 @@ public class DetailsModel : PageModel
 
         return Respond(id, result.Succeeded, result.Error, result.RequirementId,
             result.Warnings, "Voucher submitted for evidence custodian intake.");
+    }
+
+    public async Task<IActionResult> OnPostReturnForCorrectionAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        if (!IsValidForPrefix(nameof(Return)))
+        {
+            return Page();
+        }
+
+        var result = await _vouchers.ReturnForCorrectionAsync(
+            new ReturnVoucherForCorrectionRequest(id, Return.ErrorsIdentified!));
+
+        return Respond(id, result.Succeeded, result.Error, result.RequirementId,
+            result.Warnings, "Voucher returned to the submitting agent for correction (AR 195-5 para 2-3g).");
+    }
+
+    public async Task<IActionResult> OnPostRecordAgentCorrectionAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        if (!IsValidForPrefix(nameof(AgentCorrection)))
+        {
+            return Page();
+        }
+
+        var result = await _vouchers.RecordAgentCorrectionAsync(new RecordAgentCorrectionRequest(
+            id, AgentCorrection.WhatWasCorrected!, AgentCorrection.PaperFormCorrectedAndInitialedAttested));
+
+        return Respond(id, result.Succeeded, result.Error, result.RequirementId,
+            result.Warnings, "Correction recorded. Resubmit the voucher when the form is ready for the custodian.");
+    }
+
+    public async Task<IActionResult> OnPostResubmitAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        var result = await _vouchers.ResubmitForCustodianIntakeAsync(id);
+
+        return Respond(id, result.Succeeded, result.Error, result.RequirementId,
+            result.Warnings, "Corrected voucher resubmitted for evidence custodian intake.");
     }
 
     public async Task<IActionResult> OnPostRecordDocumentNumberAsync(int id)
@@ -253,9 +318,26 @@ public class DetailsModel : PageModel
         var numberDecision = await _authorization.CheckAsync(
             EmcPermissions.RecordOfficialDocumentNumber, view.EvidenceRoomId);
 
+        var returnDecision = await _authorization.CheckAsync(
+            EmcPermissions.ReturnVoucherForCorrection, view.EvidenceRoomId);
+
+        ReviewStage = view.ReviewStage;
+        ReviewActions = view.ReviewActions ?? [];
+
+        // These decide what the page OFFERS. Every one of them is enforced again server-side
+        // in the service and the domain, which is where "only the submitting agent" (2-3g) is
+        // checked; the page does not know who that is beyond a hint.
         CanEditDraft = editDecision.IsAllowed && view.AllowsItemEditing;
-        CanSubmit = editDecision.IsAllowed && view.AllowsItemEditing && view.Items.Count > 0;
+        CanSubmit = editDecision.IsAllowed && view.ReviewStage == VoucherReviewStage.Draft && view.Items.Count > 0;
         CanRecordDocumentNumber = numberDecision.IsAllowed && view.IsSubmitted;
+        CanReturnForCorrection = returnDecision.IsAllowed
+            && !view.HasOfficialDocumentNumber
+            && view.ReviewStage is VoucherReviewStage.SubmittedForCustodianReview
+                or VoucherReviewStage.ResubmittedForCustodianReview;
+        CanRecordAgentCorrection = editDecision.IsAllowed
+            && view.ReviewStage == VoucherReviewStage.ReturnedToSubmittingAgentForCorrection;
+        CanResubmit = editDecision.IsAllowed
+            && view.ReviewStage == VoucherReviewStage.CorrectedBySubmittingAgent;
         AuthorizationWarnings = numberDecision.Warnings ?? [];
 
         if (TempData[SuccessKey] is string success)
@@ -298,6 +380,28 @@ public class DetailsModel : PageModel
 
         [StringLength(1000)]
         public string? SealDescription { get; set; }
+    }
+
+    public sealed class ReturnInput
+    {
+        /// <summary>AR 195-5 para 2-3g - what the custodian identified for correction (VCH-017).</summary>
+        [Required(ErrorMessage = "State the errors identified (AR 195-5 para 2-3g).")]
+        [StringLength(4000)]
+        public string? ErrorsIdentified { get; set; }
+    }
+
+    public sealed class AgentCorrectionInput
+    {
+        /// <summary>AR 195-5 para 2-3g - what the submitting agent corrected (VCH-018).</summary>
+        [Required(ErrorMessage = "State what was corrected.")]
+        [StringLength(4000)]
+        public string? WhatWasCorrected { get; set; }
+
+        /// <summary>
+        /// The agent's attestation that the PAPER DA Form 4137 was corrected and initialed
+        /// (VCH-019). An attestation, not an initial; the application supplies neither.
+        /// </summary>
+        public bool PaperFormCorrectedAndInitialedAttested { get; set; }
     }
 
     public sealed class DocumentNumberInput

@@ -106,6 +106,35 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+    /// <summary>
+    /// AR 195-5 2-3g. The record of a custodian's review - what was found wrong, who returned
+    /// the form, who corrected it and when - is part of why a voucher was accepted when it was,
+    /// and is kept on the same terms as the rest of the accountability record.
+    /// </summary>
+    public const string CreateVoucherReviewUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Update
+        ON dbo.VoucherReviewActions
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50007,
+                'VoucherReviewActions is append-only and cannot be modified. The record of a custodian review under AR 195-5 para 2-3g is kept as it happened.',
+                1;
+        END;
+        """;
+
+    public const string CreateVoucherReviewDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Delete
+        ON dbo.VoucherReviewActions
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50008, 'VoucherReviewActions is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -113,7 +142,9 @@ public static class AppendOnlyTriggers
         CreateAuditEventsUpdateTrigger,
         CreateAuditEventsDeleteTrigger,
         CreateDocumentNumberUpdateTrigger,
-        CreateDocumentNumberDeleteTrigger
+        CreateDocumentNumberDeleteTrigger,
+        CreateVoucherReviewUpdateTrigger,
+        CreateVoucherReviewDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -123,6 +154,8 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_AuditEvents_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_AuditEvents_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_DocumentNumbers_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_DocumentNumbers_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_DocumentNumbers_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_VoucherReviewActions_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_VoucherReviewActions_AppendOnly_Delete;"
     ];
 }

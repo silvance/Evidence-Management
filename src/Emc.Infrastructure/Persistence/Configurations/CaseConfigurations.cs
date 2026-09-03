@@ -1,4 +1,5 @@
 using Emc.Domain.Cases;
+using Emc.Domain.Identity;
 using Emc.Domain.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -113,13 +114,48 @@ public sealed class EvidenceVoucherConfiguration : IEntityTypeConfiguration<Evid
             .HasForeignKey(a => a.VoucherId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // AR 195-5 2-3g - the review stage is the one stored workflow state on the voucher; the
+        // review's history is its own append-only table.
+        builder.Property(v => v.ReviewStage).HasConversion<int>().IsRequired();
+
+        builder.HasMany(v => v.ReviewActions)
+            .WithOne(a => a.Voucher)
+            .HasForeignKey(a => a.VoucherId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // VCH-007, invariant I-16 - voucher status is DERIVED from its items (AR 195-5 2-4h).
-        // There is deliberately no status column to drift out of step with reality.
+        // There is deliberately no status column to drift out of step with reality. The same
+        // goes for IsSubmitted, which is derived from ReviewStage.
         builder.Ignore(v => v.DerivedStatus);
+        builder.Ignore(v => v.IsSubmitted);
         builder.Ignore(v => v.CurrentDocumentNumberAssignment);
         builder.Ignore(v => v.HasOfficialDocumentNumber);
         builder.Ignore(v => v.DisplayIdentifier);
         builder.Ignore(v => v.AllowsItemEditing);
+    }
+}
+
+public sealed class VoucherReviewActionConfiguration : IEntityTypeConfiguration<VoucherReviewAction>
+{
+    public void Configure(EntityTypeBuilder<VoucherReviewAction> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("VoucherReviewActions");
+        builder.HasKey(a => a.Id);
+
+        builder.Property(a => a.Kind).HasConversion<int>().IsRequired();
+        builder.Property(a => a.ResultingStage).HasConversion<int>().IsRequired();
+
+        // What the custodian identified, or what the agent corrected - free text as an MFR is.
+        builder.Property(a => a.Narrative).HasMaxLength(4000);
+
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(a => a.ActorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(a => new { a.VoucherId, a.OccurredAtUtc });
     }
 }
 
