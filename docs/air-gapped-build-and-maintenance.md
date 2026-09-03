@@ -22,7 +22,7 @@ Server is local. A test enforces the parts of this that can be checked from sour
 | Network | Internet, as policy permits | **None** |
 | Evidence data | **Never.** No EMC database, no DA Form 4137, no case data | The only place EMC data exists |
 | NuGet configuration | `NuGet.Config` — nuget.org only, inherited sources cleared | `NuGet.Offline.Config` — the bundle folder only, inherited sources cleared, audit sources cleared |
-| Scripts | `scripts/staging/Export-DependencyBundle.ps1` | `scripts/airgap/Verify-DependencyBundle.ps1`, `verify-dependency-bundle.sh`, `Restore-Build-Test-Offline.ps1` |
+| Scripts | `scripts/staging/Export-DependencyBundle.ps1` (+ `artifacts.manifest.example.json`) | `scripts/airgap/Verify-DependencyBundle.ps1`, `verify-dependency-bundle.sh`, `Restore-Build-Test-Offline.ps1` |
 
 ## What is pinned, and why
 
@@ -154,8 +154,29 @@ Anything that would need a network at **run time** — a CDN script, a web font,
 model download, a licence check — is refused outright. `OfflineBuildTests` scans the web project
 for remote references and fails on any.
 
-## Future offline components
+## Non-NuGet artifacts — OCR engine, models, native runtimes
 
-Local OCR (designed, not built) will need model files and possibly native libraries. They enter
-the enclave through this same bundle, with hashes in the manifest, and are loaded from a configured
-local path. No component of EMC may fetch a model at run time.
+Local OCR (docs/ocr-engine-evaluation.md) needs things that are not NuGet packages: the
+Tesseract engine installer, `eng.traineddata` and `osd.traineddata`. They enter the enclave
+through **the same bundle**, under `artifacts/<kind>/`, with the same discipline:
+
+1. In staging, obtain each file, verify its signature or the publisher's published checksum,
+   record its SHA-256, origin, version, licence, classification, model or language id, retrieval
+   date, and the review in a copy of `scripts/staging/artifacts.manifest.example.json`
+   (`emc-artifact-manifest/1`). Kinds: `ocr-engine`, `ocr-model`, `native-runtime`,
+   `pdf-rasterizer`.
+2. `Export-DependencyBundle.ps1 -ArtifactManifest <that file>` re-hashes every file, refuses one
+   whose hash is not the reviewed hash or whose `reviewStatus` is not `approved`, copies it, and
+   records it in `manifest.json` with its `kind` and review fields. The export never downloads
+   anything.
+3. On import, the verifier checks every artifact's hash, kind, licence and approval, and warns
+   when a bundle carries no engine or no model — OCR cannot be installed from such a bundle.
+4. The engine is installed from `artifacts/ocr-engine/`; the models are copied to the folder
+   named by `Ocr:TessdataPath`. `Emc.OcrWorker` reads the engine's version from the installed
+   binary and the models' hashes from disk at start, refuses to start if either is missing, and
+   records engine version, model identifiers and preprocessing version on every OCR run. No
+   component of EMC fetches a model at run time; there is nowhere for it to fetch one from.
+
+Rendering (PDFium, SkiaSharp) arrives as NuGet packages and is covered by the lock files; it is
+listed above only because the manifest's `pdf-rasterizer` and `native-runtime` kinds exist for
+the case where a rasterizer or runtime is later obtained outside NuGet.

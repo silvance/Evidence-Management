@@ -142,4 +142,53 @@ public class OfflineBuildTests
         var gitignore = File.ReadAllText(Path.Combine(Root, ".gitignore"));
         Assert.Contains("dependency-bundle/*", gitignore, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TheArtifactManifestExampleCarriesEveryFieldTheExportRequires()
+    {
+        // The non-NuGet artifact path (OCR engine, models). The example is what a staging
+        // reviewer copies; if it drifts from what Export-DependencyBundle.ps1 demands, the first
+        // real export fails in staging instead of here.
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(Root, "scripts", "staging", "artifacts.manifest.example.json")));
+        Assert.Equal("emc-artifact-manifest/1", doc.RootElement.GetProperty("schema").GetString());
+
+        var script = File.ReadAllText(Path.Combine(Root, "scripts", "staging", "Export-DependencyBundle.ps1"));
+        var required = new[] { "name", "kind", "version", "path", "origin", "sha256", "license", "classification", "retrievedUtc", "reviewStatus", "reviewedBy", "reviewedUtc" };
+        foreach (var field in required)
+        {
+            Assert.Contains($"'{field}'", script, StringComparison.Ordinal);
+        }
+
+        var kinds = new[] { "ocr-engine", "ocr-model", "native-runtime", "pdf-rasterizer" };
+        var artifacts = doc.RootElement.GetProperty("artifacts").EnumerateArray().ToList();
+        Assert.NotEmpty(artifacts);
+        foreach (var a in artifacts)
+        {
+            foreach (var field in required)
+            {
+                Assert.True(a.TryGetProperty(field, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String && v.GetString()!.Length > 0, $"{field} missing");
+            }
+
+            Assert.Contains(a.GetProperty("kind").GetString(), kinds);
+            Assert.Equal("approved", a.GetProperty("reviewStatus").GetString());
+            Assert.Matches("^[0-9a-f]{64}$", a.GetProperty("sha256").GetString()!);
+            if (a.GetProperty("kind").GetString() == "ocr-model")
+            {
+                Assert.False(string.IsNullOrEmpty(a.GetProperty("modelId").GetString()), "ocr-model without modelId");
+            }
+        }
+
+        // The example is an example: placeholder hashes only, so nobody mistakes it for a review.
+        Assert.All(artifacts, a => Assert.Equal(new string('0', 64), a.GetProperty("sha256").GetString()));
+
+        // Both verifiers know the same kinds.
+        var ps = File.ReadAllText(Path.Combine(Root, "scripts", "airgap", "Verify-DependencyBundle.ps1"));
+        var sh = File.ReadAllText(Path.Combine(Root, "scripts", "airgap", "verify-dependency-bundle.sh"));
+        foreach (var kind in kinds)
+        {
+            Assert.Contains(kind, ps, StringComparison.Ordinal);
+            Assert.Contains(kind, sh, StringComparison.Ordinal);
+        }
+    }
 }

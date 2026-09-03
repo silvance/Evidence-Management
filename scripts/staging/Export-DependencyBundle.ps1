@@ -24,22 +24,31 @@
   Path to the exact .NET SDK installer/archive pinned in global.json, to include.
 .PARAMETER HostingBundleInstaller
   Path to the ASP.NET Core Hosting Bundle installer for the pinned runtime, to include.
+.PARAMETER ArtifactManifest
+  Path to a reviewed input manifest of NON-NuGet artifacts (schema emc-artifact-manifest/1; see
+  artifacts.manifest.example.json): the OCR engine installer, OCR model files, native runtimes,
+  PDF rasterizers. Each entry names the file, its origin, version, licence, classification,
+  model/language id, retrieval date, the SHA-256 the reviewer verified, and the review status.
+  The export re-hashes every file and REFUSES an entry whose hash differs from the reviewed one
+  or whose reviewStatus is not 'approved'. Nothing is downloaded by this script.
 #>
 [CmdletBinding()]
 param(
     [string]$BundleRoot,
     [string]$SdkInstaller,
-    [string]$HostingBundleInstaller
+    [string]$HostingBundleInstaller,
+    [string]$ArtifactManifest
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 if (-not $BundleRoot) { $BundleRoot = Join-Path $repo 'dependency-bundle' }
 
-$packagesOut = Join-Path $BundleRoot 'packages'
-$prereqOut   = Join-Path $BundleRoot 'prerequisites'
-$lockOut     = Join-Path $BundleRoot 'lockfiles'
-foreach ($d in @($packagesOut, $prereqOut, $lockOut)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+$packagesOut  = Join-Path $BundleRoot 'packages'
+$prereqOut    = Join-Path $BundleRoot 'prerequisites'
+$lockOut      = Join-Path $BundleRoot 'lockfiles'
+$artifactsOut = Join-Path $BundleRoot 'artifacts'
+foreach ($d in @($packagesOut, $prereqOut, $lockOut, $artifactsOut)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
 
 $sdkVersion = (Get-Content (Join-Path $repo 'global.json') | ConvertFrom-Json).sdk.version
 Write-Host "Pinned SDK: $sdkVersion (rollForward disabled)"
@@ -143,9 +152,61 @@ foreach ($pair in @(@('sdk', $SdkInstaller), @('hosting-bundle', $HostingBundleI
     }
 }
 
-# 5. Manifests.
+# 5. Reviewed non-NuGet artifacts (OCR engine, models, native runtimes, rasterizers).
+$ArtifactKinds = @('ocr-engine', 'ocr-model', 'native-runtime', 'pdf-rasterizer')
+if ($ArtifactManifest) {
+    if (-not (Test-Path $ArtifactManifest)) { throw "Artifact manifest not found: $ArtifactManifest" }
+    $input = Get-Content $ArtifactManifest -Raw | ConvertFrom-Json
+    if ($input.schema -ne 'emc-artifact-manifest/1') { throw "Unsupported artifact manifest schema '$($input.schema)'; expected emc-artifact-manifest/1" }
+
+    foreach ($a in $input.artifacts) {
+        foreach ($required in @('name', 'kind', 'version', 'path', 'origin', 'sha256', 'license', 'classification', 'retrievedUtc', 'reviewStatus', 'reviewedBy', 'reviewedUtc')) {
+            if (-not $a.$required) { throw "Artifact '$($a.name)': required field '$required' is missing or empty" }
+        }
+        if ($ArtifactKinds -notcontains $a.kind) { throw "Artifact '$($a.name)': kind '$($a.kind)' is not one of $($ArtifactKinds -join ', ')" }
+        if ($a.classification -notin @('runtime', 'build-only', 'test-only')) { throw "Artifact '$($a.name)': classification must be runtime, build-only or test-only" }
+        if ($a.reviewStatus -ne 'approved') { throw "Artifact '$($a.name)': reviewStatus is '$($a.reviewStatus)', not 'approved'. Review it in staging before exporting." }
+        if ($a.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw "Artifact '$($a.name)': sha256 must be 64 hex characters" }
+        if (-not (Test-Path $a.path)) { throw "Artifact '$($a.name)': file not found at $($a.path)" }
+
+        # The reviewer's hash is the reviewed fact. The file must still be that file.
+        $actual = (Get-FileHash $a.path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $a.sha256.ToLowerInvariant()) { throw "Artifact '$($a.name)': the file's SHA-256 ($actual) is not the reviewed hash ($($a.sha256)). Not exported." }
+
+        $kindOut = Join-Path $artifactsOut $a.kind
+        New-Item -ItemType Directory -Force -Path $kindOut | Out-Null
+        $dst = Join-Path $kindOut (Split-Path $a.path -Leaf)
+        if (Test-Path $dst) { throw "Artifact '$($a.name)': two artifacts of kind $($a.kind) share the file name $(Split-Path $a.path -Leaf)" }
+        Copy-Item $a.path $dst -Force
+
+        $manifest += [ordered]@{
+            name            = $a.name
+            kind            = $a.kind
+            version         = $a.version
+            file            = "artifacts/$($a.kind)/$(Split-Path $dst -Leaf)"
+            sha256          = $actual
+            origin          = $a.origin
+            retrievedUtc    = $a.retrievedUtc
+            license         = $a.license
+            classification  = $a.classification
+            modelId         = $a.modelId
+            languageId      = $a.languageId
+            auditStatus     = 'reviewed in staging (not a NuGet audit)'
+            auditDateUtc    = $a.reviewedUtc
+            reviewStatus    = 'approved'
+            reviewedBy      = $a.reviewedBy
+            reviewedUtc     = $a.reviewedUtc
+            reviewNotes     = $a.reviewNotes
+        }
+    }
+    Write-Host "Included $($input.artifacts.Count) reviewed non-NuGet artifact(s)."
+} else {
+    Write-Warning 'No -ArtifactManifest supplied: the bundle carries NO OCR engine or model files. OCR cannot be installed from it.'
+}
+
+# 6. Manifests.
 $manifestJson = [ordered]@{
-    schema      = 'emc-dependency-bundle/1'
+    schema      = 'emc-dependency-bundle/2'
     generatedUtc = (Get-Date).ToUniversalTime().ToString('o')
     sdk         = @{ version = $sdkVersion; rollForward = 'disable' }
     auditReport = 'audit-report.txt'

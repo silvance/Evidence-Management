@@ -1,0 +1,57 @@
+{
+  "$comment": "EXAMPLE input manifest for non-NuGet artifacts (OCR engine, models, native runtimes, rasterizers). Copy to artifacts.manifest.json in staging, fill in the real hashes and review fields, and pass the path to Export-DependencyBundle.ps1 -ArtifactManifest. The export refuses any entry whose reviewStatus is not 'approved' or whose file hash differs from sha256. Values below are placeholders, not real hashes.",
+  "schema": "emc-artifact-manifest/1",
+  "artifacts": [
+    {
+      "name": "tesseract-ocr-w64-setup",
+      "kind": "ocr-engine",
+      "version": "5.3.4",
+      "path": "C:\\staging\\tesseract\\tesseract-ocr-w64-setup-5.3.4.20240503.exe",
+      "origin": "https://github.com/UB-Mannheim/tesseract/wiki (publisher-signed installer)",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "license": "Apache-2.0",
+      "classification": "runtime",
+      "modelId": null,
+      "languageId": null,
+      "retrievedUtc": "2026-01-01T00:00:00Z",
+      "reviewStatus": "approved",
+      "reviewedBy": "staging reviewer (name or role)",
+      "reviewedUtc": "2026-01-01T00:00:00Z",
+      "reviewNotes": "Authenticode signature verified; hash matches the publisher's published checksum."
+    },
+    {
+      "name": "eng.traineddata",
+      "kind": "ocr-model",
+      "version": "tessdata 4.1.0",
+      "path": "C:\\staging\\tesseract\\tessdata\\eng.traineddata",
+      "origin": "https://github.com/tesseract-ocr/tessdata/releases/tag/4.1.0",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "license": "Apache-2.0",
+      "classification": "runtime",
+      "modelId": "eng",
+      "languageId": "eng",
+      "retrievedUtc": "2026-01-01T00:00:00Z",
+      "reviewStatus": "approved",
+      "reviewedBy": "staging reviewer (name or role)",
+      "reviewedUtc": "2026-01-01T00:00:00Z",
+      "reviewNotes": "Hash matches the release asset."
+    },
+    {
+      "name": "osd.traineddata",
+      "kind": "ocr-model",
+      "version": "tessdata 4.1.0",
+      "path": "C:\\staging\\tesseract\\tessdata\\osd.traineddata",
+      "origin": "https://github.com/tesseract-ocr/tessdata/releases/tag/4.1.0",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "license": "Apache-2.0",
+      "classification": "runtime",
+      "modelId": "osd",
+      "languageId": null,
+      "retrievedUtc": "2026-01-01T00:00:00Z",
+      "reviewStatus": "approved",
+      "reviewedBy": "staging reviewer (name or role)",
+      "reviewedUtc": "2026-01-01T00:00:00Z",
+      "reviewNotes": "Orientation and script detection model."
+    }
+  ]
+}
