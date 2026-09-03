@@ -133,6 +133,35 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "EvidenceRoomNumberingPolicies",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    EffectiveFrom = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    EffectiveTo = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Layout = table.Column<int>(type: "int", nullable: false),
+                    SequenceWidth = table.Column<int>(type: "int", nullable: false),
+                    YearWidth = table.Column<int>(type: "int", nullable: false),
+                    Separator = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
+                    Basis = table.Column<int>(type: "int", nullable: false),
+                    AuthorityReference = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_EvidenceRoomNumberingPolicies", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_EvidenceRoomNumberingPolicies_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "StorageLocations",
                 columns: table => new
                 {
@@ -438,9 +467,9 @@ namespace Emc.Infrastructure.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     VoucherId = table.Column<int>(type: "int", nullable: false),
                     EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
-                    DocumentNumber = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
+                    DocumentNumber = table.Column<string>(type: "nvarchar(24)", maxLength: 24, nullable: false),
                     Sequence = table.Column<int>(type: "int", nullable: false),
-                    TwoDigitYear = table.Column<int>(type: "int", nullable: false),
+                    NumberingPolicyId = table.Column<int>(type: "int", nullable: true),
                     CalendarYear = table.Column<int>(type: "int", nullable: false),
                     EnteredByUserId = table.Column<int>(type: "int", nullable: false),
                     EnteredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
@@ -451,6 +480,12 @@ namespace Emc.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_OfficialDocumentNumberAssignments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OfficialDocumentNumberAssignments_EvidenceRoomNumberingPolicies_NumberingPolicyId",
+                        column: x => x.NumberingPolicyId,
+                        principalTable: "EvidenceRoomNumberingPolicies",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_OfficialDocumentNumberAssignments_EvidenceRooms_EvidenceRoomId",
                         column: x => x.EvidenceRoomId,
@@ -670,6 +705,11 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_EvidenceRoomNumberingPolicies_EvidenceRoomId_EffectiveFrom",
+                table: "EvidenceRoomNumberingPolicies",
+                columns: new[] { "EvidenceRoomId", "EffectiveFrom" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_EvidenceRooms_Name",
                 table: "EvidenceRooms",
                 column: "Name",
@@ -717,6 +757,11 @@ namespace Emc.Infrastructure.Migrations
                 table: "ItemEvents",
                 columns: new[] { "EvidenceItemId", "SequenceNumber" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OfficialDocumentNumberAssignments_NumberingPolicyId",
+                table: "OfficialDocumentNumberAssignments",
+                column: "NumberingPolicyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_OfficialDocumentNumberAssignments_SupersedesAssignmentId",
@@ -847,6 +892,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "EvidenceItems");
+
+            migrationBuilder.DropTable(
+                name: "EvidenceRoomNumberingPolicies");
 
             migrationBuilder.DropTable(
                 name: "CustodianAppointments");

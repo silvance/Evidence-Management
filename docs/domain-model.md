@@ -99,6 +99,7 @@ items ("a box containing tools") to be listed as one item with one DA Form 4002.
 | `DocumentNumberEvent` | **[REG] 2-4c, 2-7g.** Item-visible record that the voucher's official number was assigned or superseded. |
 | `CorrectionEvent` | **[REG-modelled] 2-5b(5), 1-7c(3).** See §5. |
 | `VoucherReviewAction` | **✚ ADDED. [REG] 2-3g.** One step of the custodian's pre-acceptance review — submitted, returned (with what the custodian identified), corrected by the submitting agent (with what was corrected and the attestation that the paper form was corrected and initialed), resubmitted, accepted. Append-only; SQL trigger. `EvidenceVoucher.ReviewStage` is the one stored workflow state on the voucher; `IsSubmitted` is derived from it. Distinct from `CorrectionEvent`: that is the 1-7c(3) path for an accepted record. |
+| `EvidenceRoomNumberingPolicy` | **✚ ADDED. [LOCAL]** How an evidence room writes its document numbers, effective-dated: layout (`SequenceThenYear` — the regulation's `001-26` — or `YearThenSequence`, `26-01`), sequence width, year width, separator, basis (`RegulationDefault` / `LocalAuthorized` with authority cited / `LegacyObserved`, flagged), notes. Structured, not a regex. The regulation's layout is the default when a room has recorded none. |
 | `AuditEvent` | **▲ CHANGED — narrowed.** Security/administrative audit **only**: sign-in, role change, permission denial, export, source-document download, integrity verification, configuration change. The accountability record lives in `ItemEvent`. Rationale: `docs/architecture.md` §4.5. |
 
 ### 2.4 Custody parties — a necessary correction to the original model
@@ -441,6 +442,9 @@ alone.
 | I-33 | A voucher's review stage moves only Draft → Submitted → (Returned → Corrected → Resubmitted)* → Accepted; each step is an append-only `VoucherReviewAction` with actor and time | 2-3g, 2-4c **[REG]** |
 | I-34 | Only the submitting agent records the correction to, or resubmits, a returned voucher; an accepted voucher is never returned | 2-3g **[REG]** |
 | I-35 | EMC records the agent's attestation that the paper form was corrected and initialed; it supplies no initials | 2-3g, 2-5c **[REG]** |
+| I-36 | A document number's identity is `(EvidenceRoom, CalendarYear, Sequence)`; the text as written is presentation under the room's numbering policy and is preserved verbatim | 2-4c **[DESIGN]** |
+| I-37 | The four-digit calendar year is resolved from the date of receipt when the number is recorded and is never re-derived from the clock; a disagreement is confirmed by the custodian, not guessed | 2-4c **[CONTROL]** |
+| I-38 | Only the regulation's layout may be recorded as the regulation default; any other layout cites a local authority or is flagged as awaiting validation | 2-4c **[LOCAL]** |
 | I-15 | A `CorrectionEvent` must carry a reason; a post-acceptance correction must also carry the MFR reference and the supervisor notification, and is refused without them | 1-7c(3) **[REG]** |
 | I-16 | Voucher status is always computed; there is no settable status column | 2-4h **[REG]** |
 | I-17 | Terminal-state items accept no further custody or location events except corrections | **[DESIGN]** |

@@ -116,11 +116,11 @@ public class VoucherStatusTests
         var voucher = SubmittedVoucher(1);
 
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("037-26"), 1, TestData.Now, true);
+            EvidenceDocumentNumber.Regulatory("037-26", 2026), 1, TestData.Now, true);
 
         var ex = Assert.Throws<DomainRuleViolationException>(
             () => voucher.RecordOfficialDocumentNumber(
-                EvidenceDocumentNumber.Parse("012-27"), 1, TestData.Now, true));
+                EvidenceDocumentNumber.Regulatory("012-27", 2027), 1, TestData.Now, true));
 
         Assert.Equal("VCH-008", ex.RequirementId);
     }
@@ -133,11 +133,11 @@ public class VoucherStatusTests
         var voucher = SubmittedVoucher(1);
 
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("037-26"), 1, TestData.Now, true);
+            EvidenceDocumentNumber.Regulatory("037-26", 2026), 1, TestData.Now, true);
 
         // A transfer happens later than the original assignment; "current" is the most recent.
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("012-27"), 1, TestData.Now.AddMonths(4), true,
+            EvidenceDocumentNumber.Regulatory("012-27", 2027), 1, TestData.Now.AddMonths(4), true,
             "Evidence permanently transferred to 310th MI Bn evidence room (AR 195-5 2-7g).");
 
         Assert.Equal(2, voucher.DocumentNumberAssignments.Count);
@@ -159,7 +159,7 @@ public class VoucherStatusTests
 
         var ex = Assert.Throws<DomainRuleViolationException>(
             () => voucher.RecordOfficialDocumentNumber(
-                EvidenceDocumentNumber.Parse("037-26"), 1, TestData.Now,
+                EvidenceDocumentNumber.Regulatory("037-26", 2026), 1, TestData.Now,
                 attestedAssignedInAuthoritativeLedger: false));
 
         Assert.Equal("VCH-006", ex.RequirementId);
@@ -175,7 +175,7 @@ public class VoucherStatusTests
 
         var ex = Assert.Throws<DomainRuleViolationException>(
             () => voucher.RecordOfficialDocumentNumber(
-                EvidenceDocumentNumber.Parse("037-26"), 1, TestData.Now, true));
+                EvidenceDocumentNumber.Regulatory("037-26", 2026), 1, TestData.Now, true));
 
         Assert.Equal("VCH-006", ex.RequirementId);
     }

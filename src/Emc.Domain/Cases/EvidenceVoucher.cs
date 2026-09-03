@@ -451,7 +451,8 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
         int enteredByUserId,
         DateTimeOffset enteredAtUtc,
         bool attestedAssignedInAuthoritativeLedger,
-        string? supersessionReason = null)
+        string? supersessionReason = null,
+        int? numberingPolicyId = null)
     {
         ArgumentNullException.ThrowIfNull(documentNumber);
 
@@ -490,7 +491,8 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
             // AR 195-5 2-7g - the NEW assignment names the one it replaces. The prior row is
             // never modified, so the assignment history is strictly insert-only.
             supersedes: current,
-            supersessionReason: supersessionReason);
+            supersessionReason: supersessionReason,
+            numberingPolicyId: numberingPolicyId);
 
         _documentNumberAssignments.Add(assignment);
 

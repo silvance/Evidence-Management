@@ -21,6 +21,7 @@ public interface IEmcDbContext
     DbSet<CustodianDutyAssumption> CustodianDutyAssumptions { get; }
     DbSet<PrimaryCustodianTransition> PrimaryCustodianTransitions { get; }
     DbSet<EvidenceRoom> EvidenceRooms { get; }
+    DbSet<EvidenceRoomNumberingPolicy> EvidenceRoomNumberingPolicies { get; }
     DbSet<StorageLocation> StorageLocations { get; }
     DbSet<Case> Cases { get; }
     DbSet<EvidenceVoucher> EvidenceVouchers { get; }

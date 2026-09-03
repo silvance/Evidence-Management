@@ -11,7 +11,7 @@ GO
 BEGIN TRANSACTION;
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [AuditEvents] (
@@ -34,7 +34,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [EvidenceRooms] (
@@ -50,7 +50,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [Roles] (
@@ -63,7 +63,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [SystemConfigurations] (
@@ -82,7 +82,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [Users] (
@@ -100,7 +100,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [Cases] (
@@ -121,7 +121,30 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
+)
+BEGIN
+    CREATE TABLE [EvidenceRoomNumberingPolicies] (
+        [Id] int NOT NULL IDENTITY,
+        [EvidenceRoomId] int NOT NULL,
+        [EffectiveFrom] datetimeoffset NOT NULL,
+        [EffectiveTo] datetimeoffset NULL,
+        [Layout] int NOT NULL,
+        [SequenceWidth] int NOT NULL,
+        [YearWidth] int NOT NULL,
+        [Separator] nvarchar(3) NOT NULL,
+        [Basis] int NOT NULL,
+        [AuthorityReference] nvarchar(512) NULL,
+        [Notes] nvarchar(2000) NULL,
+        [ConcurrencyStamp] uniqueidentifier NOT NULL,
+        CONSTRAINT [PK_EvidenceRoomNumberingPolicies] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_EvidenceRoomNumberingPolicies_EvidenceRooms_EvidenceRoomId] FOREIGN KEY ([EvidenceRoomId]) REFERENCES [EvidenceRooms] ([Id]) ON DELETE NO ACTION
+    );
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [StorageLocations] (
@@ -140,7 +163,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [CustodianAppointments] (
@@ -168,7 +191,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [CustodyParties] (
@@ -187,7 +210,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [RoleAssignments] (
@@ -208,7 +231,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [EvidenceVouchers] (
@@ -240,7 +263,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [CustodianDutyAssumptions] (
@@ -270,7 +293,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [PrimaryCustodianTransitions] (
@@ -297,7 +320,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [EvidenceItems] (
@@ -326,16 +349,16 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [OfficialDocumentNumberAssignments] (
         [Id] int NOT NULL IDENTITY,
         [VoucherId] int NOT NULL,
         [EvidenceRoomId] int NOT NULL,
-        [DocumentNumber] nvarchar(16) NOT NULL,
+        [DocumentNumber] nvarchar(24) NOT NULL,
         [Sequence] int NOT NULL,
-        [TwoDigitYear] int NOT NULL,
+        [NumberingPolicyId] int NULL,
         [CalendarYear] int NOT NULL,
         [EnteredByUserId] int NOT NULL,
         [EnteredAtUtc] datetimeoffset NOT NULL,
@@ -343,6 +366,7 @@ BEGIN
         [SupersedesAssignmentId] int NULL,
         [SupersessionReason] nvarchar(1000) NULL,
         CONSTRAINT [PK_OfficialDocumentNumberAssignments] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_OfficialDocumentNumberAssignments_EvidenceRoomNumberingPolicies_NumberingPolicyId] FOREIGN KEY ([NumberingPolicyId]) REFERENCES [EvidenceRoomNumberingPolicies] ([Id]) ON DELETE NO ACTION,
         CONSTRAINT [FK_OfficialDocumentNumberAssignments_EvidenceRooms_EvidenceRoomId] FOREIGN KEY ([EvidenceRoomId]) REFERENCES [EvidenceRooms] ([Id]) ON DELETE NO ACTION,
         CONSTRAINT [FK_OfficialDocumentNumberAssignments_EvidenceVouchers_VoucherId] FOREIGN KEY ([VoucherId]) REFERENCES [EvidenceVouchers] ([Id]) ON DELETE NO ACTION,
         CONSTRAINT [FK_OfficialDocumentNumberAssignments_OfficialDocumentNumberAssignments_SupersedesAssignmentId] FOREIGN KEY ([SupersedesAssignmentId]) REFERENCES [OfficialDocumentNumberAssignments] ([Id]) ON DELETE NO ACTION
@@ -351,7 +375,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [VoucherReviewActions] (
@@ -371,7 +395,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE TABLE [ItemEvents] (
@@ -441,7 +465,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_AuditEvents_ActingUserId_OccurredAtUtc] ON [AuditEvents] ([ActingUserId], [OccurredAtUtc]);
@@ -449,7 +473,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_AuditEvents_AffectedRecordType_AffectedRecordId] ON [AuditEvents] ([AffectedRecordType], [AffectedRecordId]);
@@ -457,7 +481,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_AuditEvents_OccurredAtUtc] ON [AuditEvents] ([OccurredAtUtc]);
@@ -465,7 +489,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_Cases_EvidenceRoomId_CaseControlNumber] ON [Cases] ([EvidenceRoomId], [CaseControlNumber]);
@@ -473,7 +497,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_CustodianAppointments_EvidenceRoomId_UserId_EffectiveFrom] ON [CustodianAppointments] ([EvidenceRoomId], [UserId], [EffectiveFrom]);
@@ -481,7 +505,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_CustodianAppointments_UserId] ON [CustodianAppointments] ([UserId]);
@@ -489,7 +513,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     EXEC(N'CREATE UNIQUE INDEX [UX_CustodianAppointments_OneOpenPerType] ON [CustodianAppointments] ([EvidenceRoomId], [AppointmentType]) WHERE EffectiveTo IS NULL AND SupersededByAppointmentId IS NULL');
@@ -497,7 +521,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_CustodianDutyAssumptions_AlternateAppointmentId] ON [CustodianDutyAssumptions] ([AlternateAppointmentId]);
@@ -505,7 +529,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_CustodianDutyAssumptions_AlternateUserId_EvidenceRoomId] ON [CustodianDutyAssumptions] ([AlternateUserId], [EvidenceRoomId]);
@@ -513,7 +537,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_CustodianDutyAssumptions_PrimaryAppointmentId] ON [CustodianDutyAssumptions] ([PrimaryAppointmentId]);
@@ -521,7 +545,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     EXEC(N'CREATE UNIQUE INDEX [UX_CustodianDutyAssumptions_OneOpenPerRoom] ON [CustodianDutyAssumptions] ([EvidenceRoomId]) WHERE PrimaryResumedAt IS NULL');
@@ -529,7 +553,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_CustodyParties_UserId] ON [CustodyParties] ([UserId]);
@@ -537,7 +561,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_EvidenceItems_SerialNumber] ON [EvidenceItems] ([SerialNumber]);
@@ -545,7 +569,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_EvidenceItems_VoucherId_ItemNumber] ON [EvidenceItems] ([VoucherId], [ItemNumber]);
@@ -553,7 +577,15 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
+)
+BEGIN
+    CREATE INDEX [IX_EvidenceRoomNumberingPolicies_EvidenceRoomId_EffectiveFrom] ON [EvidenceRoomNumberingPolicies] ([EvidenceRoomId], [EffectiveFrom]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_EvidenceRooms_Name] ON [EvidenceRooms] ([Name]);
@@ -561,7 +593,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_EvidenceVouchers_CaseId] ON [EvidenceVouchers] ([CaseId]);
@@ -569,7 +601,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_EvidenceVouchers_EvidenceRoomId_TemporaryIdentifier] ON [EvidenceVouchers] ([EvidenceRoomId], [TemporaryIdentifier]);
@@ -577,7 +609,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     EXEC(N'CREATE INDEX [IX_ItemEvents_CorrectionReference] ON [ItemEvents] ([ReferenceKind], [CorrectedReferenceId]) WHERE [CorrectedReferenceId] IS NOT NULL');
@@ -585,7 +617,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_ItemEvents_CorrectsEventId] ON [ItemEvents] ([CorrectsEventId]);
@@ -593,7 +625,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_ItemEvents_ItemChronology] ON [ItemEvents] ([EvidenceItemId], [OccurredAtUtc], [SequenceNumber]);
@@ -601,7 +633,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_ItemEvents_ReceivedByPartyId] ON [ItemEvents] ([ReceivedByPartyId]);
@@ -609,7 +641,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_ItemEvents_ReleasedByPartyId] ON [ItemEvents] ([ReleasedByPartyId]);
@@ -617,7 +649,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [UX_ItemEvents_ItemSequence] ON [ItemEvents] ([EvidenceItemId], [SequenceNumber]);
@@ -625,7 +657,15 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
+)
+BEGIN
+    CREATE INDEX [IX_OfficialDocumentNumberAssignments_NumberingPolicyId] ON [OfficialDocumentNumberAssignments] ([NumberingPolicyId]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_OfficialDocumentNumberAssignments_SupersedesAssignmentId] ON [OfficialDocumentNumberAssignments] ([SupersedesAssignmentId]);
@@ -633,7 +673,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_OfficialDocumentNumberAssignments_VoucherId] ON [OfficialDocumentNumberAssignments] ([VoucherId]);
@@ -641,7 +681,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [UX_DocumentNumber_NeverReusedPerRoomPerYear] ON [OfficialDocumentNumberAssignments] ([EvidenceRoomId], [CalendarYear], [Sequence]);
@@ -649,7 +689,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_PrimaryCustodianTransitions_EvidenceRoomId_EffectiveFrom] ON [PrimaryCustodianTransitions] ([EvidenceRoomId], [EffectiveFrom]);
@@ -657,7 +697,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_PrimaryCustodianTransitions_IncomingPrimaryAppointmentId] ON [PrimaryCustodianTransitions] ([IncomingPrimaryAppointmentId]);
@@ -665,7 +705,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_PrimaryCustodianTransitions_OutgoingPrimaryAppointmentId] ON [PrimaryCustodianTransitions] ([OutgoingPrimaryAppointmentId]);
@@ -673,7 +713,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_RoleAssignments_EvidenceRoomId] ON [RoleAssignments] ([EvidenceRoomId]);
@@ -681,7 +721,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_RoleAssignments_RoleId] ON [RoleAssignments] ([RoleId]);
@@ -689,7 +729,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_RoleAssignments_UserId_EvidenceRoomId] ON [RoleAssignments] ([UserId], [EvidenceRoomId]);
@@ -697,7 +737,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     EXEC(N'CREATE UNIQUE INDEX [UX_RoleAssignments_OneOpenPerUserRoleRoom] ON [RoleAssignments] ([UserId], [RoleId], [EvidenceRoomId]) WHERE EffectiveTo IS NULL');
@@ -705,7 +745,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_Roles_Name] ON [Roles] ([Name]);
@@ -713,7 +753,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     EXEC(N'CREATE UNIQUE INDEX [IX_StorageLocations_EvidenceRoomId_ParentId_Name] ON [StorageLocations] ([EvidenceRoomId], [ParentId], [Name]) WHERE [ParentId] IS NOT NULL');
@@ -721,7 +761,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_StorageLocations_ParentId] ON [StorageLocations] ([ParentId]);
@@ -729,7 +769,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_Users_ActiveDirectorySid] ON [Users] ([ActiveDirectorySid]);
@@ -737,7 +777,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE UNIQUE INDEX [IX_Users_UserPrincipalName] ON [Users] ([UserPrincipalName]);
@@ -745,7 +785,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_VoucherReviewActions_ActorUserId] ON [VoucherReviewActions] ([ActorUserId]);
@@ -753,7 +793,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     CREATE INDEX [IX_VoucherReviewActions_VoucherId_OccurredAtUtc] ON [VoucherReviewActions] ([VoucherId], [OccurredAtUtc]);
@@ -761,11 +801,11 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140420_InitialEvidenceModel'
+    WHERE [MigrationId] = N'20260903141320_InitialEvidenceModel'
 )
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-    VALUES (N'20260903140420_InitialEvidenceModel', N'10.0.11');
+    VALUES (N'20260903141320_InitialEvidenceModel', N'10.0.11');
 END;
 
 COMMIT;
@@ -774,7 +814,7 @@ GO
 BEGIN TRANSACTION;
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_ItemEvents_AppendOnly_Update
@@ -791,7 +831,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_ItemEvents_AppendOnly_Delete
@@ -808,7 +848,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_AuditEvents_AppendOnly_Update
@@ -823,7 +863,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_AuditEvents_AppendOnly_Delete
@@ -838,7 +878,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_DocumentNumbers_AppendOnly_Update
@@ -855,7 +895,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_DocumentNumbers_AppendOnly_Delete
@@ -872,7 +912,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Update
@@ -889,7 +929,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Delete
@@ -904,11 +944,11 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
-    WHERE [MigrationId] = N'20260903140428_AppendOnlyTriggers'
+    WHERE [MigrationId] = N'20260903141328_AppendOnlyTriggers'
 )
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-    VALUES (N'20260903140428_AppendOnlyTriggers', N'10.0.11');
+    VALUES (N'20260903141328_AppendOnlyTriggers', N'10.0.11');
 END;
 
 COMMIT;

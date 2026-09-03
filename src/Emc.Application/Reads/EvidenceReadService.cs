@@ -2,6 +2,7 @@ using Emc.Application.Abstractions;
 using Emc.Application.Authorization;
 using Emc.Domain.Cases;
 using Emc.Domain.Common;
+using Emc.Domain.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace Emc.Application.Reads;
@@ -50,7 +51,17 @@ public sealed record VoucherDetailView(
     /// <summary>AR 195-5 2-3g - where the form stands in the custodian's review, and how it got there.</summary>
     VoucherReviewStage ReviewStage = VoucherReviewStage.Draft,
     IReadOnlyList<VoucherReviewActionRow>? ReviewActions = null,
-    int? SubmittedByUserId = null);
+    int? SubmittedByUserId = null,
+
+    /// <summary>
+    /// How this room writes document numbers (VCH-023): a description for the form, an example,
+    /// and whether the layout is the regulation's or a local one. The page shows this instead of
+    /// hard-coding the regulation's layout.
+    /// </summary>
+    string? DocumentNumberFormatDescription = null,
+    string? DocumentNumberExample = null,
+    bool DocumentNumberLayoutIsRegulatory = true,
+    bool DocumentNumberLayoutAwaitsValidation = false);
 
 public sealed record VoucherReviewActionRow(
     VoucherReviewActionKind Kind,
@@ -289,6 +300,20 @@ public sealed class EvidenceReadService : IEvidenceReadService
                 a.OccurredAtUtc, a.Narrative, a.PaperFormCorrectedAndInitialedAttested))
             .ToList();
 
+        // The policy the custodian will write the number under. Resolved at the voucher's
+        // acquisition instant - a fact of the record, not a reading of the clock (AUD-019).
+        var policies = await _db.EvidenceRoomNumberingPolicies
+            .AsNoTracking()
+            .Where(p => p.EvidenceRoomId == voucher.EvidenceRoomId)
+            .ToListAsync(ct);
+
+        var policy = policies
+                         .Where(p => p.IsEffectiveAt(voucher.AcquiredAtUtc))
+                         .OrderByDescending(p => p.EffectiveFrom)
+                         .FirstOrDefault()
+                     ?? policies.OrderByDescending(p => p.EffectiveFrom).FirstOrDefault()
+                     ?? EvidenceRoomNumberingPolicy.Regulatory(voucher.EvidenceRoomId, DateTimeOffset.MinValue);
+
         return new VoucherDetailView(
             voucher.Id,
             voucher.CaseId,
@@ -309,7 +334,11 @@ public sealed class EvidenceReadService : IEvidenceReadService
             numbers,
             voucher.ReviewStage,
             reviewActions,
-            voucher.SubmittedByUserId);
+            voucher.SubmittedByUserId,
+            policy.Describe(),
+            policy.Example(),
+            policy.IsRegulatoryLayout,
+            policy.IsAwaitingValidation);
     }
 
     public async Task<int?> GetReadableItemEvidenceRoomIdAsync(int itemId, CancellationToken ct = default)

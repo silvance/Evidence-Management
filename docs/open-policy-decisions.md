@@ -196,6 +196,31 @@ the authority. `CustodianDutyAssumption.RequiresHundredPercentInventoryOnResumpt
 
 ---
 
+## DEC-10 — Year-first document numbers
+
+**Observation.** Some evidence rooms write the document number as `26-01` — two-digit year,
+hyphen, two-digit sequence. AR 195-5 **2-4c** prescribes `001-18`: a three-digit sequence
+beginning at 001, a hyphen, then the two-digit calendar year. The regulation describes exactly one
+layout and does not contemplate another.
+
+**What EMC does.** The layout a room writes is an effective-dated, per-room
+`EvidenceRoomNumberingPolicy` **[LOCAL]** (VCH-023). The regulation's layout is the default and
+applies when a room has recorded nothing. A room may record a year-first layout, but it must
+either cite the local SOP, policy, waiver or directive that authorizes it (`LocalAuthorized`) or
+record it as a legacy practice with no authority yet cited (`LegacyObserved`) — in which case
+every number recorded under it carries a warning saying so. The identity of a number is
+`(room, calendar year, sequence)` whatever the layout, so switching layouts renumbers nothing and
+cannot reissue a number (VCH-011). The number as written is preserved verbatim.
+
+**What EMC will not do.** Describe the year-first layout as something AR 195-5 permits or
+requires, anywhere — in code, on screen, or in this documentation. If a room believes it holds
+authority for its layout, that authority is recorded on the policy; if it does not, the flag
+stays until it does or the room adopts the regulation's layout.
+
+**Decision needed locally:** which of the two bases applies to this room, and the reference.
+
+---
+
 ## DEC-06 — What classification is the system accredited for?
 
 **The most consequential decision here.**
@@ -314,3 +339,4 @@ default.
 | DEC-07 | ARIMS/RRS-A status of EMC data | RET-008 | Retain all pending determination |
 | DEC-08 | Restricted-reporting data | — | Prohibit in V1 |
 | DEC-09 | Temporary-release entry points | — | One entity, two entry points |
+| DEC-10 | Year-first document numbers (`26-01`) | VCH-023 | Recorded as a LOCAL layout; cite the SOP/waiver or leave flagged as awaiting validation. AR 195-5 does not authorize it. |

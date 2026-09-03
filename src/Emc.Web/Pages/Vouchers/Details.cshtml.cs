@@ -54,6 +54,12 @@ public class DetailsModel : PageModel
     public IReadOnlyList<ItemListRow> Items { get; private set; } = [];
     public IReadOnlyList<DocumentNumberRow> DocumentNumbers { get; private set; } = [];
 
+    /// <summary>How this room writes document numbers (VCH-023), for the form.</summary>
+    public string DocumentNumberFormatDescription { get; private set; } = string.Empty;
+    public string DocumentNumberExample { get; private set; } = string.Empty;
+    public bool DocumentNumberLayoutIsRegulatory { get; private set; } = true;
+    public bool DocumentNumberLayoutAwaitsValidation { get; private set; }
+
     public bool CanEditDraft { get; private set; }
     public bool CanSubmit { get; private set; }
     public bool CanRecordDocumentNumber { get; private set; }
@@ -231,7 +237,8 @@ public class DetailsModel : PageModel
             DocumentNumber: DocumentNumber.Value!,
             AttestedAssignedInAuthoritativeLedger: true,
             ReceivedAtLocal: receivedAtLocal,
-            SupersessionReason: DocumentNumber.SupersessionReason));
+            SupersessionReason: DocumentNumber.SupersessionReason,
+            ConfirmedCalendarYear: DocumentNumber.ConfirmedCalendarYear));
 
         return Respond(id, result.Succeeded, result.Error, result.RequirementId,
             result.Warnings,
@@ -311,6 +318,10 @@ public class DetailsModel : PageModel
         AcquiredAtLocal = view.AcquiredAtLocal;
         Items = view.Items;
         DocumentNumbers = view.DocumentNumbers;
+        DocumentNumberFormatDescription = view.DocumentNumberFormatDescription ?? string.Empty;
+        DocumentNumberExample = view.DocumentNumberExample ?? string.Empty;
+        DocumentNumberLayoutIsRegulatory = view.DocumentNumberLayoutIsRegulatory;
+        DocumentNumberLayoutAwaitsValidation = view.DocumentNumberLayoutAwaitsValidation;
 
         var editDecision = await _authorization.CheckAsync(
             EmcPermissions.EditDraftVoucher, view.EvidenceRoomId);
@@ -406,12 +417,21 @@ public class DetailsModel : PageModel
 
     public sealed class DocumentNumberInput
     {
-        /// <summary>AR 195-5 para 2-4c - NNN-YY (VCH-004).</summary>
+        /// <summary>
+        /// The number as the custodian wrote it in the ledger (VCH-004). No layout is hard-coded
+        /// here: the room's numbering policy decides the layout, and the service validates the
+        /// entry against it and returns the room's own description on failure (VCH-023).
+        /// </summary>
         [Required(ErrorMessage = "The evidence document number is required.")]
-        [RegularExpression(
-            @"^\d{3}-\d{2}$",
-            ErrorMessage = "AR 195-5 para 2-4c: three digits, a hyphen, then the two-digit calendar year (for example 037-26).")]
+        [StringLength(24)]
         public string? Value { get; set; }
+
+        /// <summary>
+        /// The four-digit calendar year, entered only when the digits written do not match the
+        /// year of receipt. The application never guesses the century (VCH-022).
+        /// </summary>
+        [Range(1990, 2199)]
+        public int? ConfirmedCalendarYear { get; set; }
 
         public DateTime ReceivedAtLocal { get; set; }
 

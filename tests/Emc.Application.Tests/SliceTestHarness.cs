@@ -230,6 +230,34 @@ public sealed class SliceTestHarness : IDisposable
     }
 
     /// <summary>
+    /// Records a numbering policy for the main room, ending any policy open at that instant
+    /// (VCH-023). Returns the new policy.
+    /// </summary>
+    public EvidenceRoomNumberingPolicy UseNumberingPolicy(
+        DocumentNumberLayout layout,
+        int sequenceWidth,
+        NumberingPolicyBasis basis,
+        string? authorityReference,
+        DateTimeOffset? effectiveFrom = null)
+    {
+        var from = effectiveFrom ?? Clock.UtcNow.AddYears(-1);
+
+        foreach (var open in Db.EvidenceRoomNumberingPolicies
+                     .Where(p => p.EvidenceRoomId == EvidenceRoomId && p.EffectiveTo == null)
+                     .ToList())
+        {
+            open.EndAt(from);
+        }
+
+        var policy = new EvidenceRoomNumberingPolicy(
+            EvidenceRoomId, from, layout, sequenceWidth, 2, "-", basis, authorityReference, null);
+
+        Db.EvidenceRoomNumberingPolicies.Add(policy);
+        Db.SaveChanges();
+        return policy;
+    }
+
+    /// <summary>
     /// AR 195-5 1-4g(1) - records a written alternate appointment. Note this does NOT authorize
     /// acting as the evidence custodian; that needs a duty assumption (IAM-006, IAM-019).
     /// </summary>

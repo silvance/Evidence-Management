@@ -254,8 +254,8 @@ namespace Emc.Infrastructure.Migrations
 
                     b.Property<string>("DocumentNumber")
                         .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
 
                     b.Property<DateTimeOffset>("EnteredAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -264,6 +264,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("NumberingPolicyId")
                         .HasColumnType("int");
 
                     b.Property<int>("Sequence")
@@ -276,13 +279,12 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<int>("TwoDigitYear")
-                        .HasColumnType("int");
-
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("NumberingPolicyId");
 
                     b.HasIndex("SupersedesAssignmentId");
 
@@ -922,6 +924,59 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("EvidenceRooms", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoomNumberingPolicy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AuthorityReference")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<int>("Basis")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveTo")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Layout")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Separator")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<int>("SequenceWidth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("YearWidth")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId", "EffectiveFrom");
+
+                    b.ToTable("EvidenceRoomNumberingPolicies", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Storage.StorageLocation", b =>
                 {
                     b.Property<int>("Id")
@@ -1244,6 +1299,11 @@ namespace Emc.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoomNumberingPolicy", null)
+                        .WithMany()
+                        .HasForeignKey("NumberingPolicyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Emc.Domain.Cases.OfficialDocumentNumberAssignment", null)
                         .WithMany()
                         .HasForeignKey("SupersedesAssignmentId")
@@ -1374,6 +1434,17 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Role");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoomNumberingPolicy", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", "EvidenceRoom")
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("EvidenceRoom");
                 });
 
             modelBuilder.Entity("Emc.Domain.Storage.StorageLocation", b =>

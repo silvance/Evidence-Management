@@ -26,7 +26,8 @@ public class OfficialDocumentNumberAssignment : Entity
         DateTimeOffset enteredAtUtc,
         bool attestedAssignedInAuthoritativeLedger,
         OfficialDocumentNumberAssignment? supersedes = null,
-        string? supersessionReason = null)
+        string? supersessionReason = null,
+        int? numberingPolicyId = null)
     {
         ArgumentNullException.ThrowIfNull(documentNumber);
 
@@ -45,10 +46,13 @@ public class OfficialDocumentNumberAssignment : Entity
 
         VoucherId = voucherId;
         EvidenceRoomId = evidenceRoomId;
-        DocumentNumber = documentNumber.ToString();
+        // The number AS WRITTEN is preserved verbatim; the canonical identity is stored beside
+        // it. The four-digit year was resolved when the number was recorded and is never
+        // re-derived (VCH-022).
+        DocumentNumber = documentNumber.DisplayNumber;
         Sequence = documentNumber.Sequence;
-        TwoDigitYear = documentNumber.TwoDigitYear;
         CalendarYear = documentNumber.CalendarYear;
+        NumberingPolicyId = numberingPolicyId;
         EnteredByUserId = enteredByUserId;
         EnteredAtUtc = enteredAtUtc;
         AttestedAssignedInAuthoritativeLedger = true;
@@ -77,7 +81,9 @@ public class OfficialDocumentNumberAssignment : Entity
     public string DocumentNumber { get; private set; } = string.Empty;
 
     public int Sequence { get; private set; }
-    public int TwoDigitYear { get; private set; }
+
+    /// <summary>The room's numbering policy the number was written under, when one was recorded.</summary>
+    public int? NumberingPolicyId { get; private set; }
     public int CalendarYear { get; private set; }
 
     public int EnteredByUserId { get; private set; }

@@ -364,13 +364,39 @@
 
             <div class="form-row">
                 <label asp-for="DocumentNumber.Value">Document number</label>
-                <input asp-for="DocumentNumber.Value" placeholder="037-26" autocomplete="off" />
+                <input asp-for="DocumentNumber.Value" placeholder="@Model.DocumentNumberExample" autocomplete="off" />
                 <span class="hint">
-                    AR 195-5 para 2-4c: two groups of digits separated by a hyphen — a sequence
-                    beginning at 001 for the first DA Form 4137 received for the calendar year,
-                    then the two-digit year.
+                    Written as @Model.DocumentNumberFormatDescription.
+                    @if (!Model.DocumentNumberLayoutIsRegulatory)
+                    {
+                        <text>
+                            This is a LOCAL layout for this evidence room. AR 195-5 para 2-4c
+                            prescribes a three-digit sequence beginning at 001, a hyphen, then the
+                            two-digit calendar year (001-26). The number is recorded exactly as
+                            written; its identity is the sequence and calendar year.
+                        </text>
+                    }
+                    @if (Model.DocumentNumberLayoutAwaitsValidation)
+                    {
+                        <strong>
+                            The local layout has no authority cited and is recorded as a legacy
+                            practice awaiting validation.
+                        </strong>
+                    }
                 </span>
                 <span asp-validation-for="DocumentNumber.Value" class="field-validation-error"></span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="DocumentNumber.ConfirmedCalendarYear">Calendar year (only if it differs from the date received)</label>
+                <input asp-for="DocumentNumber.ConfirmedCalendarYear" type="number" min="1990" max="2199" autocomplete="off" />
+                <span class="hint">
+                    Leave blank normally: the year is taken from the date received. If the
+                    two-digit year written on the form is not the year of receipt - a prior-year
+                    form entered late, for example - the application will not guess the century;
+                    enter the four-digit calendar year the number belongs to here.
+                </span>
+                <span asp-validation-for="DocumentNumber.ConfirmedCalendarYear" class="field-validation-error"></span>
             </div>
 
             <div class="form-row">

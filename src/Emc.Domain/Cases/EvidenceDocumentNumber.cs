@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Emc.Domain.Common;
+using Emc.Domain.Storage;
 
 namespace Emc.Domain.Cases;
 
@@ -13,86 +14,148 @@ namespace Emc.Domain.Cases;
 /// (for example, 001-18). The number is assigned by order of precedence from the evidence
 /// ledger (or approved automatic equivalent, see para 2-5c)."
 ///
+/// IDENTITY IS CANONICAL: (Sequence, four-digit CalendarYear), scoped to an evidence room. The
+/// text as written is carried alongside as <see cref="DisplayNumber"/> and is presentation - it
+/// depends on the room's <see cref="EvidenceRoomNumberingPolicy"/>, which is why "001-26" and
+/// "26-01" can be the same number.
+///
+/// THE CALENDAR YEAR IS RESOLVED WHEN THE NUMBER IS RECORDED, FROM CONTEXT - never from the
+/// clock. An earlier version derived the century from DateTimeOffset.UtcNow with a sliding
+/// 50-year pivot, which meant a domain object's meaning changed with the date the software
+/// happened to run. The regulation writes two digits; the four-digit year comes from the date
+/// the evidence was received, and if the digits written disagree with that, the custodian
+/// confirms the year explicitly rather than the software guessing (VCH-022).
+///
 /// Requirement VCH-004.
 /// </summary>
-public sealed partial record EvidenceDocumentNumber
+public sealed record EvidenceDocumentNumber
 {
-    private EvidenceDocumentNumber(int sequence, int twoDigitYear)
+    private EvidenceDocumentNumber(int sequence, int calendarYear, string displayNumber)
     {
         Sequence = sequence;
-        TwoDigitYear = twoDigitYear;
+        CalendarYear = calendarYear;
+        DisplayNumber = displayNumber;
     }
 
     /// <summary>The document sequence within the calendar year, beginning at 001 (AR 195-5 2-4c).</summary>
     public int Sequence { get; }
 
-    /// <summary>The two-digit calendar year as written on the form (AR 195-5 2-4c).</summary>
-    public int TwoDigitYear { get; }
+    /// <summary>The four-digit calendar year, resolved at recording time. Never re-derived.</summary>
+    public int CalendarYear { get; }
+
+    /// <summary>The number exactly as the custodian wrote it - "037-26", or "26-37" under a local layout.</summary>
+    public string DisplayNumber { get; }
+
+    /// <summary>The two digits the regulation writes for the year.</summary>
+    public int TwoDigitYear => CalendarYear % 100;
+
+    public override string ToString() => DisplayNumber;
 
     /// <summary>
-    /// Four-digit year, resolved against a pivot. The regulation writes only two digits, so the
-    /// century must be inferred; a 50-year sliding window keeps the mapping stable and sane.
+    /// Parses a number written under <paramref name="policy"/>, resolving the four-digit year
+    /// from <paramref name="contextCalendarYear"/> - the year of the date the evidence was
+    /// received, which is when 2-4c assigns the number.
+    ///
+    /// If the digits written do not end the context year, nothing is guessed: the result asks
+    /// for the year to be confirmed, and a caller supplies <paramref name="confirmedCalendarYear"/>,
+    /// which must itself end in the digits written.
     /// </summary>
-    public int CalendarYear
+    public static DocumentNumberParseResult Parse(
+        string? raw,
+        EvidenceRoomNumberingPolicy policy,
+        int contextCalendarYear,
+        int? confirmedCalendarYear = null)
     {
-        get
+        ArgumentNullException.ThrowIfNull(policy);
+
+        if (!policy.TryParseComponents(raw, out var sequence, out var yearDigits))
         {
-            var currentYear = DateTimeOffset.UtcNow.Year;
-            var century = currentYear / 100 * 100;
-            var candidate = century + TwoDigitYear;
-            if (candidate > currentYear + 50)
-            {
-                candidate -= 100;
-            }
-            else if (candidate < currentYear - 50)
-            {
-                candidate += 100;
-            }
-
-            return candidate;
-        }
-    }
-
-    public override string ToString()
-        => string.Create(CultureInfo.InvariantCulture, $"{Sequence:D3}-{TwoDigitYear:D2}");
-
-    public static EvidenceDocumentNumber Parse(string value)
-        => TryParse(value, out var parsed)
-            ? parsed
-            : throw new DomainRuleViolationException(
+            return DocumentNumberParseResult.Failure(
                 "VCH-004",
-                $"AR 195-5 2-4c: the evidence document number must be three digits, a hyphen, then a "
-                + $"two-digit calendar year (for example 037-26). Received '{value}'.");
-
-    public static bool TryParse(string? value, out EvidenceDocumentNumber parsed)
-    {
-        parsed = null!;
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
+                $"The evidence document number for this evidence room is written as "
+                + $"{policy.Describe()}. Received '{raw}'.");
         }
 
-        var match = DocumentNumberPattern().Match(value.Trim());
-        if (!match.Success)
+        var text = raw!.Trim();
+
+        if (policy.YearWidth == 4)
         {
-            return false;
+            if (confirmedCalendarYear is not null && confirmedCalendarYear != yearDigits)
+            {
+                return DocumentNumberParseResult.Failure(
+                    "VCH-022",
+                    $"The number is written with the year {yearDigits}, which is not the confirmed "
+                    + $"year {confirmedCalendarYear}.");
+            }
+
+            return DocumentNumberParseResult.Success(new EvidenceDocumentNumber(sequence, yearDigits, text));
         }
 
-        var sequence = int.Parse(match.Groups["seq"].Value, CultureInfo.InvariantCulture);
-
-        // 2-4c begins the series at 001. A sequence of 000 is not a valid document number.
-        if (sequence == 0)
+        if (confirmedCalendarYear is int confirmed)
         {
-            return false;
+            if (confirmed % 100 != yearDigits)
+            {
+                return DocumentNumberParseResult.Failure(
+                    "VCH-022",
+                    $"The number is written with the year digits {yearDigits:D2}, and the confirmed "
+                    + $"calendar year {confirmed} does not end in them. Check the number against "
+                    + "the evidence ledger.");
+            }
+
+            return DocumentNumberParseResult.Success(new EvidenceDocumentNumber(sequence, confirmed, text));
         }
 
-        var year = int.Parse(match.Groups["yy"].Value, CultureInfo.InvariantCulture);
-        parsed = new EvidenceDocumentNumber(sequence, year);
-        return true;
+        if (contextCalendarYear % 100 == yearDigits)
+        {
+            return DocumentNumberParseResult.Success(
+                new EvidenceDocumentNumber(sequence, contextCalendarYear, text));
+        }
+
+        return DocumentNumberParseResult.RequiresConfirmation(
+            "VCH-022",
+            $"The number is written with the year digits {yearDigits:D2}, but the evidence was "
+            + $"received in {contextCalendarYear}. AR 195-5 para 2-4c numbers the form from the "
+            + "calendar year it is received in. If the number is correct as written - for "
+            + "example a form from a prior year being entered now - confirm the four-digit "
+            + "calendar year it belongs to; otherwise check the number against the evidence "
+            + "ledger.");
     }
 
-    [GeneratedRegex(@"^(?<seq>\d{3})-(?<yy>\d{2})$", RegexOptions.CultureInvariant)]
-    private static partial Regex DocumentNumberPattern();
+    /// <summary>
+    /// A number in the regulation's own layout with an explicitly stated calendar year. For
+    /// seeding and tests; the application path goes through <see cref="Parse"/>.
+    /// </summary>
+    public static EvidenceDocumentNumber Regulatory(string raw, int calendarYear)
+    {
+        var result = Parse(
+            raw, EvidenceRoomNumberingPolicy.Regulatory(0, DateTimeOffset.MinValue), calendarYear);
+
+        return result.Number
+            ?? throw new DomainRuleViolationException(result.RequirementId!, result.Error!);
+    }
+}
+
+/// <summary>
+/// The outcome of reading a written document number. Three cases: a number; a malformed entry;
+/// or a well-formed entry whose two-digit year does not match the year of receipt, which the
+/// custodian must confirm rather than the software resolve (VCH-022).
+/// </summary>
+public sealed record DocumentNumberParseResult(
+    EvidenceDocumentNumber? Number,
+    string? RequirementId,
+    string? Error,
+    bool CalendarYearRequiresConfirmation)
+{
+    public bool Succeeded => Number is not null;
+
+    public static DocumentNumberParseResult Success(EvidenceDocumentNumber number)
+        => new(number, null, null, false);
+
+    public static DocumentNumberParseResult Failure(string requirementId, string error)
+        => new(null, requirementId, error, false);
+
+    public static DocumentNumberParseResult RequiresConfirmation(string requirementId, string error)
+        => new(null, requirementId, error, true);
 }
 
 /// <summary>

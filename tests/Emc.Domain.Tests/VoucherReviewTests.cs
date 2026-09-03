@@ -112,7 +112,7 @@ public class VoucherReviewTests
         // correct under 1-7c(3) with an MFR - not something to hand back to the agent.
         var voucher = Submitted();
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("001-26"), Custodian, TestData.Now.AddHours(1), true);
+            EvidenceDocumentNumber.Regulatory("001-26", 2026), Custodian, TestData.Now.AddHours(1), true);
 
         Assert.Equal(VoucherReviewStage.AcceptedByCustodian, voucher.ReviewStage);
 
@@ -212,7 +212,7 @@ public class VoucherReviewTests
         Assert.Equal(TestData.Now.AddHours(3), voucher.SubmittedAtUtc);
 
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("002-26"), Custodian, TestData.Now.AddHours(4), true);
+            EvidenceDocumentNumber.Regulatory("002-26", 2026), Custodian, TestData.Now.AddHours(4), true);
 
         Assert.Equal(VoucherReviewStage.AcceptedByCustodian, voucher.ReviewStage);
 
@@ -240,7 +240,7 @@ public class VoucherReviewTests
 
         var ex = Assert.Throws<DomainRuleViolationException>(
             () => voucher.RecordOfficialDocumentNumber(
-                EvidenceDocumentNumber.Parse("001-26"), Custodian, TestData.Now.AddHours(2), true));
+                EvidenceDocumentNumber.Regulatory("001-26", 2026), Custodian, TestData.Now.AddHours(2), true));
 
         Assert.Equal("VCH-006", ex.RequirementId);
         Assert.Contains("2-3g", ex.Message, StringComparison.Ordinal);
@@ -265,9 +265,9 @@ public class VoucherReviewTests
         // second acceptance.
         var voucher = Submitted();
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("001-26"), Custodian, TestData.Now.AddHours(1), true);
+            EvidenceDocumentNumber.Regulatory("001-26", 2026), Custodian, TestData.Now.AddHours(1), true);
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("044-26"), Custodian, TestData.Now.AddDays(30), true,
+            EvidenceDocumentNumber.Regulatory("044-26", 2026), Custodian, TestData.Now.AddDays(30), true,
             supersessionReason: "Permanent transfer to the receiving evidence room (2-7g).");
 
         Assert.Single(voucher.ReviewActions, a => a.Kind == VoucherReviewActionKind.Accepted);

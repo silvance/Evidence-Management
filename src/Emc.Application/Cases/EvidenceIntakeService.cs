@@ -6,6 +6,7 @@ using Emc.Domain.Cases;
 using Emc.Domain.Common;
 using Emc.Domain.Configuration;
 using Emc.Domain.Events;
+using Emc.Domain.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace Emc.Application.Cases;
@@ -15,7 +16,13 @@ public sealed record RecordDocumentNumberRequest(
     string DocumentNumber,
     bool AttestedAssignedInAuthoritativeLedger,
     DateTimeOffset ReceivedAtLocal,
-    string? SupersessionReason = null);
+    string? SupersessionReason = null,
+
+    /// <summary>
+    /// The four-digit calendar year the number belongs to, supplied only when the two digits
+    /// written do not match the year of receipt. Never guessed by the software (VCH-022).
+    /// </summary>
+    int? ConfirmedCalendarYear = null);
 
 public sealed record AssignLocationRequest(
     int ItemId,
@@ -108,15 +115,22 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
                 "EMC-002");
         }
 
-        if (!EvidenceDocumentNumber.TryParse(request.DocumentNumber, out var documentNumber))
+        // VCH-004 / VCH-023. The number is read under the layout THIS ROOM writes, in effect on
+        // the date the evidence was received. The regulation's layout is the default when no
+        // policy has been recorded.
+        var policy = await ResolveNumberingPolicyAsync(voucher.EvidenceRoomId, request.ReceivedAtLocal, ct);
+
+        // VCH-022. The four-digit year comes from the date received - the year 2-4c numbers the
+        // form from - and is stored. If the digits written disagree, the custodian confirms.
+        var parse = EvidenceDocumentNumber.Parse(
+            request.DocumentNumber, policy, request.ReceivedAtLocal.Year, request.ConfirmedCalendarYear);
+
+        if (parse.Number is null)
         {
-            return OperationResult.Failure(
-                "AR 195-5 para 2-4c: the evidence document number consists of two groups of "
-                + "digits separated by a hyphen - a three-digit sequence beginning at 001 for the "
-                + "first DA Form 4137 received for the calendar year, then the two-digit calendar "
-                + $"year (for example 037-26). Received '{request.DocumentNumber}'.",
-                "VCH-004");
+            return OperationResult.Failure(parse.Error!, parse.RequirementId!);
         }
+
+        var documentNumber = parse.Number;
 
         var previous = voucher.CurrentDocumentNumberAssignment;
 
@@ -154,7 +168,8 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
                 enteredByUserId: _currentUser.UserId,
                 enteredAtUtc: now,
                 attestedAssignedInAuthoritativeLedger: request.AttestedAssignedInAuthoritativeLedger,
-                supersessionReason: request.SupersessionReason);
+                supersessionReason: request.SupersessionReason,
+                numberingPolicyId: policy.Id == 0 ? null : policy.Id);
         }
         catch (DomainRuleViolationException ex)
         {
@@ -207,10 +222,24 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
 
         var warnings = new List<string>();
 
+        // VCH-023. A local layout with no authority cited is recorded as written, and flagged
+        // every time - so the practice is visible to an inspector and cannot quietly become
+        // "how it has always been done".
+        if (policy.IsAwaitingValidation)
+        {
+            warnings.Add(
+                $"This evidence room writes document numbers as {policy.Example()}, a LOCAL layout "
+                + "recorded as a legacy practice awaiting validation. AR 195-5 para 2-4c "
+                + "prescribes a three-digit sequence, a hyphen, then the two-digit calendar year "
+                + "(001-26). The number has been recorded as written, with its canonical identity "
+                + $"(sequence {documentNumber.Sequence}, calendar year {documentNumber.CalendarYear}). "
+                + "Cite the local authority for the layout, or adopt the regulation's.");
+        }
+
         // VCH-009. EMC cannot know the ledger's true state, so a gap is a warning and never a
         // block: the custodian holds the authoritative record, not the application.
         var gapWarning = await DetectSequenceGapAsync(
-            voucher.EvidenceRoomId, documentNumber, ct);
+            voucher.EvidenceRoomId, documentNumber, policy, ct);
 
         if (gapWarning is not null)
         {
@@ -320,8 +349,31 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
     /// from the ledger, so a gap here usually means a voucher has not yet been entered into EMC —
     /// not that the ledger is wrong. EMC warns and never blocks.
     /// </summary>
+    /// <summary>
+    /// The room's numbering policy in effect at <paramref name="at"/>; the regulation's layout
+    /// when the room has recorded none. The fallback is unsaved (Id 0) and is not referenced
+    /// from the assignment.
+    /// </summary>
+    private async Task<EvidenceRoomNumberingPolicy> ResolveNumberingPolicyAsync(
+        int evidenceRoomId, DateTimeOffset at, CancellationToken ct)
+    {
+        var policies = await _db.EvidenceRoomNumberingPolicies
+            .AsNoTracking()
+            .Where(p => p.EvidenceRoomId == evidenceRoomId)
+            .ToListAsync(ct);
+
+        return policies
+                   .Where(p => p.IsEffectiveAt(at))
+                   .OrderByDescending(p => p.EffectiveFrom)
+                   .FirstOrDefault()
+               ?? EvidenceRoomNumberingPolicy.Regulatory(evidenceRoomId, DateTimeOffset.MinValue);
+    }
+
     private async Task<string?> DetectSequenceGapAsync(
-        int evidenceRoomId, EvidenceDocumentNumber documentNumber, CancellationToken ct)
+        int evidenceRoomId,
+        EvidenceDocumentNumber documentNumber,
+        EvidenceRoomNumberingPolicy policy,
+        CancellationToken ct)
     {
         if (documentNumber.Sequence <= 1)
         {
@@ -339,7 +391,9 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
             return null;
         }
 
-        var expected = $"{documentNumber.Sequence - 1:D3}-{documentNumber.TwoDigitYear:D2}";
+        // Written the way THIS room writes it, so the warning names a number the custodian would
+        // recognize in their own ledger (VCH-023).
+        var expected = policy.Format(documentNumber.Sequence - 1, documentNumber.CalendarYear);
 
         return $"Document number {expected} is not recorded in this companion for this evidence "
                + "room. AR 195-5 para 2-4c assigns document numbers by order of precedence from "

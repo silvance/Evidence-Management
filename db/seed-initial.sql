@@ -80,6 +80,30 @@ BEGIN
 END;
 
 /* ---------------------------------------------------------------------------------------------
+   3a. Document-number layout for the evidence room (VCH-023).
+
+   AR 195-5 para 2-4c prescribes: three-digit sequence, hyphen, two-digit calendar year
+   (001-26). That is Layout 1 / Basis 1 below and needs no authority.
+
+   If this room writes the year first (26-01), do NOT edit this row to claim the regulation
+   does that. Instead record a SECOND policy row with Layout 2 (YearThenSequence),
+   SequenceWidth 2, and EITHER Basis 2 (LocalAuthorized) with the SOP/policy/waiver cited in
+   AuthorityReference, OR Basis 3 (LegacyObserved), which is accepted but flagged as a local
+   practice awaiting validation on every use. End this row (EffectiveTo) the instant the
+   local one takes effect. The identity of a number is (room, calendar year, sequence)
+   regardless of layout, so nothing is renumbered.
+--------------------------------------------------------------------------------------------- */
+IF NOT EXISTS (SELECT 1 FROM dbo.EvidenceRoomNumberingPolicies)
+BEGIN
+    INSERT INTO dbo.EvidenceRoomNumberingPolicies
+        (EvidenceRoomId, EffectiveFrom, EffectiveTo, Layout, SequenceWidth, YearWidth, Separator,
+         Basis, AuthorityReference, Notes, ConcurrencyStamp)
+    SELECT Id, '2000-01-01T00:00:00+00:00', NULL, 1, 3, 2, N'-',
+           1, NULL, N'AR 195-5 para 2-4c.', NEWID()
+    FROM dbo.EvidenceRooms;
+END;
+
+/* ---------------------------------------------------------------------------------------------
    4. Users.
 
    EMC stores NO passwords. Authentication is Windows Authentication, and the Active Directory

@@ -22,6 +22,35 @@ public sealed class EvidenceRoomConfiguration : IEntityTypeConfiguration<Evidenc
     }
 }
 
+public sealed class EvidenceRoomNumberingPolicyConfiguration
+    : IEntityTypeConfiguration<EvidenceRoomNumberingPolicy>
+{
+    public void Configure(EntityTypeBuilder<EvidenceRoomNumberingPolicy> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("EvidenceRoomNumberingPolicies");
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Layout).HasConversion<int>().IsRequired();
+        builder.Property(p => p.Basis).HasConversion<int>().IsRequired();
+        builder.Property(p => p.Separator).HasMaxLength(3).IsRequired();
+        builder.Property(p => p.AuthorityReference).HasMaxLength(512);
+        builder.Property(p => p.Notes).HasMaxLength(2000);
+        builder.Property(p => p.ConcurrencyStamp).IsConcurrencyToken();
+
+        builder.HasOne(p => p.EvidenceRoom)
+            .WithMany()
+            .HasForeignKey(p => p.EvidenceRoomId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(p => new { p.EvidenceRoomId, p.EffectiveFrom });
+
+        builder.Ignore(p => p.IsRegulatoryLayout);
+        builder.Ignore(p => p.IsAwaitingValidation);
+    }
+}
+
 public sealed class StorageLocationConfiguration : IEntityTypeConfiguration<StorageLocation>
 {
     public void Configure(EntityTypeBuilder<StorageLocation> builder)
@@ -169,8 +198,16 @@ public sealed class OfficialDocumentNumberAssignmentConfiguration
         builder.ToTable("OfficialDocumentNumberAssignments");
         builder.HasKey(a => a.Id);
 
-        builder.Property(a => a.DocumentNumber).HasMaxLength(16).IsRequired();
+        // The number AS WRITTEN. Long enough for a four-digit year and a three-character separator.
+        builder.Property(a => a.DocumentNumber).HasMaxLength(24).IsRequired();
         builder.Property(a => a.SupersessionReason).HasMaxLength(1000);
+
+        // VCH-023 - which layout it was written under. No cascade: a policy row is never deleted
+        // while an assignment names it.
+        builder.HasOne<EvidenceRoomNumberingPolicy>()
+            .WithMany()
+            .HasForeignKey(a => a.NumberingPolicyId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne<EvidenceRoom>()
             .WithMany()
