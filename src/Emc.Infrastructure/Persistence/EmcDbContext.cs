@@ -32,6 +32,8 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     public DbSet<Emc.Domain.Filing.PhysicalFileContainer> PhysicalFileContainers => Set<Emc.Domain.Filing.PhysicalFileContainer>();
     public DbSet<Emc.Domain.Filing.PhysicalVoucherDocument> PhysicalVoucherDocuments => Set<Emc.Domain.Filing.PhysicalVoucherDocument>();
     public DbSet<Emc.Domain.Documents.SourceDocument> SourceDocuments => Set<Emc.Domain.Documents.SourceDocument>();
+    public DbSet<Emc.Domain.Ocr.OcrJob> OcrJobs => Set<Emc.Domain.Ocr.OcrJob>();
+    public DbSet<Emc.Domain.Ocr.OcrRun> OcrRuns => Set<Emc.Domain.Ocr.OcrRun>();
     public DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments
         => Set<OfficialDocumentNumberAssignment>();
     public DbSet<EvidenceItem> EvidenceItems => Set<EvidenceItem>();

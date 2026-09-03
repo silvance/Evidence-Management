@@ -33,6 +33,60 @@
     </p>
 </div>
 
+<div class="panel">
+    <h2>Local OCR — a proposal for a person to verify</h2>
+    <p class="regulatory-note">
+        Text read from this scan by the local OCR engine is a <strong>proposal</strong>. Nothing it
+        reads becomes part of any record until a person verifies it against the scan, and nothing
+        verified changes the accountability record without the separate reconciliation step. The
+        engine runs on this network only; the document goes nowhere.
+    </p>
+    @if (Model.Ocr is { } ocr)
+    {
+        @if (ocr.Jobs.Count == 0)
+        {
+            <p>No OCR has been requested for this document.</p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>Job</th><th>Status</th><th>Attempts</th><th>Requested</th><th>Finished</th><th>Last failure</th></tr></thead>
+                <tbody>
+                @foreach (var j in ocr.Jobs)
+                {
+                    <tr>
+                        <td>@j.JobId</td><td>@j.Status</td><td>@j.Attempts</td>
+                        <td>@j.RequestedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+                        <td>@(j.FinishedAtUtc?.ToString("dd MMM yy HH:mm").ToUpperInvariant() is { } f ? f + "Z" : "—")</td>
+                        <td>@(j.LastFailureCategory == Emc.Domain.Ocr.OcrFailureCategory.None ? "—" : j.LastFailureCategory.ToString())</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        @if (ocr.LatestRun is { } run)
+        {
+            <p>
+                Latest run @run.RunId: <strong>@run.Outcome</strong>
+                @if (run.Outcome == Emc.Domain.Ocr.OcrRunOutcome.Failed) { <span>(@run.FailureCategory)</span> }
+                — engine @run.EngineName @run.EngineVersion, template @(run.TemplateId ?? "—")@(run.TemplateIdentified ? "" : " (not identified; generic lines)"),
+                @run.PagesProcessed page(s), @run.Fields.Count field(s), @run.FieldsRequiringVerification requiring verification,
+                @run.FieldsVerified verified.
+            </p>
+            @if (run.Outcome == Emc.Domain.Ocr.OcrRunOutcome.Succeeded)
+            {
+                <p><a asp-page="/Documents/Verify" asp-route-id="@d.Id">Open the verification view</a></p>
+            }
+        }
+    }
+    @if (Model.CanRequestOcr && Model.Ocr is { HasOpenJob: false })
+    {
+        <form method="post" asp-page-handler="RequestOcr" asp-route-id="@d.Id">
+            <button type="submit">Request OCR</button>
+        </form>
+    }
+</div>
+
 @foreach (var pg in d.Pages)
 {
     <div class="panel">

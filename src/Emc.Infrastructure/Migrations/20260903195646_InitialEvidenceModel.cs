@@ -839,6 +839,47 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "OcrJobs",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    RequestedByUserId = table.Column<int>(type: "int", nullable: false),
+                    RequestedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    Attempts = table.Column<int>(type: "int", nullable: false),
+                    LeasedByWorkerId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    LeaseExpiresUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    FinishedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    LastFailureCategory = table.Column<int>(type: "int", nullable: false),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OcrJobs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_SourceDocuments_SourceDocumentId",
+                        column: x => x.SourceDocumentId,
+                        principalTable: "SourceDocuments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_Users_RequestedByUserId",
+                        column: x => x.RequestedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "SourceDocumentPages",
                 columns: table => new
                 {
@@ -895,6 +936,105 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_VoucherFormRevisionLines_VoucherFormRevisions_RevisionId",
                         column: x => x.RevisionId,
                         principalTable: "VoucherFormRevisions",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OcrRuns",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OcrJobId = table.Column<int>(type: "int", nullable: false),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    WorkerId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    EngineName = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    EngineVersion = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    ModelIdentifiers = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: false),
+                    PreprocessingVersion = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    TemplateId = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                    TemplateIdentified = table.Column<bool>(type: "bit", nullable: false),
+                    StartedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    CompletedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Outcome = table.Column<int>(type: "int", nullable: false),
+                    FailureCategory = table.Column<int>(type: "int", nullable: false),
+                    PagesProcessed = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OcrRuns", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OcrRuns_OcrJobs_OcrJobId",
+                        column: x => x.OcrJobId,
+                        principalTable: "OcrJobs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OcrRuns_SourceDocuments_SourceDocumentId",
+                        column: x => x.SourceDocumentId,
+                        principalTable: "SourceDocuments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ExtractedFields",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OcrRunId = table.Column<int>(type: "int", nullable: false),
+                    FieldKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    PageNumber = table.Column<int>(type: "int", nullable: false),
+                    RawText = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
+                    NormalizedCandidate = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    Confidence = table.Column<decimal>(type: "decimal(5,2)", precision: 5, scale: 2, nullable: false),
+                    Band = table.Column<int>(type: "int", nullable: false),
+                    Left = table.Column<int>(type: "int", nullable: false),
+                    Top = table.Column<int>(type: "int", nullable: false),
+                    Width = table.Column<int>(type: "int", nullable: false),
+                    Height = table.Column<int>(type: "int", nullable: false),
+                    IsHighConsequence = table.Column<bool>(type: "bit", nullable: false),
+                    RequiresVerification = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ExtractedFields", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ExtractedFields_OcrRuns_OcrRunId",
+                        column: x => x.OcrRunId,
+                        principalTable: "OcrRuns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "FieldVerifications",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ExtractedFieldId = table.Column<int>(type: "int", nullable: false),
+                    VerifiedByUserId = table.Column<int>(type: "int", nullable: false),
+                    VerifiedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Decision = table.Column<int>(type: "int", nullable: false),
+                    EnteredValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FieldVerifications", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FieldVerifications_ExtractedFields_ExtractedFieldId",
+                        column: x => x.ExtractedFieldId,
+                        principalTable: "ExtractedFields",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_FieldVerifications_Users_VerifiedByUserId",
+                        column: x => x.VerifiedByUserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -998,6 +1138,21 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_ExtractedFields_OcrRunId_PageNumber",
+                table: "ExtractedFields",
+                columns: new[] { "OcrRunId", "PageNumber" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FieldVerifications_ExtractedFieldId_VerifiedAtUtc",
+                table: "FieldVerifications",
+                columns: new[] { "ExtractedFieldId", "VerifiedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FieldVerifications_VerifiedByUserId",
+                table: "FieldVerifications",
+                column: "VerifiedByUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ItemEvents_CorrectionReference",
                 table: "ItemEvents",
                 columns: new[] { "ReferenceKind", "CorrectedReferenceId" },
@@ -1028,6 +1183,36 @@ namespace Emc.Infrastructure.Migrations
                 table: "ItemEvents",
                 columns: new[] { "EvidenceItemId", "SequenceNumber" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrJobs_EvidenceRoomId",
+                table: "OcrJobs",
+                column: "EvidenceRoomId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrJobs_RequestedByUserId",
+                table: "OcrJobs",
+                column: "RequestedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrJobs_SourceDocumentId",
+                table: "OcrJobs",
+                column: "SourceDocumentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrJobs_Status_RequestedAtUtc",
+                table: "OcrJobs",
+                columns: new[] { "Status", "RequestedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrRuns_OcrJobId",
+                table: "OcrRuns",
+                column: "OcrJobId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrRuns_SourceDocumentId_CompletedAtUtc",
+                table: "OcrRuns",
+                columns: new[] { "SourceDocumentId", "CompletedAtUtc" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_OfficialDocumentNumberAssignments_NumberingPolicyId",
@@ -1241,6 +1426,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "CustodianDutyAssumptions");
 
             migrationBuilder.DropTable(
+                name: "FieldVerifications");
+
+            migrationBuilder.DropTable(
                 name: "ItemEvents");
 
             migrationBuilder.DropTable(
@@ -1274,6 +1462,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "VoucherReviewActions");
 
             migrationBuilder.DropTable(
+                name: "ExtractedFields");
+
+            migrationBuilder.DropTable(
                 name: "CustodyParties");
 
             migrationBuilder.DropTable(
@@ -1289,22 +1480,28 @@ namespace Emc.Infrastructure.Migrations
                 name: "Roles");
 
             migrationBuilder.DropTable(
-                name: "SourceDocuments");
-
-            migrationBuilder.DropTable(
                 name: "EvidenceItems");
 
             migrationBuilder.DropTable(
                 name: "VoucherFormRevisions");
 
             migrationBuilder.DropTable(
+                name: "OcrRuns");
+
+            migrationBuilder.DropTable(
                 name: "PhysicalFileContainers");
 
             migrationBuilder.DropTable(
-                name: "Users");
+                name: "OcrJobs");
+
+            migrationBuilder.DropTable(
+                name: "SourceDocuments");
 
             migrationBuilder.DropTable(
                 name: "EvidenceVouchers");
+
+            migrationBuilder.DropTable(
+                name: "Users");
 
             migrationBuilder.DropTable(
                 name: "Cases");

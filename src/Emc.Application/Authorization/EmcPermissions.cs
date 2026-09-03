@@ -27,6 +27,12 @@ public static class EmcPermissions
     public const string SubmitVoucherForIntake = "voucher.submit";
     public const string UploadSourceDocument = "document.upload";
 
+    /// <summary>Queue local OCR over a source document the principal may view. Output is a proposal, never a record (OCR-001).</summary>
+    public const string RequestOcr = "ocr.request";
+
+    /// <summary>Verify extracted fields against the scan. Transcription verification, not an accountability correction.</summary>
+    public const string VerifyOcr = "ocr.verify";
+
     // --- Evidence room surface (AR 195-5 1-4h, 2-4c, 2-4e, 2-7) ---
     public const string AcceptEvidenceIntake = "evidence.accept";
 
@@ -145,6 +151,8 @@ public static class EmcPermissions
             EditDraftVoucher,
             SubmitVoucherForIntake,
             UploadSourceDocument,
+            RequestOcr,
+            VerifyOcr,
             AcceptEvidenceIntake,
             ReturnVoucherForCorrection,
             ManagePhysicalFiles,

@@ -31,6 +31,8 @@ public interface IEmcDbContext
     DbSet<Emc.Domain.Filing.PhysicalFileContainer> PhysicalFileContainers { get; }
     DbSet<Emc.Domain.Filing.PhysicalVoucherDocument> PhysicalVoucherDocuments { get; }
     DbSet<Emc.Domain.Documents.SourceDocument> SourceDocuments { get; }
+    DbSet<Emc.Domain.Ocr.OcrJob> OcrJobs { get; }
+    DbSet<Emc.Domain.Ocr.OcrRun> OcrRuns { get; }
     DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments { get; }
     DbSet<EvidenceItem> EvidenceItems { get; }
     DbSet<ItemEvent> ItemEvents { get; }

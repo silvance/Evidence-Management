@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Emc.Application.Authorization;
 using Emc.Application.Documents;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -16,10 +17,19 @@ namespace Emc.Web.Pages.Documents;
 public class ViewModel : PageModel
 {
     private readonly ISourceDocumentService _documents;
+    private readonly Emc.Application.Ocr.IOcrJobService _ocr;
+    private readonly IEmcPageAuthorization _authorization;
 
-    public ViewModel(ISourceDocumentService documents) => _documents = documents;
+    public ViewModel(ISourceDocumentService documents, Emc.Application.Ocr.IOcrJobService ocr, IEmcPageAuthorization authorization)
+    {
+        _documents = documents;
+        _ocr = ocr;
+        _authorization = authorization;
+    }
 
     public SourceDocumentView? Document { get; private set; }
+    public Emc.Application.Ocr.OcrStatusView? Ocr { get; private set; }
+    public bool CanRequestOcr { get; private set; }
     public PageMessages Messages { get; } = new();
 
     public async Task<IActionResult> OnGetAsync(int id)
@@ -29,6 +39,10 @@ public class ViewModel : PageModel
         {
             return NotFound();
         }
+
+        Ocr = await _ocr.GetStatusAsync(id);
+        CanRequestOcr = Document.ImportStatus == Emc.Domain.Documents.SourceDocumentImportStatus.Rendered
+            && (await _authorization.CheckAsync(EmcPermissions.RequestOcr, Document.EvidenceRoomId)).IsAllowed;
 
         if (TempData["Success"] is string success)
         {
@@ -45,6 +59,26 @@ public class ViewModel : PageModel
 
     // The parameter is "pageNumber", not "page": "page" is the Razor Pages route key that names
     // the page itself, and a query value under that name never reaches the handler.
+    public async Task<IActionResult> OnPostRequestOcrAsync(int id)
+    {
+        var result = await _ocr.RequestAsync(id);
+        if (!result.Succeeded)
+        {
+            // Absent and unauthorized look the same from here, as they do for the document.
+            if (await _documents.GetAsync(id) is null)
+            {
+                return NotFound();
+            }
+
+            TempData["Warnings"] = JsonSerializer.Serialize(new List<string> { result.Error! });
+            return RedirectToPage("/Documents/View", new { id });
+        }
+
+        TempData["Success"] = $"OCR job {result.Value} queued. The worker processes it; refresh this page for status.";
+        TempData["Warnings"] = JsonSerializer.Serialize(result.Warnings.ToList());
+        return RedirectToPage("/Documents/View", new { id });
+    }
+
     public async Task<IActionResult> OnGetPageAsync(int id, int pageNumber)
     {
         var stream = await _documents.OpenPageImageAsync(id, pageNumber);

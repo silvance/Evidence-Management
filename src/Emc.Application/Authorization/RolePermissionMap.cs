@@ -33,7 +33,9 @@ public static class RolePermissionMap
             EmcPermissions.CreateDraftVoucher,
             EmcPermissions.EditDraftVoucher,
             EmcPermissions.SubmitVoucherForIntake,
-            EmcPermissions.UploadSourceDocument
+            EmcPermissions.UploadSourceDocument,
+            EmcPermissions.RequestOcr,
+            EmcPermissions.VerifyOcr
         },
 
         // AR 195-5 1-4h — the primary custodian accounts for, preserves, safeguards and (when
@@ -52,6 +54,8 @@ public static class RolePermissionMap
             EmcPermissions.EditDraftVoucher,
             EmcPermissions.SubmitVoucherForIntake,
             EmcPermissions.UploadSourceDocument,
+            EmcPermissions.RequestOcr,
+            EmcPermissions.VerifyOcr,
             EmcPermissions.AcceptEvidenceIntake,
             EmcPermissions.ReturnVoucherForCorrection,
             EmcPermissions.ManagePhysicalFiles,
@@ -85,6 +89,8 @@ public static class RolePermissionMap
             EmcPermissions.EditDraftVoucher,
             EmcPermissions.SubmitVoucherForIntake,
             EmcPermissions.UploadSourceDocument,
+            EmcPermissions.RequestOcr,
+            EmcPermissions.VerifyOcr,
             EmcPermissions.AcceptEvidenceIntake,
             EmcPermissions.ReturnVoucherForCorrection,
             EmcPermissions.ManagePhysicalFiles,

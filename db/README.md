@@ -66,6 +66,8 @@ Integrity lives in the database, not only in the UI (engineering principle 7):
 | Unique index over `(EvidenceRoomId, Date)` on `TemporaryIdentifierCounters` | Collision-safe temporary-identifier allocation (VCH-024); the counter row carries a concurrency stamp |
 | `EvidenceRoomNumberingPolicies` | Effective-dated per-room document-number layout (VCH-023). The regulation's layout applies when a room has none |
 | `SourceDocuments` / `SourceDocumentPages` + `TR_SourceDocuments_AppendOnly_*`, `TR_SourceDocumentPages_AppendOnly_*` | Immutable companion copies of scanned documents and their rendered pages (DOC-002). Bytes live in the filesystem store outside the web root; the row holds the generated key and the SHA-256 recorded at receipt (AUD-022) |
+| `OcrJobs` | Work records for local OCR: leased by a worker id under the concurrency stamp, retried on transient failure, settled by the lease holder (OCR-011). Mutable by design; carries a failure category, never text |
+| `OcrRuns` / `ExtractedFields` / `FieldVerifications` + `TR_OcrRuns_AppendOnly_*`, `TR_ExtractedFields_AppendOnly_*`, `TR_FieldVerifications_AppendOnly_*` | What an engine read, where, how confidently, and what a person decided about it (OCR-004, OCR-012 .. OCR-014). Immutable: a re-run is a new run and a second look is a second verification row |
 | `PhysicalFileContainers`, `PhysicalVoucherDocuments`, `PhysicalVoucherDocumentEvents` + `TR_PhysicalVoucherDocumentEvents_AppendOnly_*` | The PAPER DA Form 4137: files, suspense folders, where the original is, inactive date, confirmed destruction (FIL-001..FIL-009) |
 | `VoucherFormRevisions`, `VoucherFormRevisionLines` + triggers | What the form contained at each submission (VCH-025) |
 

@@ -54,6 +54,10 @@ public static class DependencyInjection
         services.AddSingleton<Emc.Application.Documents.ISourceDocumentStore, Emc.Infrastructure.Documents.FileSystemSourceDocumentStore>();
         services.AddSingleton<Emc.Application.Documents.IPdfRasterizer, Emc.Infrastructure.Documents.PdfiumRasterizer>();
         services.AddScoped<Emc.Application.Documents.ISourceDocumentService, Emc.Application.Documents.SourceDocumentService>();
+        // OCR, web side: request, status, verification. The engine is NOT registered here; the
+        // web process never runs it (Phase 3C). See AddEmcOcrWorker.
+        services.AddOptions<Emc.Application.Ocr.OcrOptions>().BindConfiguration(Emc.Application.Ocr.OcrOptions.SectionName);
+        services.AddScoped<Emc.Application.Ocr.IOcrJobService, Emc.Application.Ocr.OcrJobService>();
         services.AddScoped<Emc.Application.Integrity.IIntegrityVerificationService,
             Emc.Application.Integrity.IntegrityVerificationService>();
 
@@ -62,6 +66,24 @@ public static class DependencyInjection
         services.AddScoped<Emc.Application.Time.IEvidenceRoomTimeService,
             Emc.Application.Time.EvidenceRoomTimeService>();
 
+        return services;
+    }
+
+    /// <summary>
+    /// The OCR worker's additions: the Tesseract process engine, the Skia preprocessor, the
+    /// template mappers in identification order (fallback last), and the job processor. Called
+    /// only by Emc.OcrWorker. Constructing the engine verifies the binary and the models are
+    /// present and fails the host's start-up otherwise (Phase 12).
+    /// </summary>
+    public static IServiceCollection AddEmcOcrWorker(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddSingleton<Emc.Application.Ocr.IOcrEngine, Emc.Infrastructure.Ocr.TesseractProcessOcrEngine>();
+        services.AddSingleton<Emc.Application.Ocr.IImagePreprocessor>(sp =>
+            new Emc.Infrastructure.Ocr.SkiaImagePreprocessor(
+                sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Emc.Application.Ocr.OcrOptions>>().Value.TargetDpi));
+        services.AddSingleton<Emc.Application.Ocr.IFormTemplateMapper, Emc.Application.Ocr.GenericLineTemplateMapper>();
+        services.AddScoped<Emc.Application.Ocr.IOcrJobProcessor, Emc.Application.Ocr.OcrJobProcessor>();
         return services;
     }
 }

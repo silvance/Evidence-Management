@@ -506,9 +506,52 @@ deployer creates it; the application-pool identity gets Modify on it and no othe
 does; no static-file provider is mapped to it; it is backed up with the database. The store
 refuses to start without a configured root.
 
-**Isolation.** PDFium parses untrusted bytes in-process today. The OCR worker (`Emc.OcrWorker`,
-§9.1) is the hard isolation boundary — a separate process that can crash without taking IIS
-down — and page rendering moves into it with OCR.
+**Isolation.** PDFium parses untrusted bytes in-process for the display render, under the page,
+pixel and timeout limits above. The OCR worker (`Emc.OcrWorker`, §9.1) is the hard isolation
+boundary — a separate process that can crash, hang or be killed without taking IIS down — and is
+where every engine that reads a page runs.
+
+### 9.1 The OCR worker
+
+**[DESIGN] / [CONTROL].** `Emc.OcrWorker` is a console host (a Windows Service in deployment)
+that runs `OcrJobProcessor` in a loop. It has no HTTP surface and no listener of any kind.
+
+- **Queue = a table.** `OcrJobs` rows are leased by writing the worker's id and a lease expiry
+  under the row's concurrency stamp; two workers racing for one job produce one winner and one
+  conflict. An expired lease (the worker died) is taken over. Transient failures (timeout,
+  engine crash, resource limit) requeue up to `MaxAttempts`; the rest are final. No broker, no
+  queue service, nothing that is not SQL Server.
+- **Engine = an external process.** Tesseract 5 is started with an argument list (never a shell
+  command line), in a private per-invocation folder under `Ocr:WorkRoot` named by a random GUID
+  and deleted in `finally`, with a minimal explicit environment (`TESSDATA_PREFIX`,
+  `OMP_THREAD_LIMIT=1`), a hard timeout that kills the process tree, and stdout/stderr consumed
+  and never logged. `docs/ocr-engine-evaluation.md` says why this engine and this shape.
+- **Start-up is the check.** Constructing the engine executes the binary for its version and
+  hashes every model file; a missing binary or model fails start-up with an explicit category
+  (Phase 12). Every `OcrRun` records engine name, version, model hashes and the preprocessing
+  version, so an engine or model change is a visible difference between runs.
+- **Preprocessing is EMC code** (`SkiaImagePreprocessor`): orientation from the engine's OSD
+  when it is confident, otherwise a vote between 0°/180° and, if needed, 90°/270° by summed word
+  confidence; small-angle deskew by projection profile; scale to 300 DPI; grayscale; a percentile
+  contrast stretch. Deterministic; versioned.
+- **Output is a proposal.** Fields land in `ExtractedFields` with raw text, a normalized
+  candidate, confidence, band and box. High-consequence fields (OCR-003) and everything below the
+  High band require a person's verification; verifications are append-only rows; the raw text is
+  never edited (OCR-004). Nothing here touches an accountability record: that is reconciliation,
+  a separate, explicit step.
+- **Logs carry categories, not content.** Job and document ids, page counts, durations, the
+  failure category, an exception's type name. Never a word the engine read, never an engine
+  message, never a filename.
+- **The worker is not a user.** It holds no role and no permission and its `ICurrentUser` is
+  unauthenticated with no grants; nothing it does goes through authorization because nothing it
+  does is a user's act.
+
+**Deployment (ACLs).** A dedicated service account: read on `SourceDocuments:RootPath`; modify on
+`Ocr:WorkRoot` and nothing else on disk; execute on the Tesseract install folder; a SQL login with
+SELECT on `SourceDocuments`, `SourceDocumentPages`, and SELECT/INSERT/UPDATE on `OcrJobs`,
+SELECT/INSERT on `OcrRuns` and `ExtractedFields`. No `db_owner`, no DDL, no web-application
+folders. Outbound network access for the account: none, enforced by host firewall policy — the
+process needs none and asks for none.
 
 ### Classification boundary — a real risk, stated plainly
 

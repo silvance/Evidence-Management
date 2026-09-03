@@ -252,6 +252,73 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+
+    public const string CreateOcrRunsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Update
+        ON dbo.OcrRuns
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50019, 'OcrRuns is append-only and cannot be modified: a run is a fact about what an engine read; re-run instead.', 1;
+        END;
+        """;
+
+    public const string CreateOcrRunsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Delete
+        ON dbo.OcrRuns
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50020, 'OcrRuns is append-only and cannot be deleted: a run is a fact about what an engine read; re-run instead.', 1;
+        END;
+        """;
+
+    public const string CreateExtractedFieldsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_ExtractedFields_AppendOnly_Update
+        ON dbo.ExtractedFields
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50021, 'ExtractedFields is append-only and cannot be modified: the raw extraction is never edited (OCR-004); record a verification.', 1;
+        END;
+        """;
+
+    public const string CreateExtractedFieldsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_ExtractedFields_AppendOnly_Delete
+        ON dbo.ExtractedFields
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50022, 'ExtractedFields is append-only and cannot be deleted: the raw extraction is never edited (OCR-004); record a verification.', 1;
+        END;
+        """;
+
+    public const string CreateFieldVerificationsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_FieldVerifications_AppendOnly_Update
+        ON dbo.FieldVerifications
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50023, 'FieldVerifications is append-only and cannot be modified: a second look is a second row.', 1;
+        END;
+        """;
+
+    public const string CreateFieldVerificationsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_FieldVerifications_AppendOnly_Delete
+        ON dbo.FieldVerifications
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50024, 'FieldVerifications is append-only and cannot be deleted: a second look is a second row.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -271,7 +338,13 @@ public static class AppendOnlyTriggers
         CreateSourceDocumentsUpdateTrigger,
         CreateSourceDocumentsDeleteTrigger,
         CreateSourceDocumentPagesUpdateTrigger,
-        CreateSourceDocumentPagesDeleteTrigger
+        CreateSourceDocumentPagesDeleteTrigger,
+        CreateOcrRunsUpdateTrigger,
+        CreateOcrRunsDeleteTrigger,
+        CreateExtractedFieldsUpdateTrigger,
+        CreateExtractedFieldsDeleteTrigger,
+        CreateFieldVerificationsUpdateTrigger,
+        CreateFieldVerificationsDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -293,6 +366,12 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_SourceDocuments_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_SourceDocuments_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_OcrRuns_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_OcrRuns_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_ExtractedFields_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_ExtractedFields_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Delete;"
     ];
 }

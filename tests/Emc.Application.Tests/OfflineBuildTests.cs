@@ -14,7 +14,7 @@ namespace Emc.Application.Tests;
 /// </summary>
 public class OfflineBuildTests
 {
-    private static readonly string Root = FindRepositoryRoot();
+    internal static readonly string Root = FindRepositoryRoot();
 
     private static string FindRepositoryRoot()
     {
