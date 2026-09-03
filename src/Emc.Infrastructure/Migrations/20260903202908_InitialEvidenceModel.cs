@@ -1010,6 +1010,33 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "OcrRunPages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OcrRunId = table.Column<int>(type: "int", nullable: false),
+                    PageNumber = table.Column<int>(type: "int", nullable: false),
+                    StorageKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Sha256 = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
+                    WidthPx = table.Column<int>(type: "int", nullable: false),
+                    HeightPx = table.Column<int>(type: "int", nullable: false),
+                    RotationAppliedDegrees = table.Column<int>(type: "int", nullable: false),
+                    DeskewAppliedDegrees = table.Column<double>(type: "float", nullable: false),
+                    Dpi = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OcrRunPages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OcrRunPages_OcrRuns_OcrRunId",
+                        column: x => x.OcrRunId,
+                        principalTable: "OcrRuns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "FieldVerifications",
                 columns: table => new
                 {
@@ -1203,6 +1230,18 @@ namespace Emc.Infrastructure.Migrations
                 name: "IX_OcrJobs_Status_RequestedAtUtc",
                 table: "OcrJobs",
                 columns: new[] { "Status", "RequestedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrRunPages_OcrRunId_PageNumber",
+                table: "OcrRunPages",
+                columns: new[] { "OcrRunId", "PageNumber" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrRunPages_StorageKey",
+                table: "OcrRunPages",
+                column: "StorageKey",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_OcrRuns_OcrJobId",
@@ -1430,6 +1469,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "ItemEvents");
+
+            migrationBuilder.DropTable(
+                name: "OcrRunPages");
 
             migrationBuilder.DropTable(
                 name: "OfficialDocumentNumberAssignments");

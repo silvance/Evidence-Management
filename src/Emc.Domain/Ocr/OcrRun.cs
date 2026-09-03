@@ -14,6 +14,7 @@ namespace Emc.Domain.Ocr;
 public sealed class OcrRun : Entity, IAppendOnly
 {
     private readonly List<ExtractedField> _fields = [];
+    private readonly List<OcrRunPage> _pages = [];
 
     private OcrRun() { }
 
@@ -86,6 +87,21 @@ public sealed class OcrRun : Entity, IAppendOnly
     public int PagesProcessed { get; private set; }
 
     public IReadOnlyList<ExtractedField> Fields => _fields;
+
+    /// <summary>The images the engine actually read - one per processed page - so every field's box can be shown on exactly that image (OCR-005).</summary>
+    public IReadOnlyList<OcrRunPage> Pages => _pages;
+
+    public OcrRunPage AddPage(int pageNumber, string storageKey, string sha256, int widthPx, int heightPx, int rotationAppliedDegrees, double deskewAppliedDegrees, int dpi)
+    {
+        if (_pages.Any(p => p.PageNumber == pageNumber))
+        {
+            throw new DomainRuleViolationException("OCR-012", $"Page {pageNumber} is already recorded on this run.");
+        }
+
+        var page = new OcrRunPage(this, pageNumber, storageKey, sha256, widthPx, heightPx, rotationAppliedDegrees, deskewAppliedDegrees, dpi);
+        _pages.Add(page);
+        return page;
+    }
 
     public ExtractedField AddField(
         string fieldKey,
@@ -259,4 +275,39 @@ public sealed class FieldVerification : Entity, IAppendOnly
     /// <summary>The verifier's value for a correction or a manual entry; null otherwise.</summary>
     public string? EnteredValue { get; private set; }
     public string? Note { get; private set; }
+}
+
+/// <summary>
+/// The preprocessed image of one page as the engine saw it: upright, deskewed, scaled. Stored
+/// in the document store under a generated key, hashed, immutable. The original rendered page
+/// stays on the source document; this is the run's own view of it, and field boxes refer to it.
+/// </summary>
+public sealed class OcrRunPage : Entity, IAppendOnly
+{
+    private OcrRunPage() { }
+
+    internal OcrRunPage(OcrRun run, int pageNumber, string storageKey, string sha256, int widthPx, int heightPx, int rotationAppliedDegrees, double deskewAppliedDegrees, int dpi)
+    {
+        Run = run;
+        OcrRunId = run.Id;
+        PageNumber = Guard.Positive(pageNumber, "OCR-012", "Page number");
+        StorageKey = Guard.NotBlank(storageKey, "OCR-012", "Storage key");
+        Sha256 = Guard.NotBlank(sha256, "OCR-012", "Hash");
+        WidthPx = Guard.Positive(widthPx, "OCR-012", "Width");
+        HeightPx = Guard.Positive(heightPx, "OCR-012", "Height");
+        RotationAppliedDegrees = rotationAppliedDegrees;
+        DeskewAppliedDegrees = deskewAppliedDegrees;
+        Dpi = Guard.Positive(dpi, "OCR-012", "DPI");
+    }
+
+    public int OcrRunId { get; private set; }
+    public OcrRun Run { get; private set; } = null!;
+    public int PageNumber { get; private set; }
+    public string StorageKey { get; private set; } = string.Empty;
+    public string Sha256 { get; private set; } = string.Empty;
+    public int WidthPx { get; private set; }
+    public int HeightPx { get; private set; }
+    public int RotationAppliedDegrees { get; private set; }
+    public double DeskewAppliedDegrees { get; private set; }
+    public int Dpi { get; private set; }
 }

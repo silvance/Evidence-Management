@@ -37,7 +37,7 @@ public class OcrProcessorTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch { }
     }
 
-    private IOcrJobService Jobs() => new OcrJobService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock);
+    private IOcrJobService Jobs() => new OcrJobService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store);
 
     private OcrJobProcessor Processor(IOcrEngine engine, string workerId, Emc.Infrastructure.Persistence.EmcDbContext? db = null, OcrOptions? options = null)
         => new(db ?? _harness.Db, _store, engine, new PassThroughPreprocessor(), [new GenericLineTemplateMapper()], _harness.Clock,
@@ -89,6 +89,11 @@ public class OcrProcessorTests : IDisposable
         Assert.Equal(GenericLineTemplateMapper.Id, run.TemplateId);
         Assert.False(run.TemplateIdentified);
         Assert.Equal(2, run.Fields.Count);
+        Assert.Single(run.Pages);
+        await using (var runImage = await Jobs().OpenRunPageImageAsync(run.RunId, 1))
+        {
+            Assert.NotNull(runImage);
+        }
 
         var line1 = run.Fields.Single(f => f.FieldKey == "Page[1].Line[1]");
         Assert.Equal("TEST DA FORM 4137", line1.RawText);

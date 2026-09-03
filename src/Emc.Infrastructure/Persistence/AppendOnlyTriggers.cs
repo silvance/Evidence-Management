@@ -319,6 +319,29 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+
+    public const string CreateOcrRunPagesUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_OcrRunPages_AppendOnly_Update
+        ON dbo.OcrRunPages
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50025, 'OcrRunPages is append-only and cannot be modified: it is the image the engine read.', 1;
+        END;
+        """;
+
+    public const string CreateOcrRunPagesDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_OcrRunPages_AppendOnly_Delete
+        ON dbo.OcrRunPages
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50026, 'OcrRunPages is append-only and cannot be deleted: it is the image the engine read.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -344,7 +367,9 @@ public static class AppendOnlyTriggers
         CreateExtractedFieldsUpdateTrigger,
         CreateExtractedFieldsDeleteTrigger,
         CreateFieldVerificationsUpdateTrigger,
-        CreateFieldVerificationsDeleteTrigger
+        CreateFieldVerificationsDeleteTrigger,
+        CreateOcrRunPagesUpdateTrigger,
+        CreateOcrRunPagesDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -372,6 +397,8 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_ExtractedFields_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_ExtractedFields_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Delete;"
     ];
 }

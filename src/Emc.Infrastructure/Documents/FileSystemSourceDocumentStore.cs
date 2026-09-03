@@ -44,7 +44,7 @@ public sealed class FileSystemSourceDocumentStore : ISourceDocumentStore
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        if (category is not ("documents" or "pages"))
+        if (category is not ("documents" or "pages" or "ocr-pages"))
         {
             throw new ArgumentOutOfRangeException(nameof(category), category, "Unknown storage category.");
         }

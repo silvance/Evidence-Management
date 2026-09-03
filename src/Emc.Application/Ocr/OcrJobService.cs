@@ -17,15 +17,26 @@ public sealed record ExtractedFieldRow(
     int Left, int Top, int Width, int Height, bool IsHighConsequence, bool RequiresVerification,
     FieldVerificationRow? Current, string? VerifiedValue, IReadOnlyList<FieldVerificationRow> History);
 
+public sealed record OcrRunPageRow(int PageNumber, int WidthPx, int HeightPx, int RotationAppliedDegrees, double DeskewAppliedDegrees, int Dpi);
+
 public sealed record OcrRunView(
     int RunId, int SourceDocumentId, string EngineName, string EngineVersion, string ModelIdentifiers, string PreprocessingVersion,
     string? TemplateId, bool TemplateIdentified, DateTimeOffset StartedAtUtc, DateTimeOffset CompletedAtUtc,
-    OcrRunOutcome Outcome, OcrFailureCategory FailureCategory, int PagesProcessed, IReadOnlyList<ExtractedFieldRow> Fields)
+    OcrRunOutcome Outcome, OcrFailureCategory FailureCategory, int PagesProcessed, IReadOnlyList<ExtractedFieldRow> Fields,
+    IReadOnlyList<OcrRunPageRow> Pages)
 {
     public int FieldsRequiringVerification => Fields.Count(f => f.RequiresVerification);
     public int FieldsVerified => Fields.Count(f => f.Current is not null);
     public int MandatoryOutstanding => Fields.Count(f => f.RequiresVerification && f.Current is null);
     public bool VerificationComplete => MandatoryOutstanding == 0;
+
+    /// <summary>The same field read on more than one page with different values (a document number that differs between front and back). Shown first; never resolved by software.</summary>
+    public IReadOnlyList<(string FieldKey, IReadOnlyList<ExtractedFieldRow> Values)> Conflicts
+        => Fields.Where(f => f.RawText.Length > 0)
+            .GroupBy(f => f.FieldKey, StringComparer.Ordinal)
+            .Where(g => g.Select(f => (f.NormalizedCandidate ?? f.RawText).ToUpperInvariant().Replace(" ", string.Empty)).Distinct().Count() > 1)
+            .Select(g => (g.Key, (IReadOnlyList<ExtractedFieldRow>)g.OrderBy(f => f.PageNumber).ToList()))
+            .ToList();
 }
 
 public sealed record OcrStatusView(int SourceDocumentId, int EvidenceRoomId, IReadOnlyList<OcrJobRow> Jobs, OcrRunView? LatestRun)
@@ -47,6 +58,9 @@ public interface IOcrJobService
     Task<OcrStatusView?> GetStatusAsync(int sourceDocumentId, CancellationToken ct = default);
 
     Task<OperationResult<int>> VerifyFieldAsync(VerifyFieldRequest request, CancellationToken ct = default);
+
+    /// <summary>The image the engine read for one page of a run. Authorizes on the owning room BEFORE any bytes are read; null when absent or unauthorized.</summary>
+    Task<Stream?> OpenRunPageImageAsync(int runId, int pageNumber, CancellationToken ct = default);
 }
 
 public sealed class OcrJobService : IOcrJobService
@@ -56,14 +70,31 @@ public sealed class OcrJobService : IOcrJobService
     private readonly ICurrentUser _currentUser;
     private readonly IAuditRecorder _audit;
     private readonly IClock _clock;
+    private readonly Emc.Application.Documents.ISourceDocumentStore _store;
 
-    public OcrJobService(IEmcDbContext db, IEvidenceAuthorizationService authorization, ICurrentUser currentUser, IAuditRecorder audit, IClock clock)
+    public OcrJobService(IEmcDbContext db, IEvidenceAuthorizationService authorization, ICurrentUser currentUser, IAuditRecorder audit, IClock clock, Emc.Application.Documents.ISourceDocumentStore store)
     {
         _db = db;
         _authorization = authorization;
         _currentUser = currentUser;
         _audit = audit;
         _clock = clock;
+        _store = store;
+    }
+
+    public async Task<Stream?> OpenRunPageImageAsync(int runId, int pageNumber, CancellationToken ct = default)
+    {
+        var roomId = await _db.OcrRuns.AsNoTracking().Where(r => r.Id == runId)
+            .Join(_db.SourceDocuments.AsNoTracking(), r => r.SourceDocumentId, d => d.Id, (r, d) => (int?)d.EvidenceRoomId)
+            .FirstOrDefaultAsync(ct);
+        if (roomId is null || !(await _authorization.AuthorizeAsync(EmcPermissions.ViewSourceDocument, roomId, ct)).IsAllowed)
+        {
+            return null;
+        }
+
+        var key = await _db.OcrRuns.AsNoTracking().Where(r => r.Id == runId).SelectMany(r => r.Pages)
+            .Where(p => p.PageNumber == pageNumber).Select(p => p.StorageKey).FirstOrDefaultAsync(ct);
+        return key is null ? null : await _store.OpenReadAsync(key, ct);
     }
 
     public async Task<OperationResult<int>> RequestAsync(int sourceDocumentId, CancellationToken ct = default)
@@ -109,6 +140,7 @@ public sealed class OcrJobService : IOcrJobService
 
         var run = await _db.OcrRuns.AsNoTracking()
             .Include(r => r.Fields).ThenInclude(f => f.Verifications)
+            .Include(r => r.Pages)
             .Where(r => r.SourceDocumentId == sourceDocumentId)
             .OrderByDescending(r => r.CompletedAtUtc).ThenByDescending(r => r.Id)
             .FirstOrDefaultAsync(ct);
@@ -186,7 +218,8 @@ public sealed class OcrJobService : IOcrJobService
                 history.Count == 0 ? null : history[^1], f.VerifiedValue, history);
         }).ToList();
 
+        var pages = run.Pages.OrderBy(p => p.PageNumber).Select(p => new OcrRunPageRow(p.PageNumber, p.WidthPx, p.HeightPx, p.RotationAppliedDegrees, p.DeskewAppliedDegrees, p.Dpi)).ToList();
         return new OcrRunView(run.Id, run.SourceDocumentId, run.EngineName, run.EngineVersion, run.ModelIdentifiers, run.PreprocessingVersion,
-            run.TemplateId, run.TemplateIdentified, run.StartedAtUtc, run.CompletedAtUtc, run.Outcome, run.FailureCategory, run.PagesProcessed, fields);
+            run.TemplateId, run.TemplateIdentified, run.StartedAtUtc, run.CompletedAtUtc, run.Outcome, run.FailureCategory, run.PagesProcessed, fields, pages);
     }
 }

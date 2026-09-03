@@ -227,6 +227,15 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
             run.AddField(c.FieldKey, c.PageNumber, c.RawText, c.NormalizedCandidate, c.Confidence, c.Left, c.Top, c.Width, c.Height);
         }
 
+        // The images the engine read, kept so that verification shows each box on exactly the
+        // pixels it came from (OCR-005). Immutable, hashed, under generated keys.
+        foreach (var page in pages)
+        {
+            using var png = new MemoryStream(page.Image.Png, writable: false);
+            var blob = await _store.WriteAsync("ocr-pages", png, ct);
+            run.AddPage(page.PageNumber, blob.StorageKey, blob.Sha256, page.Image.Width, page.Image.Height, page.Image.RotationAppliedDegrees, page.Image.DeskewAppliedDegrees, page.Image.Dpi);
+        }
+
         return run;
     }
 

@@ -45,6 +45,21 @@ public sealed class OcrRunConfiguration : IEntityTypeConfiguration<OcrRun>
         builder.HasOne<SourceDocument>().WithMany().HasForeignKey(r => r.SourceDocumentId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(r => new { r.SourceDocumentId, r.CompletedAtUtc });
         builder.HasMany(r => r.Fields).WithOne(f => f.Run).HasForeignKey(f => f.OcrRunId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasMany(r => r.Pages).WithOne(p => p.Run).HasForeignKey(p => p.OcrRunId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class OcrRunPageConfiguration : IEntityTypeConfiguration<OcrRunPage>
+{
+    public void Configure(EntityTypeBuilder<OcrRunPage> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.ToTable("OcrRunPages");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.StorageKey).HasMaxLength(128).IsRequired();
+        builder.Property(p => p.Sha256).HasMaxLength(64).IsFixedLength().IsRequired();
+        builder.HasIndex(p => new { p.OcrRunId, p.PageNumber }).IsUnique();
+        builder.HasIndex(p => p.StorageKey).IsUnique();
     }
 }
 

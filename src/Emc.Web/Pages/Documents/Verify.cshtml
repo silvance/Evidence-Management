@@ -1,0 +1,131 @@
+@page "/Documents/Verify/{id:int}"
+@using Emc.Domain.Ocr
+@model Emc.Web.Pages.Documents.VerifyModel
+@{
+    ViewData["Title"] = "Verify OCR";
+    var d = Model.Document!;
+    var run = Model.Run;
+    var scale = Emc.Web.Pages.Documents.VerifyModel.DisplayScale;
+}
+
+<h1>Verify OCR — source document @d.Id</h1>
+<partial name="_Messages" model="Model.Messages" />
+
+<p class="regulatory-note companion-statement"><strong>@Emc.Web.Pages.Documents.VerifyModel.CompanionStatement.</strong>
+    What is shown here is what the local engine read and what a person decided about it. Verifying a field
+    records a decision about the TRANSCRIPTION. It changes nothing on the voucher, the item or the chain of
+    custody; that is reconciliation, a separate step, done explicitly.</p>
+
+<p><a asp-page="/Documents/View" asp-route-id="@d.Id">Back to the document</a>
+    @if (d.VoucherId is not null) { <span> · <a asp-page="/Vouchers/Details" asp-route-id="@d.VoucherId">Voucher @d.VoucherIdentifier</a></span> }</p>
+
+@if (run is null)
+{
+    <div class="panel"><p>No OCR run exists for this document yet.</p></div>
+}
+else if (run.Outcome == OcrRunOutcome.Failed)
+{
+    <div class="panel"><p>The latest run failed: <strong>@run.FailureCategory</strong>. Nothing was extracted. Request OCR again from the document page, or enter the document's values by hand at reconciliation.</p></div>
+}
+else
+{
+    <div class="panel">
+        <h2>Run @run.RunId</h2>
+        <table>
+            <tbody>
+                <tr><th>Engine</th><td>@run.EngineName @run.EngineVersion</td></tr>
+                <tr><th>Models</th><td><code>@run.ModelIdentifiers</code></td></tr>
+                <tr><th>Preprocessing</th><td>@run.PreprocessingVersion</td></tr>
+                <tr><th>Template</th><td>@(run.TemplateId ?? "—") @(run.TemplateIdentified ? "" : "(not identified: generic lines only)")</td></tr>
+                <tr><th>Completed</th><td>@run.CompletedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z, @run.PagesProcessed page(s)</td></tr>
+                <tr><th>Verification</th><td>@run.FieldsVerified of @run.Fields.Count field(s) verified; <strong>@run.MandatoryOutstanding</strong> mandatory verification(s) outstanding.
+                    @if (run.VerificationComplete) { <span>Every mandatory field has a person's decision.</span> }</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    @if (run.Conflicts.Count > 0)
+    {
+        <div class="panel">
+            <h2>Conflicts between pages</h2>
+            <p class="hint">The same field was read on more than one page with different values. The software does not pick one; a person does, at each field below.</p>
+            <ul>
+            @foreach (var c in run.Conflicts)
+            {
+                <li><strong>@c.FieldKey</strong>: @string.Join(" / ", c.Values.Select(v => $"page {v.PageNumber}: \"{(v.NormalizedCandidate ?? v.RawText)}\""))</li>
+            }
+            </ul>
+        </div>
+    }
+
+    @foreach (var pg in run.Pages)
+    {
+        var pageFields = run.Fields.Where(f => f.PageNumber == pg.PageNumber).ToList();
+        <div class="panel">
+            <h2>Page @pg.PageNumber — the image the engine read</h2>
+            <p class="hint">Rotation applied @pg.RotationAppliedDegrees°, deskew @pg.DeskewAppliedDegrees.ToString("0.00")°, @pg.Dpi DPI. Boxes show where each field was read. The original rendered page is on the <a asp-page="/Documents/View" asp-route-id="@d.Id">document page</a>.</p>
+            <div class="ocr-page" style="width:@((int)(pg.WidthPx * scale))px;height:@((int)(pg.HeightPx * scale))px;">
+                <img src="@Url.Page("/Documents/Verify", "RunPage", new { id = d.Id, runId = run.RunId, pageNumber = pg.PageNumber })"
+                     alt="Page @pg.PageNumber as read by the engine" width="@((int)(pg.WidthPx * scale))" height="@((int)(pg.HeightPx * scale))" />
+                @foreach (var f in pageFields.Where(f => f.Width > 0 && f.Height > 0))
+                {
+                    <a class="ocr-box ocr-box--@f.Band.ToString().ToLowerInvariant() @(f.Current is null ? "" : "ocr-box--verified")" href="#field-@f.FieldId"
+                       title="@f.FieldKey"
+                       style="left:@((int)(f.Left * scale))px;top:@((int)(f.Top * scale))px;width:@Math.Max(2, (int)(f.Width * scale))px;height:@Math.Max(2, (int)(f.Height * scale))px;"></a>
+                }
+            </div>
+
+            <table class="ocr-fields">
+                <thead><tr><th>Field</th><th>Read as (raw, never edited)</th><th>Candidate</th><th>Confidence</th><th>Verification</th></tr></thead>
+                <tbody>
+                @foreach (var f in pageFields)
+                {
+                    <tr id="field-@f.FieldId" class="@(f.RequiresVerification && f.Current is null ? "ocr-field--outstanding" : "")">
+                        <td>
+                            <strong>@f.FieldKey</strong>
+                            @if (f.IsHighConsequence) { <span class="badge badge--high-consequence">high-consequence: verification required</span> }
+                            else if (f.RequiresVerification) { <span class="badge">verification required</span> }
+                        </td>
+                        <td><code>@(f.RawText.Length == 0 ? "(nothing read)" : f.RawText)</code></td>
+                        <td>@(f.NormalizedCandidate ?? "—")</td>
+                        <td class="band band--@f.Band.ToString().ToLowerInvariant()">@f.Confidence.ToString("0") — @Emc.Web.Pages.Documents.VerifyModel.BandLabel(f.Band)</td>
+                        <td>
+                            @if (f.Current is { } cur)
+                            {
+                                <div><strong>@cur.Decision</strong>@(cur.EnteredValue is null ? "" : $": \"{cur.EnteredValue}\"") — @cur.VerifiedByName, @cur.VerifiedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z@(cur.Note is null ? "" : $" ({cur.Note})")</div>
+                                @if (f.History.Count > 1) { <div class="hint">@f.History.Count decisions on record; all kept.</div> }
+                            }
+                            @if (Model.CanVerify)
+                            {
+                                <form method="post" asp-page-handler="Verify" asp-route-id="@d.Id" class="ocr-verify-form">
+                                    <input type="hidden" name="Input.FieldId" value="@f.FieldId" />
+                                    <select name="Input.Decision" aria-label="Decision for @f.FieldKey">
+                                        @if (f.Band != ConfidenceBand.LowOrUnreadable)
+                                        {
+                                            <option value="@FieldVerificationDecision.AcceptedAsRead">Accepted as read</option>
+                                        }
+                                        <option value="@FieldVerificationDecision.CorrectedByVerifier">Corrected — the paper says:</option>
+                                        <option value="@FieldVerificationDecision.UnreadableManualEntry" selected="@(f.Band == ConfidenceBand.LowOrUnreadable)">Unreadable — entered from the physical document:</option>
+                                        <option value="@FieldVerificationDecision.NotApplicable">Not applicable</option>
+                                    </select>
+                                    <input type="text" name="Input.EnteredValue" maxlength="4000" placeholder="value from the paper (for corrected / unreadable)" aria-label="Entered value for @f.FieldKey" />
+                                    <input type="text" name="Input.Note" maxlength="2000" placeholder="note (optional)" aria-label="Note for @f.FieldKey" />
+                                    <button type="submit">Record</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (run.Pages.Count == 0)
+    {
+        <div class="panel"><p>This run recorded no page images (an earlier worker version). Fields are listed by page below.</p>
+            <ul>@foreach (var f in run.Fields) { <li>@f.FieldKey (page @f.PageNumber): <code>@f.RawText</code></li> }</ul></div>
+    }
+}
+
+<p class="regulatory-note companion-statement"><strong>@Emc.Web.Pages.Documents.VerifyModel.CompanionStatement.</strong></p>

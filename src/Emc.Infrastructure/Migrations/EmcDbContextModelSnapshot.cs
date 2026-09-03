@@ -1509,6 +1509,57 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("OcrRuns", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Ocr.OcrRunPage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<double>("DeskewAppliedDegrees")
+                        .HasColumnType("float");
+
+                    b.Property<int>("Dpi")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HeightPx")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OcrRunId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RotationAppliedDegrees")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("WidthPx")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("OcrRunId", "PageNumber")
+                        .IsUnique();
+
+                    b.ToTable("OcrRunPages", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoom", b =>
                 {
                     b.Property<int>("Id")
@@ -2256,6 +2307,17 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Emc.Domain.Ocr.OcrRunPage", b =>
+                {
+                    b.HasOne("Emc.Domain.Ocr.OcrRun", "Run")
+                        .WithMany("Pages")
+                        .HasForeignKey("OcrRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Run");
+                });
+
             modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoomNumberingPolicy", b =>
                 {
                     b.HasOne("Emc.Domain.Storage.EvidenceRoom", "EvidenceRoom")
@@ -2359,6 +2421,8 @@ namespace Emc.Infrastructure.Migrations
             modelBuilder.Entity("Emc.Domain.Ocr.OcrRun", b =>
                 {
                     b.Navigation("Fields");
+
+                    b.Navigation("Pages");
                 });
 #pragma warning restore 612, 618
         }
