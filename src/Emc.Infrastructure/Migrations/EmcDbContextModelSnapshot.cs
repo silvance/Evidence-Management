@@ -269,10 +269,7 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("Sequence")
                         .HasColumnType("int");
 
-                    b.Property<DateTimeOffset?>("SupersededAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("SupersededByAssignmentId")
+                    b.Property<int?>("SupersedesAssignmentId")
                         .HasColumnType("int");
 
                     b.Property<string>("SupersessionReason")
@@ -287,15 +284,13 @@ namespace Emc.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("VoucherId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_DocumentNumber_OneCurrentPerVoucher")
-                        .HasFilter("SupersededByAssignmentId IS NULL");
+                    b.HasIndex("SupersedesAssignmentId");
+
+                    b.HasIndex("VoucherId");
 
                     b.HasIndex("EvidenceRoomId", "CalendarYear", "Sequence")
                         .IsUnique()
-                        .HasDatabaseName("UX_DocumentNumber_PerRoomPerYear")
-                        .HasFilter("SupersededByAssignmentId IS NULL");
+                        .HasDatabaseName("UX_DocumentNumber_NeverReusedPerRoomPerYear");
 
                     b.ToTable("OfficialDocumentNumberAssignments", (string)null);
                 });
@@ -502,12 +497,7 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int?>("SourceDocumentId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("SupersededByEventId")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("SupersededByEventId");
 
                     b.HasIndex("EvidenceItemId", "SequenceNumber")
                         .IsUnique()
@@ -872,6 +862,9 @@ namespace Emc.Infrastructure.Migrations
                 {
                     b.HasBaseType("Emc.Domain.Events.ItemEvent");
 
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
                     b.Property<string>("CorrectedValue")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
@@ -1115,6 +1108,11 @@ namespace Emc.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Emc.Domain.Cases.OfficialDocumentNumberAssignment", null)
+                        .WithMany()
+                        .HasForeignKey("SupersedesAssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Emc.Domain.Cases.EvidenceVoucher", "Voucher")
                         .WithMany("DocumentNumberAssignments")
                         .HasForeignKey("VoucherId")
@@ -1141,11 +1139,6 @@ namespace Emc.Infrastructure.Migrations
                         .HasForeignKey("EvidenceItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Emc.Domain.Events.ItemEvent", null)
-                        .WithMany()
-                        .HasForeignKey("SupersededByEventId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Emc.Domain.Identity.CustodianAppointment", b =>

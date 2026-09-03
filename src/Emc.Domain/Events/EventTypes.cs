@@ -72,6 +72,19 @@ public class CustodyEvent : ItemEvent
     public string PurposeForForm
         => IsScrcni ? $"{PurposeOfChangeOfCustody} ({ScrcniAnnotation})" : PurposeOfChangeOfCustody;
 
+    /// <summary>
+    /// AR 195-5 2-3f - the Change of Custody columns a correction may target.
+    /// </summary>
+    public override IReadOnlyDictionary<string, string?> CorrectableFields => new Dictionary<string, string?>(StringComparer.Ordinal)
+    {
+        [nameof(ReleasedBy)] = ReleasedBy?.DisplayName,
+        [nameof(ReceivedBy)] = ReceivedBy?.DisplayName,
+        [nameof(PurposeOfChangeOfCustody)] = PurposeOfChangeOfCustody,
+        [nameof(Destination)] = Destination,
+        [nameof(Agency)] = Agency,
+        [nameof(Notes)] = Notes
+    };
+
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {
         foreach (var field in base.CanonicalFields())
@@ -140,6 +153,13 @@ public class LocationEvent : ItemEvent
     public string StorageLocationPath { get; private set; } = string.Empty;
 
     public string? Reason { get; private set; }
+
+    public override IReadOnlyDictionary<string, string?> CorrectableFields => new Dictionary<string, string?>(StringComparer.Ordinal)
+    {
+        [nameof(StorageLocationPath)] = StorageLocationPath,
+        [nameof(Reason)] = Reason,
+        [nameof(Notes)] = Notes
+    };
 
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {
@@ -228,6 +248,15 @@ public class SealEvent : ItemEvent
     /// <summary>AR 195-5 3-2f — the supervisor who directed a breach during an inventory.</summary>
     public string? DirectingSupervisorName { get; private set; }
 
+    public override IReadOnlyDictionary<string, string?> CorrectableFields => new Dictionary<string, string?>(StringComparer.Ordinal)
+    {
+        [nameof(PerformedByName)] = PerformedByName,
+        [nameof(PurposeOfBreach)] = PurposeOfBreach,
+        [nameof(MfrReference)] = MfrReference,
+        [nameof(DirectingSupervisorName)] = DirectingSupervisorName,
+        [nameof(Notes)] = Notes
+    };
+
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {
         foreach (var field in base.CanonicalFields())
@@ -292,6 +321,16 @@ public class ExaminationEvent : ItemEvent
 
     public string? ResultReference { get; private set; }
 
+    public override IReadOnlyDictionary<string, string?> CorrectableFields => new Dictionary<string, string?>(StringComparer.Ordinal)
+    {
+        [nameof(Laboratory)] = Laboratory,
+        [nameof(ExaminationRequestReference)] = ExaminationRequestReference,
+        [nameof(ExhibitNumber)] = ExhibitNumber,
+        [nameof(ExtractionDescription)] = ExtractionDescription,
+        [nameof(ResultReference)] = ResultReference,
+        [nameof(Notes)] = Notes
+    };
+
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {
         foreach (var field in base.CanonicalFields())
@@ -338,6 +377,16 @@ public class StatusEvent : ItemEvent
     public AccountabilityStatus FromStatus { get; private set; }
     public AccountabilityStatus ToStatus { get; private set; }
     public string Reason { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Only the narrative is correctable. The states themselves are the workflow's own record -
+    /// a transition that did not happen cannot be corrected into one that did.
+    /// </summary>
+    public override IReadOnlyDictionary<string, string?> CorrectableFields => new Dictionary<string, string?>(StringComparer.Ordinal)
+    {
+        [nameof(Reason)] = Reason,
+        [nameof(Notes)] = Notes
+    };
 
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {
@@ -386,6 +435,17 @@ public class DocumentNumberEvent : ItemEvent
     public string? PreviousDocumentNumber { get; private set; }
 
     public bool AttestedAssignedInAuthoritativeLedger { get; private set; }
+
+    /// <summary>
+    /// The document number itself is NOT correctable here. AR 195-5 2-4c makes assignment an act
+    /// performed in the authoritative ledger, and 2-7g supersedes a number with a new assignment
+    /// rather than editing the old one - so a change goes through
+    /// OfficialDocumentNumberAssignment, not through a correction to this event.
+    /// </summary>
+    public override IReadOnlyDictionary<string, string?> CorrectableFields => new Dictionary<string, string?>(StringComparer.Ordinal)
+    {
+        [nameof(Notes)] = Notes
+    };
 
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {

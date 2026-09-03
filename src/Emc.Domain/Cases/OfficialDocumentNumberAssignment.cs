@@ -24,7 +24,9 @@ public class OfficialDocumentNumberAssignment : Entity
         EvidenceDocumentNumber documentNumber,
         int enteredByUserId,
         DateTimeOffset enteredAtUtc,
-        bool attestedAssignedInAuthoritativeLedger)
+        bool attestedAssignedInAuthoritativeLedger,
+        OfficialDocumentNumberAssignment? supersedes = null,
+        string? supersessionReason = null)
     {
         ArgumentNullException.ThrowIfNull(documentNumber);
 
@@ -50,6 +52,16 @@ public class OfficialDocumentNumberAssignment : Entity
         EnteredByUserId = enteredByUserId;
         EnteredAtUtc = enteredAtUtc;
         AttestedAssignedInAuthoritativeLedger = true;
+
+        // AR 195-5 2-7g. A BACKWARD reference: the new assignment names the one it replaces, and
+        // the replaced row is never touched. The prior number stays recorded and legible, which
+        // is the digital equivalent of "lined through in such a way that it remains legible".
+        if (supersedes is not null)
+        {
+            SupersedesAssignmentId = supersedes.Id;
+            SupersessionReason = Guard.NotBlank(
+                supersessionReason, "VCH-008", "Supersession reason");
+        }
     }
 
     public int VoucherId { get; private set; }
@@ -77,26 +89,14 @@ public class OfficialDocumentNumberAssignment : Entity
     /// </summary>
     public bool AttestedAssignedInAuthoritativeLedger { get; private set; }
 
-    /// <summary>AR 195-5 2-7g — set when a receiving evidence room assigns its own next number.</summary>
-    public int? SupersededByAssignmentId { get; private set; }
+    /// <summary>
+    /// AR 195-5 2-7g — the assignment this one replaces, named by the REPLACEMENT. Nothing is
+    /// written to the replaced row, so the table needs no UPDATE path (AUD-002).
+    /// </summary>
+    public int? SupersedesAssignmentId { get; private set; }
 
+    /// <summary>Why the prior number was replaced. Required when superseding.</summary>
     public string? SupersessionReason { get; private set; }
-    public DateTimeOffset? SupersededAtUtc { get; private set; }
 
-    public bool IsCurrent => SupersededByAssignmentId is null;
-
-    internal void MarkSupersededBy(OfficialDocumentNumberAssignment replacement, string reason)
-    {
-        ArgumentNullException.ThrowIfNull(replacement);
-
-        if (SupersededByAssignmentId is not null)
-        {
-            throw new AppendOnlyViolationException(
-                $"Document number assignment {Id} has already been superseded.");
-        }
-
-        SupersededByAssignmentId = replacement.Id;
-        SupersessionReason = Guard.NotBlank(reason, "VCH-008", "Supersession reason");
-        SupersededAtUtc = replacement.EnteredAtUtc;
-    }
+    public bool Supersedes => SupersedesAssignmentId is not null;
 }

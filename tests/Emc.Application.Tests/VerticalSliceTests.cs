@@ -143,7 +143,41 @@ public class VerticalSliceTests : IDisposable
             new RecordDocumentNumberRequest(second.VoucherId, "037-26", true, _harness.Clock.UtcNow));
 
         Assert.False(duplicate.Succeeded);
-        Assert.Equal("VCH-005", duplicate.RequirementId);
+        Assert.Equal("VCH-011", duplicate.RequirementId);
+    }
+
+    [Fact]
+    public async Task ASupersededDocumentNumberIsNeverReissued()
+    {
+        // VCH-011. The uniqueness check now spans ALL assignment history, not just current
+        // assignments. Once a canonical (room, year, sequence) has been recorded it identifies a
+        // DA Form 4137 that existed and was entered in the evidence ledger, so reissuing it would
+        // make the ledger cross-reference ambiguous.
+        var first = await CreateSubmittedVoucherAsync();
+        var second = await CreateSubmittedVoucherAsync();
+
+        _harness.SignInAsCustodian();
+
+        await _harness.Intake.RecordOfficialDocumentNumberAsync(
+            new RecordDocumentNumberRequest(first.VoucherId, "040-26", true, _harness.Clock.UtcNow));
+
+        _harness.Clock.Advance(TimeSpan.FromDays(30));
+
+        // AR 195-5 2-7g - permanent transfer to another evidence room supersedes 040-26.
+        var superseded = await _harness.Intake.RecordOfficialDocumentNumberAsync(
+            new RecordDocumentNumberRequest(
+                first.VoucherId, "041-26", true, _harness.Clock.UtcNow,
+                "Permanently transferred to 310th MI Bn evidence room (AR 195-5 2-7g)."));
+
+        Assert.True(superseded.Succeeded, superseded.Error);
+
+        // 040-26 is consumed permanently, even though it is no longer the current number.
+        var reuse = await _harness.Intake.RecordOfficialDocumentNumberAsync(
+            new RecordDocumentNumberRequest(second.VoucherId, "040-26", true, _harness.Clock.UtcNow));
+
+        Assert.False(reuse.Succeeded);
+        Assert.Equal("VCH-011", reuse.RequirementId);
+        Assert.Contains("never reused", reuse.Error!, StringComparison.Ordinal);
     }
 
     [Fact]

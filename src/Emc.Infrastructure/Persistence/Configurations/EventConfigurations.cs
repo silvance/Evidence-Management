@@ -44,12 +44,10 @@ public sealed class ItemEventConfiguration : IEntityTypeConfiguration<ItemEvent>
         builder.HasIndex(e => new { e.EvidenceItemId, e.OccurredAtUtc, e.SequenceNumber })
             .HasDatabaseName("IX_ItemEvents_ItemChronology");
 
-        builder.HasOne<ItemEvent>()
-            .WithMany()
-            .HasForeignKey(e => e.SupersededByEventId)
-            .OnDelete(DeleteBehavior.Restrict);
-
         builder.Ignore(e => e.Kind);
+
+        // Correctable fields are computed from the event's own state, not stored.
+        builder.Ignore(e => e.CorrectableFields);
     }
 }
 
@@ -163,7 +161,9 @@ public sealed class CorrectionEventConfiguration : IEntityTypeConfiguration<Corr
             .HasForeignKey(e => e.CorrectsEventId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Property(e => e.Category).HasConversion<int>().IsRequired();
         builder.Ignore(e => e.SatisfiesParagraph1_7c3);
+        builder.Ignore(e => e.RequiresParagraph1_7c3Documentation);
     }
 }
 

@@ -244,14 +244,21 @@ different methods — 2-5b(1)(d) and 2-8e(5) both contemplate this directly.
 
 ## 5. Immutable versus mutable
 
-### Immutable — append-only, never updated, never deleted
+### Immutable — INSERT ONLY: never updated, never deleted
 
 `ItemEvent` and all subtypes · `AuditEvent` · `InventoryObservation` (once the session is
 completed) · `OfficialDocumentNumberAssignment` · `SourceDocument` · `AttestationRecord` ·
 `SuspenseContact` · `DispositionAction`
 
-**The single permitted mutation is `SupersededByEventId`: null → value, exactly once.** Every
-other change to these rows is rejected at three layers (`docs/architecture.md` §4.2).
+**There is no permitted mutation at all.** Every update and delete is rejected at three layers
+(`docs/architecture.md` §4.2).
+
+An earlier design allowed exactly one — a forward "superseded by" pointer — which forced the
+database trigger to prove every *other* column was unchanged. In a table-per-hierarchy table that
+is easy to get wrong, and the trigger in fact compared only the columns common to all event types:
+subtype columns such as `StorageLocationPath` and `PurposeOfChangeOfCustody` could be rewritten
+alongside a legitimate supersession and pass. Backward references removed the exception, and the
+triggers are now unconditional.
 
 ### Mutable — with concurrency control and full audit
 
@@ -269,6 +276,9 @@ change happens only through a `CorrectionEvent`.
 inventory totals · suspense age
 
 ### The correction pattern
+
+Corrections are **field-level**, the original value is **derived by the server**, and the
+reference is **backward only** — so no accountability row is ever updated.
 
 Prohibited:
 
@@ -396,7 +406,12 @@ alone.
 | I-11 | Only a user with an **active `CustodianAppointment`** for that evidence room may accept evidence, transcribe the document number, or assign a location | 1-4g(1), 1-4i, 2-4c **[REG]** |
 | I-12 | An item cannot reach `InEvidenceRoom` without an official document number on its voucher | 2-4c **[REG]** |
 | I-13 | `ApplicationAdministrator` alone grants **no** accountability permission | **[DESIGN]** |
-| I-14 | No `ItemEvent` may be updated or deleted; only `SupersededByEventId` may transition null → value, once | 2-5b(5) modelled **[CONTROL]** |
+| I-14 | No `ItemEvent` may be updated or deleted, without exception | 2-5b(5) modelled **[CONTROL]** |
+| I-23 | A correction's original value is derived from the stored event, never accepted from the client | **[CONTROL]** |
+| I-24 | Current-state projections use **effective** values, so a corrected field reads its corrected value rather than being excluded | 2-5b(5) **[CONTROL]** |
+| I-25 | A canonical `(EvidenceRoom, CalendarYear, Sequence)` is never reused, including by superseded assignments | 2-4c, 2-7g **[REG]** |
+| I-26 | Only the administrator role may be granted globally; operational roles name an evidence room | **[DESIGN]** |
+| I-27 | An alternate custodian acts only during an open duty-assumption period | 1-4i **[REG]** |
 | I-15 | A `CorrectionEvent` must carry a reason, and an MFR reference where 1-7c(3) applies | 1-7c(3) **[REG]** |
 | I-16 | Voucher status is always computed; there is no settable status column | 2-4h **[REG]** |
 | I-17 | Terminal-state items accept no further custody or location events except corrections | **[DESIGN]** |

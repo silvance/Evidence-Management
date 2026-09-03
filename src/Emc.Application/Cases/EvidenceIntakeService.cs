@@ -126,19 +126,22 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
         // usable message rather than a constraint violation.
         var collision = await _db.DocumentNumberAssignments
             .AsNoTracking()
+            // VCH-011. Checked across ALL assignment history, not just current ones: once a
+            // canonical (room, year, sequence) has been recorded it identifies a DA Form 4137
+            // that existed and was entered in the evidence ledger, so it is consumed permanently.
             .AnyAsync(a => a.EvidenceRoomId == voucher.EvidenceRoomId
                            && a.CalendarYear == documentNumber.CalendarYear
                            && a.Sequence == documentNumber.Sequence
-                           && a.SupersededByAssignmentId == null
                            && a.VoucherId != voucher.Id, ct);
 
         if (collision)
         {
             return OperationResult.Failure(
-                $"Document number {documentNumber} is already recorded against another voucher in "
-                + "this evidence room for this calendar year. Verify the entry against the "
-                + "evidence ledger (AR 195-5 para 2-4c).",
-                "VCH-005");
+                $"Document number {documentNumber} has already been recorded against another "
+                + "voucher in this evidence room for this calendar year, and a document number is "
+                + "never reused once assigned. Verify the entry against the evidence ledger "
+                + "(AR 195-5 para 2-4c).",
+                "VCH-011");
         }
 
         var now = _clock.UtcNow;
@@ -281,7 +284,7 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
                 "ITEM-001");
         }
 
-        var previous = item.CurrentLocationEvent?.StorageLocationPath;
+        var previous = item.CurrentLocationPath;
         var now = _clock.UtcNow;
 
         await _events.AppendAsync(

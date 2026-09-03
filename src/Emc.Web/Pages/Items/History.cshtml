@@ -81,7 +81,7 @@ else
         <tbody>
         @foreach (var row in view.History)
         {
-            var rowClass = row.IsSuperseded
+            var rowClass = row.HasCorrections
                 ? "history-row--superseded"
                 : row.Kind == ItemEventKind.Correction ? "history-row--correction" : null;
 
@@ -90,9 +90,22 @@ else
                 <td>@row.OccurredAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td>
                 <td>
                     <span class="history-summary">@row.Summary</span>
-                    @if (row.IsSuperseded)
+                    @if (row.HasCorrections)
                     {
-                        <span class="corrected-marker">corrected by #@row.SupersededByEventId</span>
+                        <span class="corrected-marker">
+                            corrected: @string.Join(", ", row.CorrectedFieldNames)
+                        </span>
+                        @* AUD-015. The value the record NOW reads, alongside the original above,
+                           which stays readable per AR 195-5 2-5b(5). *@
+                        <div class="regulatory-note">
+                            @foreach (var field in row.CorrectedFieldNames)
+                            {
+                                <div>
+                                    <strong>@field</strong> now reads:
+                                    @(row.EffectiveFields[field] ?? "(blank)")
+                                </div>
+                            }
+                        </div>
                     }
                     @if (!string.IsNullOrWhiteSpace(row.Notes))
                     {
@@ -188,7 +201,9 @@ else
                 <label asp-for="Correction.CorrectedEventId">Entry to correct</label>
                 <select asp-for="Correction.CorrectedEventId">
                     <option value="">— select —</option>
-                    @foreach (var row in view.History.Where(r => !r.IsSuperseded))
+                    @* A field may be corrected more than once, and a correction may itself be
+                       corrected, so every entry stays selectable. *@
+                    @foreach (var row in view.History)
                     {
                         <option value="@row.EventId">#@row.SequenceNumber — @row.Summary</option>
                     }
@@ -198,14 +213,26 @@ else
 
             <div class="form-row">
                 <label asp-for="Correction.FieldName">Field corrected</label>
-                <input asp-for="Correction.FieldName" autocomplete="off" />
+                <select asp-for="Correction.FieldName">
+                    <option value="">— select the entry first —</option>
+                    @foreach (var field in Model.CorrectableFieldsByEvent.Values.SelectMany(f => f).Distinct().OrderBy(f => f))
+                    {
+                        <option value="@field">@field</option>
+                    }
+                </select>
+                <span class="hint">
+                    Only fields the selected entry allows may be corrected. The server rejects
+                    anything else.
+                </span>
+                <span asp-validation-for="Correction.FieldName" class="field-validation-error"></span>
             </div>
 
-            <div class="form-row">
-                <label asp-for="Correction.OriginalValue">Value as originally recorded</label>
-                <input asp-for="Correction.OriginalValue" autocomplete="off" />
-                <span class="hint">Retained verbatim. The original entry is never overwritten.</span>
-            </div>
+            <p class="regulatory-note">
+                The value as originally recorded is <strong>derived by the application</strong>
+                from the stored entry — it is not entered here, and cannot be. AR 195-5
+                para 2-5b(5) requires the original to remain readable, and an original supplied
+                from this screen could not be relied upon.
+            </p>
 
             <div class="form-row">
                 <label asp-for="Correction.CorrectedValue">Corrected value</label>

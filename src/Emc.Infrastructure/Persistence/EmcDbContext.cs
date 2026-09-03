@@ -13,13 +13,6 @@ namespace Emc.Infrastructure.Persistence;
 
 public sealed class EmcDbContext : DbContext, IEmcDbContext
 {
-    /// <summary>
-    /// The ONLY property on an append-only record that may ever change, and only once,
-    /// null -> value (invariant I-14). Modelled on AR 195-5 2-5b(5): the erroneous entry stays
-    /// readable and is marked, never removed.
-    /// </summary>
-    private const string SupersessionProperty = nameof(ItemEvent.SupersededByEventId);
-
     public EmcDbContext(DbContextOptions<EmcDbContext> options) : base(options) { }
 
     public DbSet<User> Users => Set<User>();
@@ -131,6 +124,18 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
         }
     }
 
+    /// <summary>
+    /// INSERT ONLY. No update is permitted, not even a narrow one.
+    ///
+    /// An earlier design allowed exactly one mutation - a forward "superseded by" pointer - which
+    /// forced the database trigger to prove every OTHER column was unchanged. In a
+    /// table-per-hierarchy table that is easy to get wrong, and the trigger in fact compared only
+    /// the columns common to all event types: subtype columns such as StorageLocationPath and
+    /// PurposeOfChangeOfCustody could be rewritten alongside a legitimate supersession.
+    ///
+    /// Corrections now use backward references, so nothing ever updates a recorded event and this
+    /// guard needs no exceptions at all.
+    /// </summary>
     private static void GuardAppendOnly(EntityEntry entry)
     {
         switch (entry.State)
@@ -149,29 +154,11 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
                     .Select(p => p.Metadata.Name)
                     .ToList();
 
-                var disallowed = modified
-                    .Where(name => !string.Equals(name, SupersessionProperty, StringComparison.Ordinal))
-                    .ToList();
-
-                if (disallowed.Count > 0)
-                {
-                    throw new AppendOnlyViolationException(
-                        $"{entry.Entity.GetType().Name} records are append-only. Attempted to "
-                        + $"modify: {string.Join(", ", disallowed)}. AR 195-5 para 2-5b(5) "
-                        + "prohibits erasing an entry; para 1-7c(3) requires the error and the "
-                        + "corrective action to be recorded. Create a correction instead.");
-                }
-
-                // Even the one permitted change is one-way: null -> value, exactly once.
-                var supersession = entry.Property(SupersessionProperty);
-                if (supersession.OriginalValue is not null)
-                {
-                    throw new AppendOnlyViolationException(
-                        "This record has already been superseded. A supersession link cannot be "
-                        + "changed once set.");
-                }
-
-                break;
+                throw new AppendOnlyViolationException(
+                    $"{entry.Entity.GetType().Name} records are append-only and cannot be modified. "
+                    + $"Attempted to modify: {string.Join(", ", modified)}. AR 195-5 para 2-5b(5) "
+                    + "prohibits erasing an entry; para 1-7c(3) requires the error and the "
+                    + "corrective action to be recorded. Record a correction instead.");
             }
 
             case EntityState.Added:

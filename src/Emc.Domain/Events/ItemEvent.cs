@@ -19,6 +19,19 @@ namespace Emc.Domain.Events;
 /// </summary>
 public abstract class ItemEvent : Entity, IAppendOnly
 {
+    /// <summary>
+    /// Fields of this event that a correction may target, mapped to the value AS ORIGINALLY
+    /// RECORDED.
+    ///
+    /// The server derives the original value from here. It is never accepted from the client:
+    /// an audit record whose "original value" came from a form post would be worthless, because
+    /// the party making the correction could state whatever original they liked (AUD-014).
+    ///
+    /// A correction naming a field absent from this dictionary is rejected, so the correctable
+    /// surface of each event type is explicit rather than open-ended.
+    /// </summary>
+    public abstract IReadOnlyDictionary<string, string?> CorrectableFields { get; }
+
     /// <summary>Version of the canonical serialization used for <see cref="EventHash"/>.</summary>
     public const int CurrentHashSchemaVersion = 1;
 
@@ -78,14 +91,6 @@ public abstract class ItemEvent : Entity, IAppendOnly
     /// <summary>The scanned DA Form 4137 this event was imported from, if any (DOC-001).</summary>
     public int? SourceDocumentId { get; private set; }
 
-    /// <summary>
-    /// Set when a <see cref="CorrectionEvent"/> supersedes this event. The ONLY field on an
-    /// append-only record that may ever change, and only once, null -> value (invariant I-14).
-    /// The superseded event is never hidden: AR 195-5 2-5b(5)'s struck-through entry must still
-    /// be readable.
-    /// </summary>
-    public int? SupersededByEventId { get; private set; }
-
     /// <summary>Hash of the preceding event in this item's chain; null for the first (AUD-008).</summary>
     public string? PreviousEventHash { get; private set; }
 
@@ -128,20 +133,6 @@ public abstract class ItemEvent : Entity, IAppendOnly
         SourceDocumentId = sourceDocumentId;
     }
 
-    internal void MarkSupersededBy(CorrectionEvent correction)
-    {
-        ArgumentNullException.ThrowIfNull(correction);
-
-        if (SupersededByEventId is not null)
-        {
-            throw new AppendOnlyViolationException(
-                $"Event {Id} has already been superseded by event {SupersededByEventId}. "
-                + "Correct the superseding event instead.");
-        }
-
-        SupersededByEventId = correction.Id;
-    }
-
     /// <summary>
     /// Field values contributing to this event's hash, in a stable order. Subtypes extend this.
     /// Changing the composition requires incrementing <see cref="CurrentHashSchemaVersion"/>,
@@ -159,6 +150,22 @@ public abstract class ItemEvent : Entity, IAppendOnly
         yield return new("Notes", Notes);
         yield return new("SourceDocumentId", SourceDocumentId?.ToString("D", null));
     }
+
+    /// <summary>
+    /// True when <paramref name="fieldName"/> may be corrected on this event. Case-sensitive, so
+    /// a field name is either exactly right or rejected.
+    /// </summary>
+    public bool IsCorrectableField(string fieldName)
+        => CorrectableFields.ContainsKey(fieldName);
+
+    /// <summary>The value as originally recorded, derived by the server (AUD-014).</summary>
+    public string? OriginalValueOf(string fieldName)
+        => CorrectableFields.TryGetValue(fieldName, out var value)
+            ? value
+            : throw new DomainRuleViolationException(
+                "AUD-014",
+                $"'{fieldName}' is not a correctable field on a {Kind} event. Correctable fields "
+                + $"are: {string.Join(", ", CorrectableFields.Keys)}.");
 
     /// <summary>One-line summary for the item history view.</summary>
     public abstract string Summarize();

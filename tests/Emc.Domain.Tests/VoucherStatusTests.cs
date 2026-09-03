@@ -135,13 +135,18 @@ public class VoucherStatusTests
         voucher.RecordOfficialDocumentNumber(
             EvidenceDocumentNumber.Parse("037-26"), 1, TestData.Now, true);
 
+        // A transfer happens later than the original assignment; "current" is the most recent.
         voucher.RecordOfficialDocumentNumber(
-            EvidenceDocumentNumber.Parse("012-27"), 1, TestData.Now, true,
+            EvidenceDocumentNumber.Parse("012-27"), 1, TestData.Now.AddMonths(4), true,
             "Evidence permanently transferred to 310th MI Bn evidence room (AR 195-5 2-7g).");
 
         Assert.Equal(2, voucher.DocumentNumberAssignments.Count);
         Assert.Equal("012-27", voucher.CurrentDocumentNumberAssignment!.DocumentNumber);
+
+        // AR 195-5 2-7g - the prior number remains recorded and legible. Nothing was written to
+        // the superseded row; the NEW assignment names the one it replaces (AUD-002).
         Assert.Contains(voucher.DocumentNumberAssignments, a => a.DocumentNumber == "037-26");
+        Assert.True(voucher.CurrentDocumentNumberAssignment.Supersedes);
     }
 
     [Fact]

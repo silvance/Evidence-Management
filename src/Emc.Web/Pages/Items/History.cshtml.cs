@@ -4,6 +4,7 @@ using Emc.Application.Authorization;
 using Emc.Application.Cases;
 using Emc.Application.Items;
 using Emc.Application.Reads;
+using Emc.Domain.Common;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -44,6 +45,13 @@ public class HistoryModel : PageModel
     public int VoucherId { get; private set; }
     public IReadOnlyList<LocationOption> Locations { get; private set; } = [];
     public IReadOnlyList<UserOption> Supervisors { get; private set; } = [];
+
+    /// <summary>
+    /// The fields the selected event allows to be corrected, keyed by event id. Rendered as a
+    /// closed list so the form cannot name a field the server would reject (AUD-014).
+    /// </summary>
+    public IReadOnlyDictionary<int, IReadOnlyCollection<string>> CorrectableFieldsByEvent
+    { get; private set; } = new Dictionary<int, IReadOnlyCollection<string>>();
     public bool CanAssignLocation { get; private set; }
     public bool CanRecordCorrection { get; private set; }
     public PageMessages Messages { get; } = new();
@@ -102,12 +110,14 @@ public class HistoryModel : PageModel
             return Page();
         }
 
+        // AUD-014. No original value is sent: the server derives it from the stored event, so a
+        // correction cannot misstate what the record used to say.
         var result = await _history.RecordCorrectionAsync(new RecordCorrectionRequest(
             CorrectedEventId: Correction.CorrectedEventId,
             FieldName: Correction.FieldName!,
-            OriginalValue: Correction.OriginalValue,
             CorrectedValue: Correction.CorrectedValue,
             Reason: Correction.Reason!,
+            Category: CorrectionCategory.PostAcceptanceAccountabilityRecord,
             MfrReference: Correction.MfrReference,
             SupervisorNotifiedUserId: Correction.SupervisorNotifiedUserId,
             SupervisorNotifiedAtUtc: Correction.SupervisorNotifiedUserId is null
@@ -202,6 +212,10 @@ public class HistoryModel : PageModel
             .Select(u => new UserOption(u.Id, u.DisplayName))
             .ToListAsync();
 
+        CorrectableFieldsByEvent = View.History
+            .Where(r => r.Kind != ItemEventKind.Correction)
+            .ToDictionary(r => r.EventId, r => (IReadOnlyCollection<string>)r.EffectiveFields.Keys.ToList());
+
         if (Location.OccurredAtLocal == default)
         {
             Location.OccurredAtLocal = DateTime.Now;
@@ -247,9 +261,6 @@ public class HistoryModel : PageModel
         [Required(ErrorMessage = "Name the field being corrected.")]
         [StringLength(128)]
         public string? FieldName { get; set; }
-
-        [StringLength(4000)]
-        public string? OriginalValue { get; set; }
 
         [StringLength(4000)]
         public string? CorrectedValue { get; set; }

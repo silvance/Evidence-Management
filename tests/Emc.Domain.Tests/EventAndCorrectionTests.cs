@@ -111,42 +111,41 @@ public class EventAndCorrectionTests
     [Fact]
     public void ACorrectionMustStateAReasonAndActuallyChangeTheValue()
     {
-        // AUD-004, invariant I-15. AR 195-5 1-7c(3) requires the corrective action to be
-        // documented, and a "correction" that changes nothing documents nothing.
-        var corrected = NewCustodyEvent();
+        // AUD-004. AR 195-5 1-7c(3) requires the corrective action to be documented, and a
+        // "correction" that changes nothing documents nothing.
+        var corrected = NewCustodyEvent("SMITH, JOHN A.");
 
-        Assert.Throws<DomainRuleViolationException>(() => new CorrectionEvent(
-            corrected, "ReceivedBy", "Smith", "Jones", "   ",
-            Local, Local.ToUniversalTime(), 1, null, null, null));
+        Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
+            corrected, nameof(CustodyEvent.ReceivedBy), "JONES, MARY B.", "   ",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 1));
 
-        Assert.Throws<DomainRuleViolationException>(() => new CorrectionEvent(
-            corrected, "ReceivedBy", "Smith", "Smith", "Transcription error",
-            Local, Local.ToUniversalTime(), 1, null, null, null));
+        Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
+            corrected, nameof(CustodyEvent.ReceivedBy), "SMITH, JOHN A.", "No change",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 1));
     }
 
     [Fact]
-    public void ACorrectionPreservesTheOriginalValue()
+    public void TheServerDerivesTheOriginalValue_TheClientCannotStateIt()
     {
-        // AR 195-5 2-5b(5): "Erroneous entries will be voided with one line drawn through the
-        // entry (so it may still be read) and initialed by the custodian. No liquid correction
-        // type products, correction tape, stick-on labels, or erasures are authorized."
+        // AUD-014. THE integrity fix. Previously the browser supplied FieldName, OriginalValue
+        // and CorrectedValue, and the server stored the client's "original" verbatim - so the
+        // party making a correction could claim the record had said anything they liked.
         //
-        // The software analogue: the original is retained verbatim (AUD-003, AUD-004).
+        // CorrectionFactory takes no original value at all; there is no parameter to falsify.
         var corrected = NewCustodyEvent("SMITH, JOHN A.");
 
-        var correction = new CorrectionEvent(
-            correctedEvent: corrected,
-            fieldName: "ReceivedBy",
-            originalValue: "SMITH, JOHN A.",
-            correctedValue: "JONES, MARY B.",
-            reason: "Transcription error; the DA Form 4137 shows JONES, MARY B.",
-            occurredAtLocal: Local,
-            recordedAtUtc: Local.ToUniversalTime(),
-            correctedByUserId: 17,
+        var correction = CorrectionFactory.Create(
+            corrected, nameof(CustodyEvent.ReceivedBy), "JONES, MARY B.",
+            "Transcription error; the DA Form 4137 shows JONES, MARY B.",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 17,
             mfrReference: "MFR-2026-014",
             supervisorNotifiedUserId: 4,
             supervisorNotifiedAtUtc: Local.ToUniversalTime().AddMinutes(9));
 
+        // AR 195-5 2-5b(5) - the original stays readable.
         Assert.Equal("SMITH, JOHN A.", correction.OriginalValue);
         Assert.Equal("JONES, MARY B.", correction.CorrectedValue);
         Assert.Equal(17, correction.RecordedByUserId);
@@ -154,17 +153,67 @@ public class EventAndCorrectionTests
     }
 
     [Fact]
-    public void ACorrectionWithoutAnMfrOrSupervisorNotificationIsFlagged()
+    public void AnUnsupportedFieldNameIsRejected()
     {
-        // AR 195-5 1-7c(3) requires BOTH: immediate notification of the responsible CI supervisor
-        // AND an MFR outlining the error and corrective action. EMC records the correction and
-        // flags the shortfall rather than blocking, because whether a given field-level
-        // correction reaches that threshold is local policy (AUD-005).
-        var correction = new CorrectionEvent(
-            NewCustodyEvent(), "Notes", "old", "new", "Typo",
-            Local, Local.ToUniversalTime(), 1, null, null, null);
+        // AUD-014. The correctable surface of each event type is explicit, so a correction cannot
+        // invent a field.
+        var corrected = NewCustodyEvent();
 
-        Assert.False(correction.SatisfiesParagraph1_7c3);
+        var ex = Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
+            corrected, "NotARealField", "value", "reason",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 1));
+
+        Assert.Equal("AUD-014", ex.RequirementId);
+        Assert.Contains("Correctable fields are", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADocumentNumberEventCannotHaveItsNumberCorrected()
+    {
+        // AR 195-5 2-4c makes assignment an act performed in the authoritative ledger, and 2-7g
+        // supersedes a number with a NEW assignment rather than editing the old one.
+        var numberEvent = new DocumentNumberEvent(
+            "037-26", null, true, Local, Local.ToUniversalTime(), 1);
+
+        Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
+            numberEvent, nameof(DocumentNumberEvent.DocumentNumber), "038-26", "typo",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 1));
+    }
+
+    [Fact]
+    public void Paragraph1_7c3AppliesOnlyToPostAcceptanceCustodianCorrections()
+    {
+        // AUD-005. AR 195-5 1-7c(3) governs a CUSTODIAN finding an incorrect entry in the
+        // accountability record. It does not govern a submitting agent correcting a draft under
+        // 2-3g, nor verification of an OCR transcription - demanding a custodian-error MFR for
+        // those would misstate the regulation.
+        var corrected = NewCustodyEvent();
+
+        var custodianCorrection = CorrectionFactory.Create(
+            corrected, nameof(CustodyEvent.Notes), "new", "reason",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 1);
+
+        Assert.True(custodianCorrection.RequiresParagraph1_7c3Documentation);
+        Assert.False(custodianCorrection.SatisfiesParagraph1_7c3);
+
+        var agentCorrection = CorrectionFactory.Create(
+            corrected, nameof(CustodyEvent.Notes), "new", "reason",
+            CorrectionCategory.PreAcceptanceFormCorrection,
+            Local, Local.ToUniversalTime(), 1);
+
+        Assert.False(agentCorrection.RequiresParagraph1_7c3Documentation);
+        Assert.True(agentCorrection.SatisfiesParagraph1_7c3);
+
+        var transcriptionCorrection = CorrectionFactory.Create(
+            corrected, nameof(CustodyEvent.Notes), "new", "OCR read 8G4P2K8; verified 8G4P2K3",
+            CorrectionCategory.TranscriptionVerification,
+            Local, Local.ToUniversalTime(), 1);
+
+        Assert.False(transcriptionCorrection.RequiresParagraph1_7c3Documentation);
+        Assert.True(transcriptionCorrection.SatisfiesParagraph1_7c3);
     }
 
     [Fact]

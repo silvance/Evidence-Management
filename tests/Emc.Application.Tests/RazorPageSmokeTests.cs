@@ -111,18 +111,22 @@ public class RazorPageSmokeTests : IDisposable
         var locationRow = before!.History.Single(r => r.Kind == Domain.Common.ItemEventKind.Location);
 
         await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            locationRow.EventId, "StorageLocationPath", "Shelf B / Bin 14",
+            locationRow.EventId, nameof(Domain.Events.LocationEvent.StorageLocationPath),
             "High-Value Safe / Drawer 2", "Recorded against the wrong location",
+            Domain.Common.CorrectionCategory.PostAcceptanceAccountabilityRecord,
             "MFR-2026-020", _harness.CommanderUserId, _harness.Clock.UtcNow));
 
         var after = await _harness.History.GetAsync(itemResult.Value);
 
         Assert.NotNull(after);
 
-        // The original row is still rendered, and marked.
+        // The original row is still rendered, and marked as corrected.
         var original = after.History.Single(r => r.EventId == locationRow.EventId);
-        Assert.True(original.IsSuperseded);
-        Assert.NotNull(original.SupersededByEventId);
+        Assert.True(original.HasCorrections);
+        Assert.Contains(nameof(Domain.Events.LocationEvent.StorageLocationPath), original.CorrectedFieldNames);
+
+        // AUD-015 - the projection now reads the corrected value.
+        Assert.Equal("High-Value Safe / Drawer 2", after.CurrentLocationPath);
 
         // And the correction row carries what the page shows beside it.
         var correction = after.History.Single(r => r.Kind == Domain.Common.ItemEventKind.Correction);

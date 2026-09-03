@@ -401,9 +401,8 @@ namespace Emc.Infrastructure.Migrations
                     EnteredByUserId = table.Column<int>(type: "int", nullable: false),
                     EnteredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     AttestedAssignedInAuthoritativeLedger = table.Column<bool>(type: "bit", nullable: false),
-                    SupersededByAssignmentId = table.Column<int>(type: "int", nullable: true),
-                    SupersessionReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    SupersededAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                    SupersedesAssignmentId = table.Column<int>(type: "int", nullable: true),
+                    SupersessionReason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -418,6 +417,12 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_OfficialDocumentNumberAssignments_EvidenceVouchers_VoucherId",
                         column: x => x.VoucherId,
                         principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OfficialDocumentNumberAssignments_OfficialDocumentNumberAssignments_SupersedesAssignmentId",
+                        column: x => x.SupersedesAssignmentId,
+                        principalTable: "OfficialDocumentNumberAssignments",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -437,7 +442,6 @@ namespace Emc.Infrastructure.Migrations
                     RecordedByUserId = table.Column<int>(type: "int", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
                     SourceDocumentId = table.Column<int>(type: "int", nullable: true),
-                    SupersededByEventId = table.Column<int>(type: "int", nullable: true),
                     PreviousEventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
                     EventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     HashSchemaVersion = table.Column<int>(type: "int", nullable: false),
@@ -447,6 +451,7 @@ namespace Emc.Infrastructure.Migrations
                     OriginalValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
                     CorrectedValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
                     Reason = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    Category = table.Column<int>(type: "int", nullable: true),
                     MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     SupervisorNotifiedUserId = table.Column<int>(type: "int", nullable: true),
                     SupervisorNotifiedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -500,12 +505,6 @@ namespace Emc.Infrastructure.Migrations
                     table.ForeignKey(
                         name: "FK_ItemEvents_ItemEvents_CorrectsEventId",
                         column: x => x.CorrectsEventId,
-                        principalTable: "ItemEvents",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ItemEvents_ItemEvents_SupersededByEventId",
-                        column: x => x.SupersededByEventId,
                         principalTable: "ItemEvents",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -625,29 +624,26 @@ namespace Emc.Infrastructure.Migrations
                 column: "ReleasedByPartyId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ItemEvents_SupersededByEventId",
-                table: "ItemEvents",
-                column: "SupersededByEventId");
-
-            migrationBuilder.CreateIndex(
                 name: "UX_ItemEvents_ItemSequence",
                 table: "ItemEvents",
                 columns: new[] { "EvidenceItemId", "SequenceNumber" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "UX_DocumentNumber_OneCurrentPerVoucher",
+                name: "IX_OfficialDocumentNumberAssignments_SupersedesAssignmentId",
                 table: "OfficialDocumentNumberAssignments",
-                column: "VoucherId",
-                unique: true,
-                filter: "SupersededByAssignmentId IS NULL");
+                column: "SupersedesAssignmentId");
 
             migrationBuilder.CreateIndex(
-                name: "UX_DocumentNumber_PerRoomPerYear",
+                name: "IX_OfficialDocumentNumberAssignments_VoucherId",
+                table: "OfficialDocumentNumberAssignments",
+                column: "VoucherId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_DocumentNumber_NeverReusedPerRoomPerYear",
                 table: "OfficialDocumentNumberAssignments",
                 columns: new[] { "EvidenceRoomId", "CalendarYear", "Sequence" },
-                unique: true,
-                filter: "SupersededByAssignmentId IS NULL");
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_RoleAssignments_EvidenceRoomId",

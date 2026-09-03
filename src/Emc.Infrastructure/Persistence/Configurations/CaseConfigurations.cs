@@ -143,23 +143,25 @@ public sealed class OfficialDocumentNumberAssignmentConfiguration
 
         // Invariant I-04. AR 195-5 2-4c scopes the document-number series to the calendar year,
         // and 2-7g shows it belongs to the EVIDENCE ROOM ("the next document number of the
-        // receiving evidence room"). Uniqueness is therefore per (room, year, sequence) among
-        // non-superseded assignments - never global.
+        // receiving evidence room"). Uniqueness is therefore per (room, year, sequence).
         //
-        // Filtered so that a number superseded under 2-7g does not block the series: the prior
-        // number remains recorded and legible, but no longer occupies the slot.
+        // UNFILTERED, deliberately. Once a canonical (room, year, sequence) has been recorded,
+        // that number is consumed permanently: it identifies a DA Form 4137 that existed and was
+        // entered in the evidence ledger. The earlier filtered index excluded superseded rows,
+        // which would have allowed a historical number to be reissued to a different voucher and
+        // made the ledger cross-reference ambiguous (VCH-011).
         builder.HasIndex(a => new { a.EvidenceRoomId, a.CalendarYear, a.Sequence })
-            .HasDatabaseName("UX_DocumentNumber_PerRoomPerYear")
-            .HasFilter("SupersededByAssignmentId IS NULL")
+            .HasDatabaseName("UX_DocumentNumber_NeverReusedPerRoomPerYear")
             .IsUnique();
 
-        // Invariant I-05 - at most one non-superseded assignment per voucher.
-        builder.HasIndex(a => a.VoucherId)
-            .HasDatabaseName("UX_DocumentNumber_OneCurrentPerVoucher")
-            .HasFilter("SupersededByAssignmentId IS NULL")
-            .IsUnique();
+        // AR 195-5 2-7g - the backward supersession reference.
+        builder.HasOne<OfficialDocumentNumberAssignment>()
+            .WithMany()
+            .HasForeignKey(a => a.SupersedesAssignmentId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        builder.Ignore(a => a.IsCurrent);
+        builder.HasIndex(a => a.VoucherId);
+        builder.Ignore(a => a.Supersedes);
     }
 }
 
@@ -198,8 +200,10 @@ public sealed class EvidenceItemConfiguration : IEntityTypeConfiguration<Evidenc
 
         builder.Ignore(i => i.IsLastItem);
         builder.Ignore(i => i.DescriptionForForm);
-        builder.Ignore(i => i.CurrentCustodyEvent);
-        builder.Ignore(i => i.CurrentLocationEvent);
+        builder.Ignore(i => i.CurrentCustody);
+        builder.Ignore(i => i.CurrentCustodyHolder);
+        builder.Ignore(i => i.CurrentLocation);
+        builder.Ignore(i => i.CurrentLocationPath);
         builder.Ignore(i => i.ChronologicalHistory);
     }
 }

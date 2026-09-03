@@ -254,21 +254,27 @@ public class EvidenceItem : Entity, IConcurrencyStamped
         AccountabilityStatus = target;
     }
 
-    /// <summary>Current custody, derived from event history — never stored (COC-001).</summary>
-    public CustodyEvent? CurrentCustodyEvent
-        => _events.OfType<CustodyEvent>()
-            .Where(e => e.SupersededByEventId is null)
-            .OrderByDescending(e => e.OccurredAtUtc)
-            .ThenByDescending(e => e.SequenceNumber)
-            .FirstOrDefault();
+    /// <summary>
+    /// Current custody, derived from event history with corrections applied — never stored
+    /// (COC-001). A corrected custody event still counts: correcting the recipient changes who
+    /// holds the item, it does not erase the transfer.
+    /// </summary>
+    public EffectiveItemEvent? CurrentCustody => EffectiveHistory.LatestOf<CustodyEvent>(_events);
 
-    /// <summary>Current physical location, derived from event history — never stored (LOC-001).</summary>
-    public LocationEvent? CurrentLocationEvent
-        => _events.OfType<LocationEvent>()
-            .Where(e => e.SupersededByEventId is null)
-            .OrderByDescending(e => e.OccurredAtUtc)
-            .ThenByDescending(e => e.SequenceNumber)
-            .FirstOrDefault();
+    /// <summary>The current custody recipient as the record now reads.</summary>
+    public string? CurrentCustodyHolder
+        => CurrentCustody?.EffectiveValueOf(nameof(CustodyEvent.ReceivedBy));
+
+    /// <summary>
+    /// Current physical location, derived from event history with corrections applied
+    /// (LOC-001). Correcting a location updates it; it does not fall back to an earlier location
+    /// or to nothing.
+    /// </summary>
+    public EffectiveItemEvent? CurrentLocation => EffectiveHistory.LatestOf<LocationEvent>(_events);
+
+    /// <summary>The current storage location path as the record now reads.</summary>
+    public string? CurrentLocationPath
+        => CurrentLocation?.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath));
 
     /// <summary>
     /// Complete chronological history: every event kind in one ordered sequence, corrections

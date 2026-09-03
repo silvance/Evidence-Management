@@ -249,10 +249,14 @@ public sealed class EvidenceReadService : IEvidenceReadService
                 index == ordered.Count - 1))
             .ToList();
 
+        // AR 195-5 2-7g - superseded numbers stay recorded and visible. "Current" is simply the
+        // most recent assignment, derived rather than stored (AUD-002).
+        var currentAssignmentId = voucher.CurrentDocumentNumberAssignment?.Id;
+
         var numbers = voucher.DocumentNumberAssignments
             .OrderBy(a => a.EnteredAtUtc)
             .Select(a => new DocumentNumberRow(
-                a.DocumentNumber, a.EnteredAtUtc, a.IsCurrent, a.SupersessionReason))
+                a.DocumentNumber, a.EnteredAtUtc, a.Id == currentAssignmentId, a.SupersessionReason))
             .ToList();
 
         return new VoucherDetailView(

@@ -21,15 +21,22 @@ public abstract class Entity
 ///
 /// Enforcement is three-layered (docs/architecture.md §4.2):
 ///   1. domain    - no public setters on accountability fields;
-///   2. persistence - EmcDbContext.SaveChanges rejects Modified/Deleted;
-///   3. database  - INSTEAD OF UPDATE, DELETE triggers.
+///   2. persistence - EmcDbContext.SaveChanges rejects Modified and Deleted OUTRIGHT;
+///   3. database  - INSTEAD OF UPDATE, DELETE triggers that reject unconditionally.
 ///
-/// The single permitted mutation is <see cref="SupersededByEventId"/>: null -> value, once.
+/// INSERT ONLY. There is no permitted UPDATE, not even a narrow one.
+///
+/// An earlier design allowed exactly one mutation - setting a forward "superseded by" pointer -
+/// which forced the database trigger to prove that every OTHER column was unchanged. That is
+/// error-prone in a table-per-hierarchy table, and the trigger in fact compared only the columns
+/// common to all event types, leaving subtype columns such as StorageLocationPath and
+/// PurposeOfChangeOfCustody freely modifiable alongside a legitimate supersession.
+///
+/// Corrections now use BACKWARD references instead: a CorrectionEvent names the event it
+/// corrects, and correction status is DERIVED from the existence of those records. Nothing ever
+/// updates the corrected row, so the triggers can be unconditional.
 /// </summary>
-public interface IAppendOnly
-{
-    int? SupersededByEventId { get; }
-}
+public interface IAppendOnly;
 
 /// <summary>
 /// Optimistic concurrency for mutable aggregates. A GUID stamp rather than a SQL Server

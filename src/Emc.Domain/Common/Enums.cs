@@ -67,6 +67,44 @@ public enum VoucherDerivedStatus
     Inactive = 4
 }
 
+/// <summary>
+/// Which correction workflow a <see cref="Emc.Domain.Events.CorrectionEvent"/> belongs to.
+///
+/// AR 195-5 does not treat every correction the same way, and the earlier model wrongly applied
+/// para 1-7c(3) - supervisor notification plus an MFR - to all of them.
+/// </summary>
+public enum CorrectionCategory
+{
+    /// <summary>
+    /// AR 195-5 2-3g. The evidence custodian reviews the submitted DA Form 4137 and "has the
+    /// submitting DALEO or Army CI agent correct and initial all errors". This happens BEFORE
+    /// acceptance, the SUBMITTING AGENT makes the correction, and para 1-7c(3) does not apply -
+    /// it governs an incorrect entry found in the accountability record, not a draft under review.
+    /// </summary>
+    PreAcceptanceFormCorrection = 1,
+
+    /// <summary>
+    /// AR 195-5 1-7c(3). A primary or alternate custodian finds an incorrect entry in the
+    /// accountability record: the responsible CI supervisor is informed immediately and an MFR
+    /// outlining the error and the corrective action is filed with the DA Form 4137, with a copy
+    /// in the case file. This is the only category that requires that documentation.
+    /// </summary>
+    PostAcceptanceAccountabilityRecord = 2,
+
+    /// <summary>
+    /// A correction to EMC's own transcription of a scanned document - not a correction to the
+    /// official DA Form 4137.
+    ///
+    /// When a human verifier reads an OCR result of "8G4P2K8" as "8G4P2K3", the paper form was
+    /// always right and nothing about the accountability record was ever in error. Requiring a
+    /// custodian-error MFR under para 1-7c(3) for a misread character would misrepresent what
+    /// happened. Both the raw extraction and the verified value are retained.
+    ///
+    /// Modelled now so the OCR subsystem has a clean category to use; OCR itself is not built.
+    /// </summary>
+    TranscriptionVerification = 3
+}
+
 public enum ItemEventKind
 {
     Custody = 1,

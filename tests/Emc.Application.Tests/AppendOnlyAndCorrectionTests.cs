@@ -115,10 +115,11 @@ public class AppendOnlyAndCorrectionTests : IDisposable
     }
 
     [Fact]
-    public async Task ACorrectionPreservesTheOriginalAndMarksItSuperseded()
+    public async Task CorrectingALocationProducesTheCorrectedCurrentLocation()
     {
-        // AUD-003, AUD-004, AUD-006. AR 195-5 2-5b(5) plus 1-7c(3): the original stays readable,
-        // the correction is attributable, and the corrective action is documented.
+        // AUD-015 / LOC-001, end to end. The defect this replaces: the correction marked the
+        // whole event superseded, projections excluded superseded events, and the item ended up
+        // reporting NO current location at all.
         var itemId = await AcceptedItemAsync();
 
         var locationResult = await _harness.Intake.AssignStorageLocationAsync(
@@ -127,50 +128,75 @@ public class AppendOnlyAndCorrectionTests : IDisposable
 
         Assert.True(locationResult.Succeeded, locationResult.Error);
 
+        var before = await _harness.History.GetAsync(itemId);
+        Assert.Equal("Shelf B / Bin 14", before!.CurrentLocationPath);
+
         var locationEvent = await _harness.Db.ItemEvents
             .OfType<LocationEvent>()
             .FirstAsync(e => e.EvidenceItemId == itemId);
 
         var correctionResult = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
             CorrectedEventId: locationEvent.Id,
-            FieldName: "StorageLocationPath",
-            OriginalValue: "Shelf B / Bin 14",
+            FieldName: nameof(LocationEvent.StorageLocationPath),
             CorrectedValue: "Shelf B / Bin 19",
             Reason: "Transcription error; the item was placed in Bin 19.",
+            Category: CorrectionCategory.PostAcceptanceAccountabilityRecord,
             MfrReference: "MFR-2026-014",
             SupervisorNotifiedUserId: _harness.CommanderUserId,
             SupervisorNotifiedAtUtc: _harness.Clock.UtcNow));
 
         Assert.True(correctionResult.Succeeded, correctionResult.Error);
-
-        // AR 195-5 1-7c(3) is satisfied, so there is nothing to flag.
         Assert.Empty(correctionResult.Warnings);
 
-        var history = await _harness.History.GetAsync(itemId);
+        var after = await _harness.History.GetAsync(itemId);
 
-        Assert.NotNull(history);
+        // THE assertion. Expected Bin 19; the old design produced null.
+        Assert.Equal("Shelf B / Bin 19", after!.CurrentLocationPath);
 
-        // The original is still present and readable - it is marked, not removed.
-        var original = history.History.Single(r => r.EventId == locationEvent.Id);
-        Assert.True(original.IsSuperseded);
+        // AR 195-5 2-5b(5) - the original entry is still there and still readable.
+        var original = after.History.Single(r => r.EventId == locationEvent.Id);
+        Assert.True(original.HasCorrections);
         Assert.Contains("Bin 14", original.Summary, StringComparison.Ordinal);
+        Assert.Equal("Shelf B / Bin 19", original.EffectiveFields[nameof(LocationEvent.StorageLocationPath)]);
 
-        var correction = history.History.Single(r => r.Kind == ItemEventKind.Correction);
+        var correction = after.History.Single(r => r.Kind == ItemEventKind.Correction);
         Assert.Equal("Shelf B / Bin 14", correction.CorrectionOriginalValue);
         Assert.Equal("Shelf B / Bin 19", correction.CorrectionNewValue);
         Assert.Equal("MFR-2026-014", correction.CorrectionMfrReference);
         Assert.True(correction.CorrectionSatisfies1_7c3);
 
-        // AUD-008 - correcting does not break the chain, because a correction is an append.
-        Assert.True(history.ChainVerification.IsIntact);
+        Assert.True(after.ChainVerification.IsIntact);
     }
 
     [Fact]
-    public async Task ACorrectionWithoutAnMfrOrSupervisorNotificationIsRecordedButFlagged()
+    public async Task TheClientCannotFalsifyTheOriginalValue()
     {
-        // AUD-005. AR 195-5 1-7c(3) requires both. Whether every field-level correction reaches
-        // that threshold is local policy, so EMC records the correction and surfaces the
-        // shortfall where an inspector will see it, rather than blocking the correction.
+        // AUD-014. RecordCorrectionRequest has no OriginalValue parameter at all - the server
+        // derives it from the stored event, so there is nothing to falsify.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19",
+            "Wrong bin", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow));
+
+        var history = await _harness.History.GetAsync(itemId);
+        var correction = history!.History.Single(r => r.Kind == ItemEventKind.Correction);
+
+        // The stored original is what the event actually recorded.
+        Assert.Equal("Shelf B / Bin 14", correction.CorrectionOriginalValue);
+    }
+
+    [Fact]
+    public async Task AnUnsupportedFieldNameIsRejected()
+    {
         var itemId = await AcceptedItemAsync();
 
         var anyEvent = await _harness.Db.ItemEvents
@@ -178,36 +204,84 @@ public class AppendOnlyAndCorrectionTests : IDisposable
             .FirstAsync(e => e.EvidenceItemId == itemId);
 
         var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            anyEvent.Id, "Reason", anyEvent.Reason, "Corrected reason text",
-            "Wording error", null, null, null));
+            anyEvent.Id, "AccountabilityStatus", "Disposed", "attempting to rewrite the workflow",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord, null, null, null));
 
-        Assert.True(result.Succeeded, result.Error);
-        Assert.Contains(result.Warnings, w => w.Contains("1-7c(3)", StringComparison.Ordinal));
+        Assert.False(result.Succeeded);
+        Assert.Equal("AUD-014", result.RequirementId);
     }
 
     [Fact]
-    public async Task AnEventCannotBeCorrectedTwice()
+    public async Task SeveralFieldsOfOneEventCanBeCorrectedIndependently()
     {
-        // AUD-003. Once superseded, the correction itself is the current entry - correcting the
-        // superseded original again would produce two competing "current" values.
+        // AUD-015. The old "one correction per event, ever" rule made a second error
+        // uncorrectable.
         var itemId = await AcceptedItemAsync();
 
-        var anyEvent = await _harness.Db.ItemEvents
-            .OfType<StatusEvent>()
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "Initial placement", null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
             .FirstAsync(e => e.EvidenceItemId == itemId);
 
         var first = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            anyEvent.Id, "Reason", anyEvent.Reason, "First correction", "Reason one",
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19",
+            "Wrong bin", CorrectionCategory.PostAcceptanceAccountabilityRecord,
             "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow));
 
-        Assert.True(first.Succeeded, first.Error);
-
         var second = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            anyEvent.Id, "Reason", anyEvent.Reason, "Second correction", "Reason two",
+            locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
+            "Wrong reason recorded", CorrectionCategory.PostAcceptanceAccountabilityRecord,
             "MFR-2", _harness.CommanderUserId, _harness.Clock.UtcNow));
 
-        Assert.False(second.Succeeded);
-        Assert.Equal("AUD-003", second.RequirementId);
+        Assert.True(first.Succeeded, first.Error);
+        Assert.True(second.Succeeded, second.Error);
+
+        var history = await _harness.History.GetAsync(itemId);
+        var row = history!.History.Single(r => r.EventId == locationEvent.Id);
+
+        Assert.Equal("Shelf B / Bin 19", row.EffectiveFields[nameof(LocationEvent.StorageLocationPath)]);
+        Assert.Equal("Moved to high-value storage", row.EffectiveFields[nameof(LocationEvent.Reason)]);
+        Assert.Equal(2, row.CorrectedFieldNames.Count);
+        Assert.True(history.ChainVerification.IsIntact);
+    }
+
+    [Fact]
+    public async Task ACorrectionsOnlyAffectTheEventTheyName()
+    {
+        // Covered here rather than in the domain suite because unpersisted events all share
+        // Id 0 and cannot be distinguished in memory.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "First", null));
+
+        _harness.Clock.Advance(TimeSpan.FromHours(1));
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.HighValueSafeId, _harness.Clock.UtcNow, "Second", null));
+
+        var events = await _harness.Db.ItemEvents.OfType<LocationEvent>()
+            .Where(e => e.EvidenceItemId == itemId)
+            .OrderBy(e => e.SequenceNumber)
+            .ToListAsync();
+
+        // Correct the FIRST location event only.
+        await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            events[0].Id, nameof(LocationEvent.StorageLocationPath), "Intake bench",
+            "Wrong initial location", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow));
+
+        var history = await _harness.History.GetAsync(itemId);
+
+        // The second event is untouched, and it is still the current location.
+        var secondRow = history!.History.Single(r => r.EventId == events[1].Id);
+        Assert.False(secondRow.HasCorrections);
+        Assert.Equal("High-Value Safe / Drawer 2", history.CurrentLocationPath);
+
+        var firstRow = history.History.Single(r => r.EventId == events[0].Id);
+        Assert.True(firstRow.HasCorrections);
     }
 
     [Fact]

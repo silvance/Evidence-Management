@@ -161,8 +161,21 @@ integer, not a global one — so concurrent work on different items never conten
 - The canonical serialization is versioned (`HashSchemaVersion`) so the algorithm can evolve
   without invalidating history.
 
-This does not make tampering impossible. It makes it **detectable by anyone with read access**,
-which is the achievable and honest goal. Say it that way in inspections.
+**State its strength accurately.** The chain is **unkeyed**: it is computed from the data and
+stored beside it, so a knowledgeable database administrator who modifies a row *and recomputes the
+chain from that point forward* would not be detected by it. Describe it as:
+
+> A tamper- and corruption-detection mechanism. It detects modification, deletion and insertion of
+> events **when the stored chain has not also been deliberately recomputed**.
+
+It is genuinely strong against accidental corruption, application bugs, out-of-band edits that
+don't know about the chain, and casual database manipulation — which covers the realistic cases.
+It is **not** equivalent to a digital signature, an external immutable ledger, or a keyed MAC whose
+key lives outside the database.
+
+A future control could sign periodic integrity checkpoints with a key held outside SQL Server,
+which would close the recompute gap. That is deliberately not built now: it adds PKI and key
+custody, and the honest description above is enough for V1 provided nobody overstates it.
 
 ### 4.4 Corrections never destroy history
 

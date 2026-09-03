@@ -113,7 +113,10 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
     /// (VCH-008, invariant I-05).
     /// </summary>
     public OfficialDocumentNumberAssignment? CurrentDocumentNumberAssignment
-        => _documentNumberAssignments.SingleOrDefault(a => a.SupersededByAssignmentId is null);
+        => _documentNumberAssignments
+            .OrderByDescending(a => a.EnteredAtUtc)
+            .ThenByDescending(a => a.Id)
+            .FirstOrDefault();
 
     public bool HasOfficialDocumentNumber => CurrentDocumentNumberAssignment is not null;
 
@@ -302,9 +305,13 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
             documentNumber: documentNumber,
             enteredByUserId: enteredByUserId,
             enteredAtUtc: enteredAtUtc,
-            attestedAssignedInAuthoritativeLedger: attestedAssignedInAuthoritativeLedger);
+            attestedAssignedInAuthoritativeLedger: attestedAssignedInAuthoritativeLedger,
 
-        current?.MarkSupersededBy(assignment, supersessionReason!);
+            // AR 195-5 2-7g - the NEW assignment names the one it replaces. The prior row is
+            // never modified, so the assignment history is strictly insert-only.
+            supersedes: current,
+            supersessionReason: supersessionReason);
+
         _documentNumberAssignments.Add(assignment);
         return assignment;
     }

@@ -24,15 +24,25 @@ public sealed record ItemHistoryRow(
     string RecordedByName,
     string Summary,
     string? Notes,
-    bool IsSuperseded,
-    int? SupersededByEventId,
+
+    /// <summary>Fields of this event that a correction has changed. Empty for most rows.</summary>
+    IReadOnlyCollection<string> CorrectedFieldNames,
+
+    /// <summary>Each correctable field with the value the record NOW reads (AUD-015).</summary>
+    IReadOnlyDictionary<string, string?> EffectiveFields,
+
     int? CorrectsEventId,
     string? CorrectionFieldName,
     string? CorrectionOriginalValue,
     string? CorrectionNewValue,
     string? CorrectionReason,
     string? CorrectionMfrReference,
-    bool CorrectionSatisfies1_7c3);
+    CorrectionCategory? CorrectionCategory,
+    bool CorrectionSatisfies1_7c3)
+{
+    /// <summary>True when any field of this event has been corrected.</summary>
+    public bool HasCorrections => CorrectedFieldNames.Count > 0;
+}
 
 public sealed record ItemHistoryView(
     int ItemId,
@@ -46,12 +56,19 @@ public sealed record ItemHistoryView(
     IReadOnlyList<ItemHistoryRow> History,
     ChainVerificationResult ChainVerification);
 
+/// <summary>
+/// A correction request.
+///
+/// Note what is ABSENT: the original value. The server derives it from the stored event
+/// (AUD-014). An "original value" supplied by the client could be anything the corrector chose,
+/// which would make the audit record worthless.
+/// </summary>
 public sealed record RecordCorrectionRequest(
     int CorrectedEventId,
     string FieldName,
-    string? OriginalValue,
     string? CorrectedValue,
     string Reason,
+    CorrectionCategory Category,
     string? MfrReference,
     int? SupervisorNotifiedUserId,
     DateTimeOffset? SupervisorNotifiedAtUtc);
@@ -138,35 +155,41 @@ public sealed class ItemHistoryService : IItemHistoryService
 
         var userNames = await ResolveUserNamesAsync(events, ct);
 
-        var rows = events.Select(e => new ItemHistoryRow(
-            EventId: e.Id,
-            SequenceNumber: e.SequenceNumber,
-            Kind: e.Kind,
-            OccurredAtLocal: e.OccurredAtLocal,
-            RecordedAtUtc: e.RecordedAtUtc,
-            RecordedByName: userNames.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
-            Summary: e.Summarize(),
-            Notes: e.Notes,
-            IsSuperseded: e.SupersededByEventId is not null,
-            SupersededByEventId: e.SupersededByEventId,
-            CorrectsEventId: (e as CorrectionEvent)?.CorrectsEventId,
-            CorrectionFieldName: (e as CorrectionEvent)?.FieldName,
-            CorrectionOriginalValue: (e as CorrectionEvent)?.OriginalValue,
-            CorrectionNewValue: (e as CorrectionEvent)?.CorrectedValue,
-            CorrectionReason: (e as CorrectionEvent)?.Reason,
-            CorrectionMfrReference: (e as CorrectionEvent)?.MfrReference,
-            CorrectionSatisfies1_7c3: (e as CorrectionEvent)?.SatisfiesParagraph1_7c3 ?? false))
+        // AUD-015. Effective values are computed once and attached to each row, so the page can
+        // show what the record now reads without re-deriving it.
+        var corrections = events.OfType<CorrectionEvent>().ToList();
+
+        var rows = events.Select(e =>
+            {
+                var effective = new EffectiveItemEvent(e, corrections);
+                var correction = e as CorrectionEvent;
+
+                return new ItemHistoryRow(
+                    EventId: e.Id,
+                    SequenceNumber: e.SequenceNumber,
+                    Kind: e.Kind,
+                    OccurredAtLocal: e.OccurredAtLocal,
+                    RecordedAtUtc: e.RecordedAtUtc,
+                    RecordedByName: userNames.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
+                    Summary: e.Summarize(),
+                    Notes: e.Notes,
+                    CorrectedFieldNames: effective.CorrectedFieldNames,
+                    EffectiveFields: effective.EffectiveFields,
+                    CorrectsEventId: correction?.CorrectsEventId,
+                    CorrectionFieldName: correction?.FieldName,
+                    CorrectionOriginalValue: correction?.OriginalValue,
+                    CorrectionNewValue: correction?.CorrectedValue,
+                    CorrectionReason: correction?.Reason,
+                    CorrectionMfrReference: correction?.MfrReference,
+                    CorrectionCategory: correction?.Category,
+                    CorrectionSatisfies1_7c3: correction?.SatisfiesParagraph1_7c3 ?? true);
+            })
             .ToList();
 
-        var latestLocation = events.OfType<LocationEvent>()
-            .Where(e => e.SupersededByEventId is null)
-            .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.SequenceNumber)
-            .FirstOrDefault();
-
-        var latestCustody = events.OfType<CustodyEvent>()
-            .Where(e => e.SupersededByEventId is null)
-            .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.SequenceNumber)
-            .FirstOrDefault();
+        // LOC-001 / COC-001. Current location and custody use EFFECTIVE values, so correcting a
+        // location updates it rather than removing it from the projection.
+        var latestLocation = EffectiveHistory.LatestOf<LocationEvent>(events);
+        var latestCustody = EffectiveHistory.LatestOf<CustodyEvent>(events);
 
         return new ItemHistoryView(
             ItemId: item.Id,
@@ -175,8 +198,8 @@ public sealed class ItemHistoryService : IItemHistoryService
             CaseControlNumber: item.Voucher.Case?.CaseControlNumber ?? string.Empty,
             DescriptionForForm: item.DescriptionForForm,
             AccountabilityStatus: item.AccountabilityStatus,
-            CurrentLocationPath: latestLocation?.StorageLocationPath,
-            CurrentCustodyHolder: latestCustody?.ReceivedBy?.DisplayName,
+            CurrentLocationPath: latestLocation?.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath)),
+            CurrentCustodyHolder: latestCustody?.EffectiveValueOf(nameof(CustodyEvent.ReceivedBy)),
             History: rows,
 
             // AUD-008 — verified on every view so a broken chain surfaces where someone will see
@@ -231,12 +254,16 @@ public sealed class ItemHistoryService : IItemHistoryService
             return OperationResult.Failure(decision.Reason!, decision.RequirementId);
         }
 
-        if (correctedEvent.SupersededByEventId is not null)
+        // AUD-015. A field may be corrected more than once, and a correction may itself be
+        // corrected - the effective value is simply the most recent correction. The earlier
+        // "one correction per event, ever" rule made a second mistake uncorrectable.
+        if (!correctedEvent.IsCorrectableField(request.FieldName))
         {
             return OperationResult.Failure(
-                $"Event #{correctedEvent.Id} has already been corrected by event "
-                + $"#{correctedEvent.SupersededByEventId}. Correct the most recent entry instead.",
-                "AUD-003");
+                $"'{request.FieldName}' is not a correctable field on a {correctedEvent.Kind} "
+                + $"event. Correctable fields are: "
+                + $"{string.Join(", ", correctedEvent.CorrectableFields.Keys)}.",
+                "AUD-014");
         }
 
         var now = _clock.UtcNow;
@@ -244,12 +271,14 @@ public sealed class ItemHistoryService : IItemHistoryService
 
         try
         {
-            correction = new CorrectionEvent(
+            // AUD-014. The original value is derived from the stored event, never taken from the
+            // request - the caller cannot state what the record used to say.
+            correction = CorrectionFactory.Create(
                 correctedEvent: correctedEvent,
                 fieldName: request.FieldName,
-                originalValue: request.OriginalValue,
                 correctedValue: request.CorrectedValue,
                 reason: request.Reason,
+                category: request.Category,
                 occurredAtLocal: now,
                 recordedAtUtc: now,
                 correctedByUserId: _currentUser.UserId,
@@ -264,21 +293,16 @@ public sealed class ItemHistoryService : IItemHistoryService
 
         await _events.AppendAsync(item, correction, ct);
 
-        // Save once so the correction has an identity, then link the superseded event to it. The
-        // SupersededByEventId transition (null -> value, once) is the ONLY mutation permitted on
-        // an append-only record (invariant I-14).
-        await _db.SaveChangesAsync(ct);
-
-        correction.ApplySupersession();
-
         _audit.Record(
             AuditEventType.AccountabilityActionRecorded,
             nameof(CorrectionEvent),
             $"{item.Voucher.DisplayIdentifier}/{item.ItemNumber}#{correctedEvent.Id}",
-            previousValue: request.OriginalValue,
-            newValue: request.CorrectedValue,
+            previousValue: correction.OriginalValue,
+            newValue: correction.CorrectedValue,
             reason: request.Reason);
 
+        // One save. Nothing updates the corrected event, so there is no second pass to link a
+        // supersession pointer (AUD-002).
         await _db.SaveChangesAsync(ct);
 
         var warnings = new List<string>();
@@ -288,6 +312,10 @@ public sealed class ItemHistoryService : IItemHistoryService
             // Surfaced rather than blocked: whether a given field-level correction rises to the
             // 1-7c(3) threshold is a matter of local policy, and an incomplete correction is
             // visible in the item history and to an inspector either way.
+            // Only PostAcceptanceAccountabilityRecord corrections are subject to 1-7c(3). A
+            // submitting agent correcting a draft under 2-3g, or a verifier fixing an OCR
+            // transcription, is not a custodian finding an incorrect entry in the accountability
+            // record, and demanding a custodian-error MFR for those would misstate the regulation.
             warnings.Add(
                 "AR 195-5 para 1-7c(3): when a primary or alternate evidence custodian finds an "
                 + "incorrect entry they will immediately inform the responsible CI supervisor and "
