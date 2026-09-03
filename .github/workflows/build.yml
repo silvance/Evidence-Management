@@ -21,6 +21,9 @@ jobs:
       # Locked mode: restore fails rather than resolve anything the committed lock files do not name.
       - run: dotnet restore Emc.sln --configfile NuGet.Config --locked-mode -p:ContinuousIntegrationBuild=true
       - run: dotnet build Emc.sln --no-restore -c Release -p:ContinuousIntegrationBuild=true
+      # The local OCR engine, from the distribution, so the real-engine tests run here rather
+      # than skip. In the enclave the same engine comes from the dependency bundle.
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd
       - run: dotnet test Emc.sln --no-build -c Release -p:ContinuousIntegrationBuild=true
       # The audit, against current data. Any finding fails.
       - run: dotnet list Emc.sln package --vulnerable --include-transitive | tee audit-report.txt && ! grep -q "has the following vulnerable packages" audit-report.txt

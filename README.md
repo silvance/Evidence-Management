@@ -31,7 +31,9 @@ EMC V1 is the second. Three consequences are enforced structurally, not by conve
 
 The domain is designed so that an approved automated equivalent could be enabled by configuration
 (`AuthoritativeMode`, `NumberingMode`) rather than by rewriting the model. **That path is designed,
-not built or tested, in V1** — V1 does not assume approval and does not exercise it.
+not built or tested, in V1** — V1 does not assume approval and does not exercise it. Nor does the
+design claim that approval would need nothing else: Army G-2X approval under 2-5c may well require
+additional controls the organization specifies, and those would be new work, not configuration.
 
 ## Documentation
 
@@ -50,10 +52,13 @@ not built or tested, in V1** — V1 does not assume approval and does not exerci
 
 .NET 10 LTS · ASP.NET Core Razor Pages · EF Core 10 · SQL Server · IIS · Windows Authentication.
 
-No SPA framework, no microservices, no cloud dependency, and **no Internet dependency at all** —
-not for operation, and not for building. EMC is built and maintained inside an air-gapped
-environment from a verified dependency bundle (`docs/air-gapped-build-and-maintenance.md`). EMC
-stores **no passwords and no password hashes**.
+No SPA framework, no microservices, no cloud dependency, and **no Internet dependency at run
+time or at build time inside the enclave**: EMC is restored, built, tested, deployed and
+maintained in an air-gapped environment from a verified dependency bundle. The bundle itself is
+produced in a separate, **connected staging** environment, which is where packages, the OCR
+engine and its models are obtained, audited and hashed (`docs/air-gapped-build-and-maintenance.md`).
+Nothing in the enclave, and nothing at run time, reaches the Internet. EMC stores **no passwords
+and no password hashes**.
 
 ## Layout
 

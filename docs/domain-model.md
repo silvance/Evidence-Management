@@ -54,7 +54,7 @@ status column cannot represent that without losing information.
 | `AwaitingCustodianAcceptance` | Submitted; no item accepted yet |
 | `PartiallyAccepted` | Some but not all items accepted |
 | `Active` | ≥1 item accepted and ≥1 item not in a terminal state |
-| `Inactive` | **All** items in a terminal state (`Disposed` or `ReliefGranted`) — **2-4h** |
+| `Inactive` | **All** current form lines in a terminal accountability state (`Disposed`, `ReliefGranted`, or `PermanentlyTransferred`, which is terminal for the *sending* room) — **2-4h**; a line withdrawn as entered in error (VCH-026) is not a form line |
 
 **[DESIGN]** the *names*; **[REG]** the `Inactive` rule and the item-level derivation (2-4h).
 
@@ -80,7 +80,7 @@ reason. Everything else keeps the proposed name and intent.
 |---|---|
 | `Case` | CI **case control number** (2-3b). **▲ CHANGED:** a voucher may carry **two** case numbers — 2-3b requires that for evidence collected under a **request for assistance (RFA)**, "both the seizing and requesting offices['] law enforcement report number will be recorded." Modelled as `Case` (seizing/controlling) plus an optional `RequestingOfficeCaseNumber` on the voucher. |
 | `EvidenceVoucher` | One DA Form 4137. Holds receiving activity, location, person/place from whom received, date/time received, preparing agent (**2-3b**: the agent who *first acquired* the evidence prepares the form), the temporary identifier, the current official document-number assignment, and the RFA requesting-office number. `DerivedStatus` is computed, never stored as maintained state. |
-| `OfficialDocumentNumberAssignment` | **✚ ADDED (was a column). [REG] 2-4c, 2-7g.** A voucher can hold **more than one** document number over its life: on permanent transfer between evidence rooms the receiving custodian assigns the next number of the *receiving* room and the prior number is "lined through in such a way that it remains legible" (2-7g). A single column cannot represent a superseded-but-still-legible value. Fields: raw number, parsed `Sequence` + `CalendarYear`, evidence room, entering user, entry time, **`AttestedAssignedInAuthoritativeLedger`** (explicit custodian attestation, not inferred), `SupersededByAssignmentId`, supersession reason. Unique on **`(EvidenceRoomId, CalendarYear, Sequence)`** among non-superseded rows. |
+| `OfficialDocumentNumberAssignment` | **✚ ADDED (was a column). [REG] 2-4c, 2-7g.** A voucher can hold **more than one** document number over its life: on permanent transfer between evidence rooms the receiving custodian assigns the next number of the *receiving* room and the prior number is "lined through in such a way that it remains legible" (2-7g). A single column cannot represent a superseded-but-still-legible value. Fields: raw number, parsed `Sequence` + `CalendarYear`, evidence room, entering user, entry time, **`AttestedAssignedInAuthoritativeLedger`** (explicit custodian attestation, not inferred), and - on a later assignment - the supersession reason. Rows are append-only: a superseding assignment is a NEW row that names its reason, the earlier row is never updated, and "current" is derived from order. Unique on **`(EvidenceRoomId, CalendarYear, Sequence)`** across ALL rows, superseded or not (an unfiltered index, VCH-011): once a number is recorded it is consumed for good. |
 | `EvidenceItem` | The numbered line on the form. `ItemNumber` unique within voucher, contiguous from 1. Description (**2-3d**), quantity/approximation, serial number, unique device identifier, `IsPossibleBiohazard` (**2-3l**), `IsFungible`, `IsSealed`, `IsCurrency` with denomination breakdown (**2-3d**), `AccountabilityStatus`, `IsLastItem` handling (**2-3d**). |
 
 **`EvidenceItem` is one *numbered line*, whose quantity may exceed one** — 2-1b permits grouped
@@ -206,7 +206,9 @@ Refinements from the originally proposed names, with reasons:
   authority so directs" (2-13d).
 - **`ACQUIRED` retained**, matching 2-1a/2-3b.
 
-Terminal states: `Disposed`, `ReliefGranted`, `PermanentlyTransferred`.
+Terminal states: `Disposed`, `ReliefGranted`, `PermanentlyTransferred` (terminal for the sending
+room only - the evidence continues under the receiving room's number), and
+`WithdrawnAsEnteredInError` (pre-acceptance only; never a physical item, VCH-026).
 
 ### 3.2 `CustodyState` — derived, never stored
 

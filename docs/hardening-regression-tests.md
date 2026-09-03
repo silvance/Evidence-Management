@@ -98,3 +98,27 @@ review found one gap, now closed: `RecordCorrection` did not require an active c
 appointment, so an alternate holding the role with no open assumption of duties could correct an
 accepted record while being denied every other custodian act
 (`AuthorizationMatrixTests.RecordingACorrectionRequiresAnActiveCustodianAppointment`).
+
+## Source documents, OCR, verification, reconciliation and the paper record (third pass)
+
+The regression set for the slice that added companion copies, local OCR, human verification,
+reconciliation and the physical DA Form 4137 record. D = domain test project, A = application
+test project (SQLite harness and the web host), S = SQL Server lane, T = requires a local
+Tesseract install (skipped visibly otherwise).
+
+| Item | Tests |
+|---|---|
+| Foundation: location may be assigned only to an item physically in the room; presence table exhaustive | D `AccountabilityStateTests.ANewLocationMayBeAssignedOnlyToAnItemPhysicallyInTheRoom`, `AccountabilityStateTests.ThePresenceTableCoversEveryStatus`, `AccountabilityStateTests.AReleasedItemRegainsTheLocationWorkflowOnlyByReturningToTheRoom` |
+| 2-3g review: a returned form is a revision; a line entered in error is withdrawn, never deleted; a physical item cannot be dropped | D `VoucherReviewTests.*`, `AccountabilityStateTests.AWithdrawnLineIsTerminalAndReachableOnlyFromAcquired`; A `CustodianReviewTests.AnItemAlreadyOnTheRecordCannotBeDeletedFromAReturnedVoucher`, `CustodianReviewTests.ALineEnteredInErrorIsWithdrawn_KeptInHistory_AndNeverAccepted`, `CustodianReviewTests.APhysicalItemCannotBeDroppedThroughLineWithdrawal`, `CustodianReviewTests.AnotherAgentCannotWithdrawALine` |
+| Physical DA Form 4137: filing, suspense, inactive, 3-year clock from the inactive date, destruction confirmed by a person, 50-voucher limit | D `PhysicalDocumentTests.*`; A `PhysicalDocumentServiceTests.*`, `PaperRecordReportTests.TheDashboardBucketsByFileAndByTheThreeYearClock_FromTheInactiveDateOnly`, `PaperRecordReportTests.AdvisoriesSayWhatDisagrees_AndChangeNothing`, `PaperDashboardHttpTests.TheRetentionDashboardRendersForTheRoom_AndNotForAnOutsider` |
+| Source documents: content validation, immutability, generated keys, authorization before bytes, raster display, download audited, integrity | A `SourceDocumentTests.*`, `SourceDocumentHttpTests.UploadViewPageImageAndDownload_ThenDeniedToAnOutsider`, `SourceDocumentHttpTests.AnOversizeUploadIsRefusedAtTheRequestLayer`; S `SqlServerReleaseValidationTests.EveryAppendOnlyTriggerExists`, `SqlServerReleaseValidationTests.ExpectedIndexesExist` |
+| OCR model: bands, high-consequence verification, raw text never edited, failure categories not text, job leasing | D `OcrModelTests.*` |
+| OCR pipeline with a fake engine: request, lease, run, verify, timeout requeue, expired lease takeover, two workers, room scope, orientation vote | A `OcrProcessorTests.*` |
+| OCR engine, real, offline: start-up verification of binary and models, synthetic pages, rotation, deskew, timeout kills the process, no network location configurable, two-pass merge | A/T `TesseractEngineTests.*` |
+| DA Form 4137 mapping: front/back/continuation faces, label-anchored fields, item and custody rows, unreadable block, conflicting number, normalizers, noisy labels | A/T `DaForm4137MappingTests.*` |
+| Verification page: companion statement, run page images with boxes, decisions per field, outsider denied | A `OcrVerificationHttpTests.UploadRequestRunAndVerify_ThroughThePage` |
+| Reconciliation: draft patch applied only by decision through the voucher service; nothing applied after acceptance or while verification is outstanding; document number never applied; 1-7c(3) with provenance; findings append-only | A `ReconciliationTests.*` |
+| OCR security: logs and audit rows carry no extracted text; work folder cleaned on failure; engine invoked without a shell | A `OcrSecurityTests.*`, `TesseractEngineTests.TheWorkerConfigurationNamesNoNetworkLocation`, `TesseractEngineTests.ATimeoutKillsTheEngineProcess` |
+| Air gap: locked restore, no floating versions, offline NuGet configuration, no remote assets, artifact manifest for the OCR engine and models | A `OfflineBuildTests.*` |
+| Authorization matrix still holds with the new permissions | A `AuthorizationMatrixTests.EachPrincipalGetsExactlyTheExpectedDecisions`, `OcrProcessorTests.OcrIsRoomScoped_AndVerificationNeedsItsPermission`, `ReconciliationTests.FindingsAreAppendOnly_AndAnOutsiderSeesNothing` |
+

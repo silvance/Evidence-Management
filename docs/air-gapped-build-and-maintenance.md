@@ -139,6 +139,28 @@ only.
 environment, which has no SQL Server; it has not been run against a real instance as of this
 document's commit. Running it is a release gate, not an option.
 
+## Offline OCR validation
+
+The OCR engine is a separate process and its models are files; both come from the bundle. The
+validation that they work with **zero network** is the real-engine test set
+(`TesseractEngineTests`, `DaForm4137MappingTests`), which:
+
+1. constructs the engine from the configured paths - executing the binary for its version and
+   hashing every model file, so a missing binary or model fails there, explicitly;
+2. renders synthetic, fictitious pages, preprocesses them, and reads them; rotated, flipped,
+   skewed, faint, low-DPI, multi-page and continuation cases included;
+3. proves a timeout kills the engine process and leaves nothing in the work folder.
+
+Run it offline with
+
+```
+pwsh scripts/airgap/Restore-Build-Test-Offline.ps1 -TesseractPath "C:\Program Files\Tesseract-OCR\tesseract.exe" -TessdataPath "C:\Program Files\Tesseract-OCR\tessdata"
+```
+
+Without those parameters the real-engine tests are **skipped, visibly**, and the script says
+offline OCR was not validated. The connected-staging workflow installs the distribution's
+Tesseract so the same tests run there; that is convenience, not the validation.
+
 ## Adding or changing a dependency — the rule
 
 1. Justify it. Prefer the framework or the standard library; every package is something the

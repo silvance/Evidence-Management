@@ -568,7 +568,10 @@ hosting enclave and backup handling all change. V1's design control is:
 - the accredited level is **configuration**, so the same code can be deployed into a higher
   enclave without change;
 - the security boundaries (authentication, authorization, audit, storage) are clean enough that
-  additional AR 380-5 controls can be layered without redesign.
+  additional AR 380-5 controls can be layered without redesign of the application's boundaries.
+  That is a statement about where the seams are, not a claim that nothing else would be needed:
+  accreditation at a higher level, like any Army G-2X approval of an automated equivalent under
+  2-5c, may require controls the organization specifies, and those are new work.
 
 **This is open decision DEC-06 and it must be answered by the organization's security manager
 before the system holds real data.** It is not a decision the application can make.

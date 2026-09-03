@@ -14,7 +14,17 @@
     approved local instance; otherwise it is skipped and says so.
 #>
 [CmdletBinding()]
-param([string]$BundleRoot, [switch]$SkipTests)
+param(
+    [string]$BundleRoot,
+    [switch]$SkipTests,
+
+    # The locally installed OCR engine and its models (installed from the bundle's artifacts/
+    # folder). When both are given the real-engine tests run - engine start-up, model hashes,
+    # synthetic pages, zero network - which is the offline OCR validation (Phase 12). Without
+    # them those tests are SKIPPED and this script says so; that is not a pass.
+    [string]$TesseractPath,
+    [string]$TessdataPath
+)
 
 $ErrorActionPreference = 'Stop'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -35,6 +45,18 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 
     if (-not $SkipTests) {
+        if ($TesseractPath -and $TessdataPath) {
+            if (-not (Test-Path $TesseractPath)) { throw "Tesseract not found at $TesseractPath. Install it from the bundle's artifacts/ocr-engine folder." }
+            foreach ($model in @('eng.traineddata', 'osd.traineddata')) {
+                if (-not (Test-Path (Join-Path $TessdataPath $model))) { throw "OCR model $model not found in $TessdataPath. Copy it from the bundle's artifacts/ocr-model folder." }
+            }
+            $env:EMC_TESSERACT_PATH = $TesseractPath
+            $env:EMC_TESSDATA_PATH = $TessdataPath
+            Write-Host "Offline OCR validation: engine $TesseractPath, models $TessdataPath. The real-engine tests will run."
+        } else {
+            Write-Warning 'No -TesseractPath/-TessdataPath: the real-engine OCR tests are SKIPPED. Offline OCR is NOT validated by this run.'
+        }
+
         dotnet test Emc.sln --no-build -c Release -p:EMC_OFFLINE=true
         if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
         if (-not $env:EMC_SQLSERVER_TEST_CONNECTION) {

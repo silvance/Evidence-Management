@@ -17,7 +17,10 @@ namespace Emc.Application.Tests.SqlServer;
 /// lane is opted into (see <see cref="SqlServerFactAttribute"/>).
 ///
 /// Trigger error numbers: 50001/50002 ItemEvents, 50003/50004 AuditEvents,
-/// 50005/50006 OfficialDocumentNumberAssignments, 50007/50008 VoucherReviewActions.
+/// 50005/50006 OfficialDocumentNumberAssignments, 50007/50008 VoucherReviewActions,
+/// 50009-50012 form revisions and lines, 50013/50014 PhysicalVoucherDocumentEvents,
+/// 50015-50018 SourceDocuments and pages, 50019-50024 OcrRuns/ExtractedFields/FieldVerifications,
+/// 50025/50026 OcrRunPages, 50027/50028 ReconciliationFindings.
 /// Unique-index violations: 2601 (index) / 2627 (constraint).
 /// </summary>
 public class SqlServerReleaseValidationTests
@@ -74,7 +77,17 @@ public class SqlServerReleaseValidationTests
             "TR_ItemEvents_AppendOnly_Update", "TR_ItemEvents_AppendOnly_Delete",
             "TR_AuditEvents_AppendOnly_Update", "TR_AuditEvents_AppendOnly_Delete",
             "TR_DocumentNumbers_AppendOnly_Update", "TR_DocumentNumbers_AppendOnly_Delete",
-            "TR_VoucherReviewActions_AppendOnly_Update", "TR_VoucherReviewActions_AppendOnly_Delete"
+            "TR_VoucherReviewActions_AppendOnly_Update", "TR_VoucherReviewActions_AppendOnly_Delete",
+            "TR_VoucherFormRevisions_AppendOnly_Update", "TR_VoucherFormRevisions_AppendOnly_Delete",
+            "TR_VoucherFormRevisionLines_AppendOnly_Update", "TR_VoucherFormRevisionLines_AppendOnly_Delete",
+            "TR_PhysicalVoucherDocumentEvents_AppendOnly_Update", "TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete",
+            "TR_SourceDocuments_AppendOnly_Update", "TR_SourceDocuments_AppendOnly_Delete",
+            "TR_SourceDocumentPages_AppendOnly_Update", "TR_SourceDocumentPages_AppendOnly_Delete",
+            "TR_OcrRuns_AppendOnly_Update", "TR_OcrRuns_AppendOnly_Delete",
+            "TR_ExtractedFields_AppendOnly_Update", "TR_ExtractedFields_AppendOnly_Delete",
+            "TR_FieldVerifications_AppendOnly_Update", "TR_FieldVerifications_AppendOnly_Delete",
+            "TR_OcrRunPages_AppendOnly_Update", "TR_OcrRunPages_AppendOnly_Delete",
+            "TR_ReconciliationFindings_AppendOnly_Update", "TR_ReconciliationFindings_AppendOnly_Delete"
         })
         {
             var count = harness.Scalar<int>(
@@ -100,6 +113,18 @@ public class SqlServerReleaseValidationTests
               WHERE t.name = N'OfficialDocumentNumberAssignments' AND i.is_unique = 1 AND i.has_filter = 0
                 AND (SELECT COUNT(*) FROM sys.index_columns ic WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0) = 3");
         Assert.True(canonical >= 1, "No unfiltered unique index over (EvidenceRoomId, CalendarYear, Sequence).");
+
+        // Generated storage keys are unique per table (DOC-006); a run's pages and a document's
+        // pages are unique per page number.
+        foreach (var (table, columns) in new[] { ("SourceDocuments", 1), ("SourceDocumentPages", 1), ("OcrRunPages", 1) })
+        {
+            var keyIndex = harness.Scalar<int>(
+                $@"SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id
+                   JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                   JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                   WHERE t.name = N'{table}' AND i.is_unique = 1 AND c.name = N'StorageKey'");
+            Assert.True(keyIndex >= columns, $"No unique index over {table}.StorageKey.");
+        }
     }
 
     [SqlServerFact]
