@@ -79,8 +79,25 @@ public class HistoryModel : PageModel
     [BindProperty]
     public CorrectionInput Correction { get; set; } = new();
 
-    public async Task<IActionResult> OnGetAsync(int id)
-        => await LoadAsync(id) ? Page() : NotFound();
+    public async Task<IActionResult> OnGetAsync(int id, int? sourceDocumentId = null, int? correctedEventId = null, string? fieldName = null, string? correctedValue = null)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        // Reconciliation hands over here with the scan as provenance and the difference prefilled
+        // (REC-006). Nothing is recorded until the custodian completes the 1-7c(3) form below.
+        if (sourceDocumentId is not null)
+        {
+            Correction.SourceDocumentId = sourceDocumentId;
+            if (correctedEventId is not null) Correction.CorrectedEventId = correctedEventId.Value;
+            if (fieldName is not null) Correction.FieldName = fieldName;
+            if (correctedValue is not null) Correction.CorrectedValue = correctedValue;
+        }
+
+        return Page();
+    }
 
     public async Task<IActionResult> OnPostAssignLocationAsync(int id)
     {
@@ -160,7 +177,8 @@ public class HistoryModel : PageModel
                 Correction.SupervisorNotifiedUserId is null
                 && string.IsNullOrWhiteSpace(Correction.SupervisorNotifiedName)
                     ? null
-                    : _clock.UtcNow));
+                    : _clock.UtcNow,
+            SourceDocumentId: Correction.SourceDocumentId));
 
         if (!result.Succeeded)
         {
@@ -316,6 +334,9 @@ public class HistoryModel : PageModel
 
         [StringLength(4000)]
         public string? CorrectedValue { get; set; }
+
+        /// <summary>The scanned document this correction was reconciled from, if any (REC-004).</summary>
+        public int? SourceDocumentId { get; set; }
 
         /// <summary>AR 195-5 para 1-7c(3) - the corrective action, documented (AUD-004).</summary>
         [Required(ErrorMessage = "A reason is required (AR 195-5 para 1-7c(3)).")]

@@ -123,7 +123,10 @@ public sealed record RecordCorrectionRequest(
     /// </summary>
     string? SupervisorNotifiedName = null,
     string? SupervisorNotifiedGradeOrTitle = null,
-    string? SupervisorNotifiedOrganization = null);
+    string? SupervisorNotifiedOrganization = null,
+
+    /// <summary>The scanned document the correction was reconciled from, when it was (REC-004). Must belong to the item's room; hashed into the event.</summary>
+    int? SourceDocumentId = null);
 
 public interface IItemHistoryService
 {
@@ -418,6 +421,18 @@ public sealed class ItemHistoryService : IItemHistoryService
         catch (DomainRuleViolationException ex)
         {
             return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        if (request.SourceDocumentId is int sourceDocumentId)
+        {
+            // Provenance, before hashing: the link is part of the event's canonical form.
+            var owningRoom = await _db.SourceDocuments.AsNoTracking().Where(d => d.Id == sourceDocumentId).Select(d => (int?)d.EvidenceRoomId).FirstOrDefaultAsync(ct);
+            if (owningRoom != item.Voucher.EvidenceRoomId)
+            {
+                return OperationResult.Failure("The source document was not found.", "REC-004");
+            }
+
+            correction.AttachSourceDocument(sourceDocumentId);
         }
 
         await _events.AppendAsync(item, correction, ct);

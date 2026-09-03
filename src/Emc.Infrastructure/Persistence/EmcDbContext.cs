@@ -34,6 +34,7 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     public DbSet<Emc.Domain.Documents.SourceDocument> SourceDocuments => Set<Emc.Domain.Documents.SourceDocument>();
     public DbSet<Emc.Domain.Ocr.OcrJob> OcrJobs => Set<Emc.Domain.Ocr.OcrJob>();
     public DbSet<Emc.Domain.Ocr.OcrRun> OcrRuns => Set<Emc.Domain.Ocr.OcrRun>();
+    public DbSet<Emc.Domain.Reconciliation.ReconciliationFinding> ReconciliationFindings => Set<Emc.Domain.Reconciliation.ReconciliationFinding>();
     public DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments
         => Set<OfficialDocumentNumberAssignment>();
     public DbSet<EvidenceItem> EvidenceItems => Set<EvidenceItem>();

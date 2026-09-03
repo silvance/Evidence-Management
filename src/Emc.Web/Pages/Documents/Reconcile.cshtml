@@ -1,0 +1,105 @@
+@page "/Documents/Reconcile/{id:int}"
+@using Emc.Domain.Reconciliation
+@model Emc.Web.Pages.Documents.ReconcileModel
+@{
+    ViewData["Title"] = "Reconcile";
+    var v = Model.View!;
+}
+
+<h1>Reconcile — source document @v.SourceDocumentId against voucher @v.VoucherIdentifier</h1>
+<partial name="_Messages" model="Model.Messages" />
+
+<p class="regulatory-note companion-statement"><strong>DIGITAL SCAN IS A COMPANION COPY AND THE PHYSICAL ORIGINAL DA FORM 4137 REMAINS AUTHORITATIVE.</strong>
+    Each difference below is between what a person verified on the scan and what the companion record says.
+    Nothing changes unless you decide it. @(v.IsPreAcceptance
+        ? "This voucher is not yet accepted: a decision may change the DRAFT, through the same path the agent uses; a returned form's resubmission is a new revision (AR 195-5 2-3g)."
+        : "This voucher is ACCEPTED: nothing is applied from a scan. A decision records a finding; a true error in the accepted record is corrected under AR 195-5 para 1-7c(3) on the item's history page, where the scan becomes the correction's provenance.")</p>
+
+<p><a asp-page="/Documents/View" asp-route-id="@v.SourceDocumentId">Document</a> · <a asp-page="/Documents/Verify" asp-route-id="@v.SourceDocumentId">Verification</a> · <a asp-page="/Vouchers/Details" asp-route-id="@v.VoucherId">Voucher @v.VoucherIdentifier</a></p>
+
+<div class="panel">
+    <table><tbody>
+        <tr><th>Voucher status</th><td>@v.VoucherStatus @(v.IsPreAcceptance ? "(draft: changes go to the draft form)" : "(accepted: findings only)")</td></tr>
+        <tr><th>OCR run</th><td>@(v.RunId is null ? "none successful" : $"run {v.RunId}")</td></tr>
+        <tr><th>Verification</th><td>@(v.VerificationComplete ? "complete" : $"{v.MandatoryVerificationsOutstanding} mandatory verification(s) outstanding — nothing can be applied until they are done")</td></tr>
+        <tr><th>Differences</th><td>@v.Differences.Count found, @v.OpenDifferences open, @v.Findings.Count decision(s) on record</td></tr>
+    </tbody></table>
+</div>
+
+@if (v.RunId is null)
+{
+    <div class="panel"><p>Request OCR and verify the run first; reconciliation compares VERIFIED values.</p></div>
+}
+else if (v.Differences.Count == 0)
+{
+    <div class="panel"><p>No differences between the verified scan and the companion record.</p></div>
+}
+else
+{
+    <div class="panel">
+        <h2>Draft patch — recomputed on every view, applied only by decision</h2>
+        <table class="ocr-fields">
+            <thead><tr><th>Difference</th><th>Companion record says</th><th>Verified scan says</th><th>Decision</th></tr></thead>
+            <tbody>
+            @foreach (var d in v.Differences)
+            {
+                <tr class="@(d.IsResolved ? "" : "ocr-field--outstanding")">
+                    <td><strong>@d.FieldKey</strong> <span class="badge">@d.Kind</span><div class="hint">@d.Explanation</div></td>
+                    <td><code>@(d.CompanionValue ?? "—")</code></td>
+                    <td><code>@(d.DocumentValue ?? "—")</code> @if (!d.DocumentValueVerified) { <span class="badge badge--high-consequence">not verified</span> }</td>
+                    <td>
+                        @if (d.LatestFinding is { } f)
+                        {
+                            <div><strong>@f.Decision</strong> — @f.DecidedByName, @f.DecidedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z@(f.Narrative is null ? "" : $": {f.Narrative}")</div>
+                            @if (f.Decision == ReconciliationDecision.InitiatePostAcceptanceCorrection && d.EvidenceItemId is not null)
+                            {
+                                <div><a asp-page="/Items/History" asp-route-id="@d.EvidenceItemId" asp-route-sourceDocumentId="@v.SourceDocumentId" asp-route-correctedValue="@d.DocumentValue">Record the 1-7c(3) correction on the item's history</a></div>
+                            }
+                        }
+                        @if (v.CanDecide)
+                        {
+                            <form method="post" asp-page-handler="Decide" asp-route-id="@v.SourceDocumentId" class="ocr-verify-form">
+                                <input type="hidden" name="Input.FieldKey" value="@d.FieldKey" />
+                                <select name="Input.Decision" aria-label="Decision for @d.FieldKey">
+                                    @if (v.IsPreAcceptance && d.Kind is ReconciliationDifferenceKind.HeaderField or ReconciliationDifferenceKind.ItemField or ReconciliationDifferenceKind.MissingItem && d.FieldKey != Emc.Domain.Ocr.OcrFieldCatalog.CaseControlNumber)
+                                    {
+                                        <option value="@ReconciliationDecision.AppliedToDraftForm">Apply to the draft form</option>
+                                    }
+                                    <option value="@ReconciliationDecision.CompanionRecordAlreadyCorrect">Companion record already correct</option>
+                                    <option value="@ReconciliationDecision.ExtractionIncorrect">Extraction incorrect (state why)</option>
+                                    <option value="@ReconciliationDecision.FlagForCustodianReview">Flag for custodian review (state why)</option>
+                                    @if (!v.IsPreAcceptance)
+                                    {
+                                        <option value="@ReconciliationDecision.InitiatePostAcceptanceCorrection">Accepted record is wrong — initiate 1-7c(3) correction</option>
+                                    }
+                                    <option value="@ReconciliationDecision.RecordMissingHistoricalEvent">Record missing historical event (state what)</option>
+                                </select>
+                                <input type="text" name="Input.Narrative" maxlength="4000" placeholder="narrative" aria-label="Narrative for @d.FieldKey" />
+                                <button type="submit">Decide</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (v.Findings.Count > 0)
+{
+    <div class="panel">
+        <h2>Decisions on record (append-only)</h2>
+        <table>
+            <thead><tr><th>When</th><th>Who</th><th>Field</th><th>Decision</th><th>Companion</th><th>Scan</th><th>Narrative</th></tr></thead>
+            <tbody>
+            @foreach (var f in v.Findings)
+            {
+                <tr><td>@f.DecidedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td><td>@f.DecidedByName</td><td>@f.FieldKey</td><td>@f.Decision</td><td>@(f.CompanionValue ?? "—")</td><td>@(f.DocumentValue ?? "—")</td><td>@(f.Narrative ?? "—")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<p class="regulatory-note companion-statement"><strong>DIGITAL SCAN IS A COMPANION COPY AND THE PHYSICAL ORIGINAL DA FORM 4137 REMAINS AUTHORITATIVE.</strong></p>

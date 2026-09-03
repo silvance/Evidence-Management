@@ -75,7 +75,8 @@
             </p>
             @if (run.Outcome == Emc.Domain.Ocr.OcrRunOutcome.Succeeded)
             {
-                <p><a asp-page="/Documents/Verify" asp-route-id="@d.Id">Open the verification view</a></p>
+                <p><a asp-page="/Documents/Verify" asp-route-id="@d.Id">Open the verification view</a>
+                    @if (d.VoucherId is not null) { <span> · <a asp-page="/Documents/Reconcile" asp-route-id="@d.Id">Reconcile against the voucher</a></span> }</p>
             }
         }
     }

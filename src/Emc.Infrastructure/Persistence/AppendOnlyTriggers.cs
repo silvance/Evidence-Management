@@ -342,6 +342,29 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+
+    public const string CreateReconciliationFindingsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_ReconciliationFindings_AppendOnly_Update
+        ON dbo.ReconciliationFindings
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50027, 'ReconciliationFindings is append-only and cannot be modified: a later decision is a later row.', 1;
+        END;
+        """;
+
+    public const string CreateReconciliationFindingsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_ReconciliationFindings_AppendOnly_Delete
+        ON dbo.ReconciliationFindings
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50028, 'ReconciliationFindings is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -369,7 +392,9 @@ public static class AppendOnlyTriggers
         CreateFieldVerificationsUpdateTrigger,
         CreateFieldVerificationsDeleteTrigger,
         CreateOcrRunPagesUpdateTrigger,
-        CreateOcrRunPagesDeleteTrigger
+        CreateOcrRunPagesDeleteTrigger,
+        CreateReconciliationFindingsUpdateTrigger,
+        CreateReconciliationFindingsDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -399,6 +424,8 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_FieldVerifications_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_ReconciliationFindings_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_ReconciliationFindings_AppendOnly_Delete;"
     ];
 }

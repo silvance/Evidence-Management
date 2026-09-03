@@ -58,6 +58,7 @@ public static class DependencyInjection
         // web process never runs it (Phase 3C). See AddEmcOcrWorker.
         services.AddOptions<Emc.Application.Ocr.OcrOptions>().BindConfiguration(Emc.Application.Ocr.OcrOptions.SectionName);
         services.AddScoped<Emc.Application.Ocr.IOcrJobService, Emc.Application.Ocr.OcrJobService>();
+        services.AddScoped<Emc.Application.Reconciliation.IReconciliationService, Emc.Application.Reconciliation.ReconciliationService>();
         services.AddScoped<Emc.Application.Integrity.IIntegrityVerificationService,
             Emc.Application.Integrity.IntegrityVerificationService>();
 

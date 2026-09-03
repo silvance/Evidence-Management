@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903202908_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260903204224_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1563,6 +1563,70 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("OcrRunPages", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Reconciliation.ReconciliationFinding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CompanionValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("DecidedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("DecidedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Decision")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DocumentValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int?>("EvidenceItemId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Narrative")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("OcrRunId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DecidedByUserId");
+
+                    b.HasIndex("EvidenceItemId");
+
+                    b.HasIndex("OcrRunId");
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("SourceDocumentId", "FieldKey");
+
+                    b.ToTable("ReconciliationFindings", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoom", b =>
                 {
                     b.Property<int>("Id")
@@ -2319,6 +2383,38 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Reconciliation.ReconciliationFinding", b =>
+                {
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Cases.EvidenceItem", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Ocr.OcrRun", null)
+                        .WithMany()
+                        .HasForeignKey("OcrRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Documents.SourceDocument", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Cases.EvidenceVoucher", null)
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoomNumberingPolicy", b =>

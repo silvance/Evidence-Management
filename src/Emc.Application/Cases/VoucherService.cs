@@ -57,9 +57,13 @@ public sealed record RecordAgentCorrectionRequest(
 /// </summary>
 public sealed record WithdrawItemLineRequest(int ItemId, string Reason, bool AttestsNoPhysicalItemExists);
 
+/// <summary>The header blocks a draft (or a returned form) may still change: receiving activity, its location, and from whom received.</summary>
+public sealed record UpdateVoucherHeaderRequest(int VoucherId, string ReceivingActivity, string ReceivingActivityLocation, string ReceivedFrom);
+
 public interface IVoucherService
 {
     Task<OperationResult<int>> CreateDraftAsync(CreateVoucherRequest request, CancellationToken ct = default);
+    Task<OperationResult> UpdateHeaderAsync(UpdateVoucherHeaderRequest request, CancellationToken ct = default);
     Task<OperationResult<int>> AddItemAsync(AddItemRequest request, CancellationToken ct = default);
     Task<OperationResult> UpdateItemAsync(UpdateItemRequest request, CancellationToken ct = default);
     Task<OperationResult> RemoveItemAsync(int itemId, CancellationToken ct = default);
@@ -276,6 +280,35 @@ public sealed class VoucherService : IVoucherService
 
         await _db.SaveChangesAsync(ct);
         return OperationResult.Success([.. DescriptionWarnings(item)]);
+    }
+
+    public async Task<OperationResult> UpdateHeaderAsync(UpdateVoucherHeaderRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var voucher = await _db.EvidenceVouchers.Include(v => v.Items).Include(v => v.ReviewActions).FirstOrDefaultAsync(v => v.Id == request.VoucherId, ct);
+        if (voucher is null)
+        {
+            return OperationResult.Failure("Voucher not found.", "VCH-001");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(EmcPermissions.EditDraftVoucher, voucher.EvidenceRoomId, ct);
+        if (!decision.IsAllowed)
+        {
+            return (await DenyAsync<bool>(decision, nameof(EvidenceVoucher), voucher.Id.ToString(), ct)).ToUntyped();
+        }
+
+        try
+        {
+            voucher.UpdateHeader(request.ReceivingActivity, request.ReceivingActivityLocation, request.ReceivedFrom, voucher.Remarks);
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        _audit.Record(AuditEventType.AccountabilityActionRecorded, nameof(EvidenceVoucher), voucher.DisplayIdentifier, newValue: "Draft header updated");
+        await _db.SaveChangesAsync(ct);
+        return OperationResult.Success();
     }
 
     public async Task<OperationResult> RemoveItemAsync(int itemId, CancellationToken ct = default)

@@ -1037,6 +1037,60 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ReconciliationFindings",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OcrRunId = table.Column<int>(type: "int", nullable: false),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    VoucherId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceItemId = table.Column<int>(type: "int", nullable: true),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    FieldKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    CompanionValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    DocumentValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    Decision = table.Column<int>(type: "int", nullable: false),
+                    Narrative = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    DecidedByUserId = table.Column<int>(type: "int", nullable: false),
+                    DecidedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ReconciliationFindings", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ReconciliationFindings_EvidenceItems_EvidenceItemId",
+                        column: x => x.EvidenceItemId,
+                        principalTable: "EvidenceItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ReconciliationFindings_EvidenceVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ReconciliationFindings_OcrRuns_OcrRunId",
+                        column: x => x.OcrRunId,
+                        principalTable: "OcrRuns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ReconciliationFindings_SourceDocuments_SourceDocumentId",
+                        column: x => x.SourceDocumentId,
+                        principalTable: "SourceDocuments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ReconciliationFindings_Users_DecidedByUserId",
+                        column: x => x.DecidedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "FieldVerifications",
                 columns: table => new
                 {
@@ -1332,6 +1386,31 @@ namespace Emc.Infrastructure.Migrations
                 column: "OutgoingPrimaryAppointmentId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ReconciliationFindings_DecidedByUserId",
+                table: "ReconciliationFindings",
+                column: "DecidedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReconciliationFindings_EvidenceItemId",
+                table: "ReconciliationFindings",
+                column: "EvidenceItemId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReconciliationFindings_OcrRunId",
+                table: "ReconciliationFindings",
+                column: "OcrRunId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReconciliationFindings_SourceDocumentId_FieldKey",
+                table: "ReconciliationFindings",
+                columns: new[] { "SourceDocumentId", "FieldKey" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReconciliationFindings_VoucherId",
+                table: "ReconciliationFindings",
+                column: "VoucherId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_RoleAssignments_EvidenceRoomId",
                 table: "RoleAssignments",
                 column: "EvidenceRoomId");
@@ -1481,6 +1560,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "PrimaryCustodianTransitions");
+
+            migrationBuilder.DropTable(
+                name: "ReconciliationFindings");
 
             migrationBuilder.DropTable(
                 name: "RoleAssignments");

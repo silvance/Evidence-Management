@@ -33,6 +33,9 @@ public static class EmcPermissions
     /// <summary>Verify extracted fields against the scan. Transcription verification, not an accountability correction.</summary>
     public const string VerifyOcr = "ocr.verify";
 
+    /// <summary>Decide each difference between a verified scan and the companion record (REC-001). Applying to a draft additionally needs EditDraftVoucher; a 1-7c(3) correction needs RecordCorrection.</summary>
+    public const string ReconcileSourceDocument = "reconciliation.decide";
+
     // --- Evidence room surface (AR 195-5 1-4h, 2-4c, 2-4e, 2-7) ---
     public const string AcceptEvidenceIntake = "evidence.accept";
 
@@ -153,6 +156,7 @@ public static class EmcPermissions
             UploadSourceDocument,
             RequestOcr,
             VerifyOcr,
+            ReconcileSourceDocument,
             AcceptEvidenceIntake,
             ReturnVoucherForCorrection,
             ManagePhysicalFiles,

@@ -282,6 +282,11 @@ else
             <div class="form-row">
                 <label asp-for="Correction.CorrectedValue">Corrected value</label>
                 <input asp-for="Correction.CorrectedValue" autocomplete="off" />
+                <input type="hidden" asp-for="Correction.SourceDocumentId" />
+                @if (Model.Correction.SourceDocumentId is not null)
+                {
+                    <span class="hint">Provenance: source document @Model.Correction.SourceDocumentId (reconciled from the verified scan). The link is hashed into the correction event.</span>
+                }
                 <span class="hint">
                     For a free-text field. Leave blank when correcting a storage location.
                 </span>

@@ -17,6 +17,7 @@
     custody; that is reconciliation, a separate step, done explicitly.</p>
 
 <p><a asp-page="/Documents/View" asp-route-id="@d.Id">Back to the document</a>
+    @if (d.VoucherId is not null) { <span> · <a asp-page="/Documents/Reconcile" asp-route-id="@d.Id">Reconcile against the voucher</a> (separate step)</span> }
     @if (d.VoucherId is not null) { <span> · <a asp-page="/Vouchers/Details" asp-route-id="@d.VoucherId">Voucher @d.VoucherIdentifier</a></span> }</p>
 
 @if (run is null)
