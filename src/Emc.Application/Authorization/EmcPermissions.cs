@@ -108,7 +108,13 @@ public static class EmcPermissions
             RecordCustodyEvent,
             ReleaseTemporarily,
             ReturnFromTemporaryRelease,
-            PerformDisposition
+            PerformDisposition,
+
+            // AR 195-5 1-7c(3): correcting an incorrect entry in the ACCEPTED accountability record
+            // is the custodian's act ("If the primary or alternate custodian finds ..."). Found by
+            // the authorization matrix: an alternate holding the role with no open assumption of
+            // duties could record corrections while being denied every other custodian action.
+            RecordCorrection
         };
 
     /// <summary>

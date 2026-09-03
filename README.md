@@ -82,7 +82,7 @@ Air-gapped (the real thing): `scripts/airgap/Restore-Build-Test-Offline.ps1`, wh
 dependency bundle's hashes, restores from it alone in locked mode, builds and tests with no
 network. See `docs/air-gapped-build-and-maintenance.md`.
 
-**349 tests** (211 domain, 138 application, of which the 10 in the SQL Server lane are skipped unless opted in). Three lanes:
+**361 tests** (211 domain, 150 application, of which the 10 in the SQL Server lane are skipped unless opted in). Three lanes:
 
 - **Domain** — pure rules, no database.
 - **Application and pages, over SQLite in-memory** — real foreign keys, unique and filtered
