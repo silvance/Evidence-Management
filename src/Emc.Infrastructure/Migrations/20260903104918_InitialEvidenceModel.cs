@@ -317,6 +317,7 @@ namespace Emc.Infrastructure.Migrations
                     CurrencyTotalAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: true),
                     AccountabilityStatus = table.Column<int>(type: "int", nullable: false),
                     LastEventSequenceNumber = table.Column<int>(type: "int", nullable: false),
+                    LastEventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
                     ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
                 },
                 constraints: table =>

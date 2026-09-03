@@ -131,6 +131,16 @@ public class EvidenceItem : Entity, IConcurrencyStamped
     /// <summary>Highest event sequence issued for this item. Backs the per-item hash chain (I-07).</summary>
     public int LastEventSequenceNumber { get; private set; }
 
+    /// <summary>
+    /// Hash of the most recent event in this item's chain - the chain head (AUD-008).
+    ///
+    /// Held on the item rather than looked up per append, so that several events appended in one
+    /// unit of work chain to each other correctly. Querying the database for the previous hash
+    /// would return the last PERSISTED event and silently break the chain whenever more than one
+    /// event is recorded before SaveChanges - which is the normal case during intake.
+    /// </summary>
+    public string? LastEventHash { get; private set; }
+
     public Guid ConcurrencyStamp { get; set; }
 
     public IReadOnlyList<ItemEvent> Events => _events.AsReadOnly();
@@ -220,6 +230,8 @@ public class EvidenceItem : Entity, IConcurrencyStamped
 
         LastEventSequenceNumber++;
         itemEvent.AssignSequence(Id, LastEventSequenceNumber);
+        EventHashChain.Seal(itemEvent, LastEventHash);
+        LastEventHash = itemEvent.EventHash;
         _events.Add(itemEvent);
         return itemEvent;
     }

@@ -183,6 +183,7 @@ public sealed class EvidenceItemConfiguration : IEntityTypeConfiguration<Evidenc
         builder.Property(i => i.CurrencyDenominationBreakdown).HasMaxLength(2000);
         builder.Property(i => i.CurrencyTotalAmount).HasPrecision(18, 2);
         builder.Property(i => i.AccountabilityStatus).HasConversion<int>().IsRequired();
+        builder.Property(i => i.LastEventHash).HasMaxLength(64);
         builder.Property(i => i.ConcurrencyStamp).IsConcurrencyToken();
 
         // Invariant I-01 - item numbers unique within a voucher (AR 195-5 2-3d).

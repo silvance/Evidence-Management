@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903103728_InitialEvidenceModel")]
+    [Migration("20260903104918_InitialEvidenceModel")]
     partial class InitialEvidenceModel
     {
         /// <inheritdoc />
@@ -118,6 +118,10 @@ namespace Emc.Infrastructure.Migrations
 
                     b.Property<int>("ItemNumber")
                         .HasColumnType("int");
+
+                    b.Property<string>("LastEventHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<int>("LastEventSequenceNumber")
                         .HasColumnType("int");

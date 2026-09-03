@@ -1,7 +1,6 @@
 using Emc.Application.Abstractions;
 using Emc.Domain.Cases;
 using Emc.Domain.Events;
-using Microsoft.EntityFrameworkCore;
 
 namespace Emc.Application.Items;
 
@@ -32,20 +31,15 @@ public sealed class ItemEventRecorder : IItemEventRecorder
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(itemEvent);
 
-        // The item's last event, which this one chains to. Read from the database rather than
-        // from the in-memory collection so the chain is correct even when the item was loaded
-        // without its events.
-        var previousHash = await _db.ItemEvents
-            .AsNoTracking()
-            .Where(e => e.EvidenceItemId == item.Id)
-            .OrderByDescending(e => e.SequenceNumber)
-            .Select(e => e.EventHash)
-            .FirstOrDefaultAsync(cancellationToken);
-
+        // The item carries its own chain head (EvidenceItem.LastEventHash), so several events
+        // appended in one unit of work chain to each other correctly. Sequencing and sealing
+        // happen together inside AppendEvent, which is the only path that can produce a valid
+        // event (invariant I-07, AUD-008).
         item.AppendEvent(itemEvent);
-        EventHashChain.Seal(itemEvent, previousHash);
 
         _db.ItemEvents.Add(itemEvent);
+
+        await Task.CompletedTask;
         return itemEvent;
     }
 }

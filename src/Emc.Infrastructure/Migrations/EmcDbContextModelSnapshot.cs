@@ -116,6 +116,10 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("ItemNumber")
                         .HasColumnType("int");
 
+                    b.Property<string>("LastEventHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<int>("LastEventSequenceNumber")
                         .HasColumnType("int");
 

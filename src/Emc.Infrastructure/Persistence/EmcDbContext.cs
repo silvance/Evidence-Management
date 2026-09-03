@@ -7,6 +7,7 @@ using Emc.Domain.Identity;
 using Emc.Domain.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Emc.Infrastructure.Persistence;
 
@@ -36,6 +37,37 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     public DbSet<CustodyParty> CustodyParties => Set<CustodyParty>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<SystemConfiguration> SystemConfigurations => Set<SystemConfiguration>();
+
+    /// <summary>
+    /// SQLite cannot compare or order <see cref="DateTimeOffset"/> values, so a test run over
+    /// SQLite would fail on queries that SQL Server handles natively (for example, finding the
+    /// custodian appointment in force right now). Storing them as UTC ticks keeps those queries
+    /// translatable and correctly ordered under the test provider.
+    ///
+    /// This applies ONLY to SQLite. Under SQL Server - the production provider - DateTimeOffset
+    /// is stored as datetimeoffset and compared natively, unchanged by this.
+    ///
+    /// The offset itself is never lost: every event stores OccurredAtOffset separately, because
+    /// the DA Form 4137 and the evidence ledger record LOCAL time and EMC must be able to render
+    /// what the paper says (AUD-011).
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(configurationBuilder);
+
+        if (Database.IsSqlite())
+        {
+            configurationBuilder
+                .Properties<DateTimeOffset>()
+                .HaveConversion<DateTimeOffsetToBinaryConverter>();
+
+            configurationBuilder
+                .Properties<DateTimeOffset?>()
+                .HaveConversion<DateTimeOffsetToBinaryConverter>();
+        }
+
+        base.ConfigureConventions(configurationBuilder);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

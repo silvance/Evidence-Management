@@ -1,4 +1,3 @@
-
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -9,7 +8,7 @@ namespace Emc.Infrastructure.Migrations;
 /// Layer 3 of the append-only enforcement (docs/architecture.md §4.2).
 ///
 /// Installs INSTEAD OF UPDATE / DELETE triggers on the accountability tables. Layers 1 and 2
-/// (domain immutability and the SaveChanges guard) protect against mistakes made through the
+/// (domain immutability and the SaveChanges guard) protect against mistakes made THROUGH the
 /// application; this layer protects against changes made OUTSIDE it, including by an
 /// administrator using SSMS - which is the case IAM-009 is actually about.
 ///
@@ -21,7 +20,7 @@ public partial class AppendOnlyTriggers : Migration
     {
         ArgumentNullException.ThrowIfNull(migrationBuilder);
 
-        if (!migrationBuilder.ActiveProvider?.Contains("SqlServer", StringComparison.Ordinal) ?? true)
+        if (!IsSqlServer(migrationBuilder))
         {
             return;
         }
@@ -36,7 +35,7 @@ public partial class AppendOnlyTriggers : Migration
     {
         ArgumentNullException.ThrowIfNull(migrationBuilder);
 
-        if (!migrationBuilder.ActiveProvider?.Contains("SqlServer", StringComparison.Ordinal) ?? true)
+        if (!IsSqlServer(migrationBuilder))
         {
             return;
         }
@@ -46,4 +45,7 @@ public partial class AppendOnlyTriggers : Migration
             migrationBuilder.Sql(sql);
         }
     }
+
+    private static bool IsSqlServer(MigrationBuilder migrationBuilder)
+        => migrationBuilder.ActiveProvider?.Contains("SqlServer", StringComparison.Ordinal) == true;
 }
