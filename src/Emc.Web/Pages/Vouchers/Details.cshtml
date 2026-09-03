@@ -402,6 +402,24 @@
             <div class="form-row">
                 <label asp-for="DocumentNumber.ReceivedAtLocal">Date and time received (local)</label>
                 <input asp-for="DocumentNumber.ReceivedAtLocal" type="datetime-local" />
+                <span class="hint">
+                    Local time in the evidence room's own time zone, as written on the form or in
+                    the ledger. Interpreted in that zone, not the server's.
+                </span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="DocumentNumber.AmbiguousTimeChoice">If the time falls in the hour repeated when clocks fall back</label>
+                <select asp-for="DocumentNumber.AmbiguousTimeChoice">
+                    <option value="Unspecified">Not applicable</option>
+                    <option value="Earlier">First occurrence (still on daylight time)</option>
+                    <option value="Later">Second occurrence (after the change to standard time)</option>
+                </select>
+                <span class="hint">
+                    Once a year the 01:00 hour happens twice. A time in that hour is refused until
+                    you say which occurrence is meant; a time in the hour skipped in spring is
+                    refused outright. The application never picks for you.
+                </span>
             </div>
 
             @if (Model.HasOfficialDocumentNumber)

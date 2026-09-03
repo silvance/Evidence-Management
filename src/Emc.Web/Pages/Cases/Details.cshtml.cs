@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Emc.Application.Authorization;
 using Emc.Application.Reads;
+using Emc.Application.Time;
 using Emc.Application.Cases;
 using Emc.Domain.Common;
 using Emc.Web.Security;
@@ -15,12 +16,16 @@ public class DetailsModel : PageModel
     private readonly IVoucherService _vouchers;
     private readonly IEmcPageAuthorization _authorization;
 
+    private readonly IEvidenceRoomTimeService _time;
+
     public DetailsModel(
-        IEvidenceReadService reads, IVoucherService vouchers, IEmcPageAuthorization authorization)
+        IEvidenceReadService reads, IVoucherService vouchers, IEmcPageAuthorization authorization,
+        IEvidenceRoomTimeService time)
     {
         _reads = reads;
         _vouchers = vouchers;
         _authorization = authorization;
+        _time = time;
     }
 
     public string CaseControlNumber { get; private set; } = string.Empty;
@@ -41,7 +46,8 @@ public class DetailsModel : PageModel
             return NotFound();
         }
 
-        Input.AcquiredAtLocal = DateTime.Now;
+        // The room's wall clock now, from the application clock - not the host's.
+        Input.AcquiredAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
         return Page();
     }
 
@@ -69,8 +75,19 @@ public class DetailsModel : PageModel
             return Page();
         }
 
-        var acquiredAtLocal = new DateTimeOffset(
-            Input.AcquiredAtLocal, TimeZoneInfo.Local.GetUtcOffset(Input.AcquiredAtLocal));
+        // AUD-011 / AUD-020. Interpreted in the evidence room's zone, never the web server's;
+        // a time in the repeated or skipped DST hour is refused with an explanation.
+        var acquired = await _time.ResolveLocalAsync(
+            EvidenceRoomId, Input.AcquiredAtLocal, Input.AmbiguousTimeChoice);
+
+        if (!acquired.Succeeded)
+        {
+            Messages.Error = acquired.Error;
+            Messages.RequirementId = acquired.RequirementId;
+            return Page();
+        }
+
+        var acquiredAtLocal = acquired.Value!.Value;
 
         var result = await _vouchers.CreateDraftAsync(new CreateVoucherRequest(
             CaseId: id,
@@ -131,6 +148,9 @@ public class DetailsModel : PageModel
 
         [Required]
         public DateTime AcquiredAtLocal { get; set; }
+
+        /// <summary>Only for a time in the hour repeated when clocks fall back (AUD-020).</summary>
+        public AmbiguousLocalTimeChoice AmbiguousTimeChoice { get; set; }
 
         public bool IsRequestForAssistance { get; set; }
 

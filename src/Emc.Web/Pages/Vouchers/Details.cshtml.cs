@@ -3,6 +3,7 @@ using System.Text.Json;
 using Emc.Application.Authorization;
 using Emc.Application.Cases;
 using Emc.Application.Reads;
+using Emc.Application.Time;
 using Emc.Domain.Cases;
 using Emc.Domain.Common;
 using Emc.Web.Security;
@@ -25,20 +26,25 @@ public class DetailsModel : PageModel
     private readonly IEvidenceIntakeService _intake;
     private readonly IEmcPageAuthorization _authorization;
 
+    private readonly IEvidenceRoomTimeService _time;
+
     public DetailsModel(
         IEvidenceReadService reads,
         IVoucherService vouchers,
         IEvidenceIntakeService intake,
-        IEmcPageAuthorization authorization)
+        IEmcPageAuthorization authorization,
+        IEvidenceRoomTimeService time)
     {
         _reads = reads;
         _vouchers = vouchers;
         _intake = intake;
         _authorization = authorization;
+        _time = time;
     }
 
     public int VoucherId { get; private set; }
     public int CaseId { get; private set; }
+    public int EvidenceRoomId { get; private set; }
     public string CaseControlNumber { get; private set; } = string.Empty;
     public string? RequestingOfficeCaseNumber { get; private set; }
     public string DisplayIdentifier { get; private set; } = string.Empty;
@@ -228,9 +234,20 @@ public class DetailsModel : PageModel
             return Page();
         }
 
-        var receivedAtLocal = new DateTimeOffset(
-            DocumentNumber.ReceivedAtLocal,
-            TimeZoneInfo.Local.GetUtcOffset(DocumentNumber.ReceivedAtLocal));
+        // AUD-011 / AUD-020. The time typed is the room's wall clock, interpreted in the
+        // room's zone - never the web server's. A time in the repeated or skipped DST hour is
+        // refused with an explanation rather than resolved by default.
+        var received = await _time.ResolveLocalAsync(
+            EvidenceRoomId, DocumentNumber.ReceivedAtLocal, DocumentNumber.AmbiguousTimeChoice);
+
+        if (!received.Succeeded)
+        {
+            Messages.Error = received.Error;
+            Messages.RequirementId = received.RequirementId;
+            return Page();
+        }
+
+        var receivedAtLocal = received.Value!.Value;
 
         var result = await _intake.RecordOfficialDocumentNumberAsync(new RecordDocumentNumberRequest(
             VoucherId: id,
@@ -305,6 +322,7 @@ public class DetailsModel : PageModel
 
         VoucherId = view.Id;
         CaseId = view.CaseId;
+        EvidenceRoomId = view.EvidenceRoomId;
         CaseControlNumber = view.CaseControlNumber;
         RequestingOfficeCaseNumber = view.RequestingOfficeCaseNumber;
         DisplayIdentifier = view.DisplayIdentifier;
@@ -363,7 +381,8 @@ public class DetailsModel : PageModel
 
         if (DocumentNumber.ReceivedAtLocal == default)
         {
-            DocumentNumber.ReceivedAtLocal = DateTime.Now;
+            // The room's wall clock now, from the application clock - not the host's.
+            DocumentNumber.ReceivedAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
         }
 
         return true;
@@ -434,6 +453,9 @@ public class DetailsModel : PageModel
         public int? ConfirmedCalendarYear { get; set; }
 
         public DateTime ReceivedAtLocal { get; set; }
+
+        /// <summary>Only for a time in the hour repeated when clocks fall back (AUD-020).</summary>
+        public AmbiguousLocalTimeChoice AmbiguousTimeChoice { get; set; }
 
         /// <summary>EMC-002 / VCH-006 - an explicit, stored custodian attestation.</summary>
         public bool AttestedAssignedInAuthoritativeLedger { get; set; }

@@ -4,6 +4,7 @@ using Emc.Application.Authorization;
 using Emc.Application.Cases;
 using Emc.Application.Items;
 using Emc.Application.Reads;
+using Emc.Application.Time;
 using Emc.Domain.Common;
 using Emc.Domain.Events;
 using Emc.Web.Security;
@@ -29,13 +30,16 @@ public class HistoryModel : PageModel
     private readonly IEmcPageAuthorization _authorization;
     private readonly IClock _clock;
 
+    private readonly IEvidenceRoomTimeService _time;
+
     public HistoryModel(
         IEmcDbContext db,
         IEvidenceReadService reads,
         IItemHistoryService history,
         IEvidenceIntakeService intake,
         IEmcPageAuthorization authorization,
-        IClock clock)
+        IClock clock,
+        IEvidenceRoomTimeService time)
     {
         _db = db;
         _reads = reads;
@@ -43,10 +47,12 @@ public class HistoryModel : PageModel
         _intake = intake;
         _authorization = authorization;
         _clock = clock;
+        _time = time;
     }
 
     public ItemHistoryView? View { get; private set; }
     public int VoucherId { get; private set; }
+    public int EvidenceRoomId { get; private set; }
     public IReadOnlyList<LocationOption> Locations { get; private set; } = [];
     public IReadOnlyList<UserOption> Supervisors { get; private set; } = [];
 
@@ -88,8 +94,19 @@ public class HistoryModel : PageModel
             return Page();
         }
 
-        var occurredAtLocal = new DateTimeOffset(
-            Location.OccurredAtLocal, TimeZoneInfo.Local.GetUtcOffset(Location.OccurredAtLocal));
+        // AUD-011 / AUD-020. Interpreted in the evidence room's zone, never the web server's;
+        // a time in the repeated or skipped DST hour is refused with an explanation.
+        var occurred = await _time.ResolveLocalAsync(
+            EvidenceRoomId, Location.OccurredAtLocal, Location.AmbiguousTimeChoice);
+
+        if (!occurred.Succeeded)
+        {
+            Messages.Error = occurred.Error;
+            Messages.RequirementId = occurred.RequirementId;
+            return Page();
+        }
+
+        var occurredAtLocal = occurred.Value!.Value;
 
         var result = await _intake.AssignStorageLocationAsync(new AssignLocationRequest(
             ItemId: id,
@@ -199,6 +216,8 @@ public class HistoryModel : PageModel
             return false;
         }
 
+        EvidenceRoomId = evidenceRoomId.Value;
+
         VoucherId = await _db.EvidenceItems
             .AsNoTracking()
             .Where(i => i.Id == id)
@@ -247,7 +266,8 @@ public class HistoryModel : PageModel
 
         if (Location.OccurredAtLocal == default)
         {
-            Location.OccurredAtLocal = DateTime.Now;
+            // The room's wall clock now, from the application clock - not the host's.
+            Location.OccurredAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
         }
 
         if (TempData["Success"] is string success)
@@ -274,6 +294,9 @@ public class HistoryModel : PageModel
         public int StorageLocationId { get; set; }
 
         public DateTime OccurredAtLocal { get; set; }
+
+        /// <summary>Only for a time in the hour repeated when clocks fall back (AUD-020).</summary>
+        public AmbiguousLocalTimeChoice AmbiguousTimeChoice { get; set; }
 
         [StringLength(1000)]
         public string? Reason { get; set; }

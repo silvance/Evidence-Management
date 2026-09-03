@@ -74,7 +74,13 @@ BEGIN
             N'902d MI Group',                 -- <-- EDIT
 
             /* The DA Form 4137 and the evidence ledger record LOCAL time (para 2-5b,
-               "03 SEP 26 09:15"), so the room's zone drives display. */
+               "03 SEP 26 09:15"). Every local time entered for this room is interpreted in
+               THIS zone, never the server's (AUD-011, AUD-020).
+
+               Use an id the HOST resolves natively: the application is built with invariant
+               globalization, so there is no Windows/IANA conversion at run time. On the IIS
+               host that is a Windows id ("Eastern Standard Time", "Central Standard Time").
+               An unknown id is a reported configuration error for the room. */
             N'Eastern Standard Time',         -- <-- EDIT
             1, NEWID());
 END;

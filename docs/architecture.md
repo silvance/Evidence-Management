@@ -271,6 +271,34 @@ The read model shows the corrected value with a visible **"Corrected"** marker; 
 one click away and is never hidden from the item history. The regulation's own metaphor is a
 line through an entry that can still be read, and the UI keeps that metaphor.
 
+### 4.4a Local time is the evidence room's, not the server's
+
+AR 195-5 records local time — the ledger example is "03 SEP 26 09:15" (2-5b) and every
+chain-of-custody entry carries a date and time (2-3f). EMC stores each local instant **with the
+offset it had in the evidence room's zone** (`EvidenceRoom.TimeZoneId`), so what the paper says
+and what the record says agree (AUD-011).
+
+All interpretation goes through one service, `IEvidenceRoomTimeService`, backed by the pure
+`LocalTimeInterpretation`. No page or service touches `TimeZoneInfo.Local` or `DateTime.Now`
+(AUD-019): the earlier pages did, which meant a UTC-hosted IIS server would have recorded "09:15"
+as 09:15Z and put every event four or five hours off the form. A test changes the process's own
+zone three times and shows the interpretation does not move.
+
+Daylight-saving edge cases are **explicit, never defaulted** (AUD-020):
+
+- A time in the repeated hour (01:30 on the first Sunday of November, in a US zone) is
+  *ambiguous*. It is refused until the custodian states which occurrence is meant — the form has
+  a field for exactly that — because which one it was is a fact only they know.
+- A time in the skipped hour (02:30 on the second Sunday of March) is *nonexistent* and is
+  refused outright. Substituting an adjacent time would be inventing when something happened.
+
+**Deployment constraint.** The solution is built with `InvariantGlobalization=true`, so no
+Windows↔IANA zone-id conversion exists at run time. A room's `TimeZoneId` must be an identifier
+the host resolves natively: a Windows id such as `Eastern Standard Time` on the IIS host; an
+IANA id such as `America/New_York` on Linux development and test hosts. An id the host does not
+know is reported as a configuration error for that room, never silently replaced by the host's
+zone.
+
 ### 4.5 Two distinct logs
 
 | | `ItemEvents` (+ `Inspections`, `InventoryObservations`, …) | `AuditEvents` | Diagnostic logs |
