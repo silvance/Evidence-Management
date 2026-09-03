@@ -16,6 +16,15 @@ dotnet build                                   # fails on any advisory
 dotnet list <project> package --vulnerable --include-transitive
 ```
 
+## Where the audit runs
+
+The audit runs where there is data to audit against: the **connected staging environment**, at
+dependency-bundle export (`scripts/staging/Export-DependencyBundle.ps1`), which **fails on any
+finding** and writes `audit-report.txt` into the bundle. The **air-gapped build** restores only
+the exact locked packages that audit covered and sets `EMC_OFFLINE=true`, which turns `NuGetAudit`
+off for that build because a folder of packages is not an audit source. **An offline build never
+claims to have audited.** Details: `docs/air-gapped-build-and-maintenance.md`.
+
 ## Process
 
 1. **Any new NU1903 must be resolved, or assessed and recorded here, before it is merged.**

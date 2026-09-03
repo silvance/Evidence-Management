@@ -55,14 +55,16 @@ Integrity lives in the database, not only in the UI (engineering principle 7):
 
 | Constraint | Purpose |
 |---|---|
-| `UX_DocumentNumber_PerRoomPerYear` | AR 195-5 2-4c / 2-7g — the document-number series is unique per **evidence room, per calendar year**, among non-superseded assignments. Filtered so a number superseded under 2-7g does not block the series (invariant I-04) |
-| `UX_DocumentNumber_OneCurrentPerVoucher` | At most one current document number per voucher (invariant I-05) |
+| Unique index over `(EvidenceRoomId, CalendarYear, Sequence)` on `OfficialDocumentNumberAssignments` | AR 195-5 2-4c / 2-7g — the canonical document number is unique per **evidence room, per calendar year**, across **all** assignment history. **Unfiltered**: once recorded, a number is consumed for good, superseded or not (VCH-011, invariant I-04). The written text (`001-26` or a local `26-01`) is presentation; identity is canonical (VCH-023) |
 | `UX_ItemEvents_ItemSequence` | Event sequence numbers unique per item — also what makes a removed row detectable as a gap during chain verification (invariant I-07) |
 | `UX_CustodianAppointments_OneOpenPerType` | AR 195-5 1-4g(1) — one open primary and one open alternate appointment per evidence room (invariant I-06) |
 | `IX_EvidenceItems_VoucherId_ItemNumber` | Item numbers unique within a voucher (invariant I-01) |
-| `TR_ItemEvents_AppendOnly_Update` / `_Delete` | Append-only accountability history. Permits only `SupersededByEventId`, null → value, once |
+| `TR_ItemEvents_AppendOnly_Update` / `_Delete` | Append-only accountability history. **Unconditional**: every `UPDATE` and `DELETE` is rejected, on every column including table-per-hierarchy subtype columns. Corrections are new rows that reference backward (`CorrectsEventId`); nothing is ever updated |
 | `TR_AuditEvents_AppendOnly_Update` / `_Delete` | Append-only security audit |
-| `TR_DocumentNumbers_AppendOnly_Update` / `_Delete` | AR 195-5 2-7g — a prior document number is superseded, never rewritten |
+| `TR_DocumentNumbers_AppendOnly_Update` / `_Delete` | AR 195-5 2-7g — a prior document number is superseded by a new assignment that names it (`SupersedesAssignmentId`), never rewritten |
+| `TR_VoucherReviewActions_AppendOnly_Update` / `_Delete` | AR 195-5 2-3g — the record of the custodian's pre-acceptance review is kept as it happened |
+| Unique index over `(EvidenceRoomId, Date)` on `TemporaryIdentifierCounters` | Collision-safe temporary-identifier allocation (VCH-024); the counter row carries a concurrency stamp |
+| `EvidenceRoomNumberingPolicies` | Effective-dated per-room document-number layout (VCH-023). The regulation's layout applies when a room has none |
 
 ## Least privilege
 
@@ -76,8 +78,14 @@ reader** even if the triggers are removed.
 
 ## Tests
 
-Integration tests run against **SQLite in-memory**, not SQL Server, so they need no database
-server. SQLite is a test-only dependency — no production assembly references it. The append-only
-triggers are SQL Server-only; the tests cover the domain and `SaveChanges` layers of the same
-guard, and separately verify that hash-chain verification detects raw-SQL modification and
-deletion.
+Everyday integration tests run against **SQLite in-memory**, not SQL Server, so they need no
+database server. SQLite is a test-only dependency — no production assembly references it. **The
+append-only triggers are SQL Server-only and SQLite does not exercise them**; those tests cover
+the domain and `SaveChanges` layers of the same guard, and verify that hash-chain and snapshot
+verification detect raw-SQL modification and deletion.
+
+The **SQL Server release-validation lane** (`tests/Emc.Application.Tests/SqlServer`, opt-in via
+`EMC_SQLSERVER_TEST_CONNECTION`) applies the committed migrations to an empty database on an
+approved local instance and proves every trigger, the unique and filtered indexes, concurrency
+conflicts and `datetimeoffset` round-trips as deployed. It runs offline. It is a release gate. See
+`docs/air-gapped-build-and-maintenance.md`.

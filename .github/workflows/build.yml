@@ -1,0 +1,51 @@
+# CONNECTED-STAGING automation for this public development repository.
+#
+# This workflow is a convenience for public development. It is NOT a deployment prerequisite and
+# NOT the authoritative release-validation procedure: that runs completely offline
+# (docs/air-gapped-build-and-maintenance.md). Nothing here may ever see real evidence data.
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      # Locked mode: restore fails rather than resolve anything the committed lock files do not name.
+      - run: dotnet restore Emc.sln --configfile NuGet.Config --locked-mode -p:ContinuousIntegrationBuild=true
+      - run: dotnet build Emc.sln --no-restore -c Release -p:ContinuousIntegrationBuild=true
+      - run: dotnet test Emc.sln --no-build -c Release -p:ContinuousIntegrationBuild=true
+      # The audit, against current data. Any finding fails.
+      - run: dotnet list Emc.sln package --vulnerable --include-transitive | tee audit-report.txt && ! grep -q "has the following vulnerable packages" audit-report.txt
+
+  sqlserver-lane:
+    # The same lane the air-gapped release procedure runs against an approved local instance,
+    # exercised here against a disposable SQL Server so it stays green during public development.
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "CiOnlyTestPassw0rd!"
+        ports: ["1433:1433"]
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P CiOnlyTestPassw0rd! -Q 'SELECT 1' || exit 1"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      EMC_SQLSERVER_TEST_CONNECTION: "Server=localhost,1433;User Id=sa;Password=CiOnlyTestPassw0rd!;TrustServerCertificate=true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Emc.sln --configfile NuGet.Config --locked-mode -p:ContinuousIntegrationBuild=true
+      - run: dotnet test tests/Emc.Application.Tests --filter "FullyQualifiedName~SqlServer" -p:ContinuousIntegrationBuild=true

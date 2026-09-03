@@ -117,6 +117,17 @@ public class AccountabilityStateTests
     }
 
     [Fact]
+    public void TemporaryReleaseIsAnAccountabilityState_NotAStorageLocationKind()
+    {
+        // LOC-005. AR 195-5 2-7a/2-7b: a temporary release is evidence being OUT of the room in
+        // someone's custody, not a place in it. The model has the state and no such location.
+        Assert.True(Enum.IsDefined(AccountabilityStatus.TemporarilyReleased));
+        Assert.DoesNotContain(
+            Enum.GetNames<Emc.Domain.Common.StorageLocationKind>(),
+            n => n.Contains("Release", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ReliefGrantedIsTerminal()
     {
         // AR 195-5 3-3c - relief "permits the closure of the DA Form 4137" (LOSS-005).

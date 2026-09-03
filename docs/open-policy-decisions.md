@@ -12,39 +12,47 @@ it in the UI as a local policy setting, and records it here as provisional.
 
 ---
 
-## DEC-01 — Do CI units conduct quarterly inventories?
+## DEC-01 — Do CI units conduct a separate quarterly inventory?
 
-**Ambiguity (AMB-01).**
+**Revised.** The earlier version of this entry treated frequency and method as one question and
+recommended reading 3-2b's exemption broadly. The three questions are separate, and only the
+third is genuinely open.
 
-- **3-2a(1)** — "Inventories will be conducted ... once in each calendar quarter."
+**The text.**
+
+- **3-1b(2)** — during the regular **monthly** CI inspection, a **100 percent joint inventory** is
+  conducted. **[REG]**
+- **3-2a(1)** — inventories "will be conducted ... once in each calendar quarter." **[REG]**
 - **3-2b** — "**Quarterly inventories.** (CI units are exempt from the requirements of **this
-  paragraph** but must adhere to the standards of AR 380-5.)" The subparagraphs of 3-2b are
-  3-2b(1) *disinterested officer inventories* and 3-2b(2) *reverse inventories*.
+  paragraph** ...)". Its subparagraphs prescribe the *methods*: 3-2b(1) disinterested-officer
+  inventories and 3-2b(2) reverse inventories.
 
-It is unclear whether the CI exemption removes the **quarterly cadence** itself (3-2a(1)), or only
-the two **methods** prescribed in 3-2b.
+**1. Frequency.** Settled by arithmetic, not interpretation: a monthly 100 percent joint inventory
+**occurs in every calendar quarter**. Whatever 3-2a(1) requires as to *occurrence*, the CI regime
+under 3-1b(2) meets it.
 
-**Why EMC cannot decide.** Both readings are defensible from the text. The reading determines
-whether a quarterly inventory appears on the compliance calendar, and which ledger certification
-statement applies — 3-2g(1)'s quarterly wording or 3-1b(2)'s CI monthly wording.
+**2. Method.** 3-2b's exemption unambiguously relieves CI units of the 3-2b(1) and 3-2b(2)
+*methods*. The CI method is the 3-1b(2) joint inventory, with the 3-2g(1)-style certification
+statement in the ledger as 3-1b(2) prescribes.
 
-**Mitigating fact.** CI units already conduct a **monthly 100 percent joint inventory** under
-**3-1b(2)** — a strictly higher frequency than quarterly. Under either reading the evidence is
-inventoried at least monthly.
+**3. Whether the monthly joint inventory *is* the quarterly inventory, or a separate quarterly
+event is still required.** This is the open question. Reading A: 3-2b's exemption covers the
+methods only, and a distinct "quarterly inventory" event remains owed under 3-2a(1). Reading B:
+the monthly joint inventory satisfies 3-2a(1)'s occurrence requirement and nothing further is
+owed. The text does not settle it, and **EMC will not invent an interpretation the text does not
+support.**
 
-**Options**
+**What EMC does.** It **does not automatically schedule an additional "quarterly" inventory
+session for a CI evidence room.** The monthly 100 percent joint inventory is the scheduled event
+(INV-011). If the organization holds a policy interpretation requiring a distinct quarterly
+event, that is recorded as a **[LOCAL]** setting and EMC schedules it; absent one, scheduling a
+redundant session would be EMC asserting Reading A on its own authority.
 
-| | Reading | Effect |
-|---|---|---|
-| A | Exemption covers the methods only; CI still conducts a quarterly inventory by some method | An additional quarterly session appears on the calendar |
-| B | Exemption covers the quarterly requirement entirely; 3-1b(2) monthly joint inventory is the CI regime | Monthly only |
-| C | Request a formal interpretation from the proponent via DCS G-2 (1-6c) | Definitive |
+**Recommendation.** Operate on Reading B for scheduling purposes, and pursue **C** — a formal
+interpretation from the proponent via DCS G-2 (**1-6c**) — because this is precisely what that
+channel exists for. Record the answer here.
 
-**Recommendation:** operate on **B**, since 3-2b's title and its two subparagraphs are the
-paragraph being exempted and the monthly regime is more demanding — but pursue **C**, because this
-is precisely the kind of question the waiver/interpretation channel in 1-6c exists for.
-
-**Blocks:** INV-011.
+**Blocks:** INV-011 (whether a separate quarterly session is configured).
 
 ---
 

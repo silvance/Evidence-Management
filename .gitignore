@@ -32,3 +32,8 @@ Thumbs.db
 
 ## Uploaded source documents are never stored in the repository
 uploads/
+
+# Air-gap dependency bundle: GENERATED in connected staging and transferred by approved media.
+# Never committed; its manifest is reviewed at import. See docs/air-gapped-build-and-maintenance.md.
+dependency-bundle/*
+!dependency-bundle/README.md

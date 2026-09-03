@@ -21,33 +21,55 @@ namespace Emc.Application.Tests;
 /// none of those, so it would pass tests that production would fail - which for an
 /// accountability system is the worst kind of green.
 /// </summary>
-public sealed class SliceTestHarness : IDisposable
+public class SliceTestHarness : IDisposable
 {
-    private readonly SqliteConnection _connection;
+    private readonly SqliteConnection? _connection;
 
     public SliceTestHarness()
+        : this(SqliteOptions(out var connection), useMigrations: false)
     {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
+        _connection = connection;
+    }
 
-        // SQLite does not enforce foreign keys unless asked.
-        using (var pragma = _connection.CreateCommand())
-        {
-            pragma.CommandText = "PRAGMA foreign_keys = ON;";
-            pragma.ExecuteNonQuery();
-        }
-
-        _options = new DbContextOptionsBuilder<EmcDbContext>()
-            .UseSqlite(_connection)
-            .Options;
-
+    /// <summary>
+    /// A harness over any provider. The SQL Server release-validation lane uses this with
+    /// <paramref name="useMigrations"/> true, so the schema comes from the committed migrations -
+    /// triggers included - rather than from EnsureCreated, which SQLite uses and which builds no
+    /// triggers at all.
+    /// </summary>
+    protected SliceTestHarness(DbContextOptions<EmcDbContext> options, bool useMigrations)
+    {
+        _options = options;
         Db = new EmcDbContext(_options);
-        Db.Database.EnsureCreated();
+
+        if (useMigrations)
+        {
+            Db.Database.Migrate();
+        }
+        else
+        {
+            Db.Database.EnsureCreated();
+        }
 
         Clock = new TestClock(new DateTimeOffset(2026, 9, 3, 13, 15, 0, TimeSpan.Zero));
         CurrentUser = new TestCurrentUser();
 
         Seed();
+    }
+
+    private static DbContextOptions<EmcDbContext> SqliteOptions(out SqliteConnection connection)
+    {
+        connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        // SQLite does not enforce foreign keys unless asked.
+        using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA foreign_keys = ON;";
+            pragma.ExecuteNonQuery();
+        }
+
+        return new DbContextOptionsBuilder<EmcDbContext>().UseSqlite(connection).Options;
     }
 
     private readonly DbContextOptions<EmcDbContext> _options;
@@ -377,10 +399,11 @@ public sealed class SliceTestHarness : IDisposable
         Db.SaveChanges();
     }
 
-    public void Dispose()
+    public virtual void Dispose()
     {
         Db.Dispose();
-        _connection.Dispose();
+        _connection?.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

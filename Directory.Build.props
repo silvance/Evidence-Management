@@ -17,5 +17,22 @@
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>low</NuGetAuditLevel>
+
+    <!-- AIR-GAP SUPPLY CHAIN (docs/air-gapped-build-and-maintenance.md).
+
+         Every project writes packages.lock.json, and the lock files are committed: the exact
+         dependency graph is part of the reviewed source. An unexplained lock-file change IS a
+         dependency change. Floating versions are not used anywhere.
+
+         EMC_OFFLINE=true is set by the air-gapped restore script and by nothing else:
+           - locked mode, so restore fails rather than resolving anything the lock does not name;
+           - NuGetAudit off, because the offline bundle folder carries no vulnerability data. The
+             audit is performed in the CONNECTED STAGING environment as part of producing the
+             bundle, and its report travels with the bundle; the offline build restores only the
+             packages that audit covered. Turning the audit off here is never a statement that
+             the packages were checked against current data on the offline host. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(EMC_OFFLINE)' == 'true' or '$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
+    <NuGetAudit Condition="'$(EMC_OFFLINE)' == 'true'">false</NuGetAudit>
   </PropertyGroup>
 </Project>

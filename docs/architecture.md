@@ -46,14 +46,15 @@ corrections, signed certifications) rather than the ledger's *paper*.
 
 | Concern | Choice | Why |
 |---|---|---|
-| Runtime | **.NET 8 (LTS)** | Long-term support; the version an Army-controlled Windows environment is most likely to already carry. `global.json` pins the SDK band. |
+| Runtime | **.NET 10 (LTS, supported to November 2028)** | Retargeted from .NET 8 as a security action (`docs/dependency-advisories.md`). `global.json` pins the **exact** SDK with roll-forward disabled: the air-gapped host builds with the SDK in the bundle or not at all. |
 | Web | **ASP.NET Core Razor Pages** | Server-side rendering. Page-per-screen matches a forms-and-workflow application, and one developer can hold it in their head. MVC's controller/action indirection buys nothing here. |
-| Data | **Entity Framework Core 8**, code-first, **SQL Server** | Migrations are source-controlled and reproducible (`Emc.Infrastructure/Migrations`). |
+| Data | **Entity Framework Core 10**, code-first, **SQL Server** | Migrations are source-controlled and reproducible (`Emc.Infrastructure/Migrations`); `db/schema-v1.sql` is the reviewable script. |
 | Hosting | **IIS**, in-process, on-premises | No internet dependency for normal operation. |
 | AuthN | **Windows Authentication (Negotiate/Kerberos)** | See §8. **EMC stores no passwords.** |
 | Client JS | **None beyond the ASP.NET Core defaults** | No SPA framework. Progressive enhancement only. |
 | Logging | **Microsoft.Extensions.Logging** to rolling files + Windows Event Log | Structured, local, no telemetry egress. |
-| Tests | **xUnit**; SQLite in-memory for relational tests | Real relational semantics (FKs, unique indexes, transactions) with no SQL Server dependency in CI. |
+| Tests | **xUnit**; SQLite in-memory for relational tests; an **opt-in SQL Server lane** | Real relational semantics (FKs, unique indexes, transactions) with no SQL Server dependency for everyday runs; the SQL Server lane (§12) proves triggers, filtered indexes and constraints as deployed. |
+| Supply chain | **Air-gapped.** Pinned SDK, committed `packages.lock.json`, `NuGet.Offline.Config` with sources cleared, hashed dependency bundle | `docs/air-gapped-build-and-maintenance.md`. No run-time or build-time Internet dependency. |
 
 **Explicitly excluded:** microservices, message brokers, Redis, containers as a *requirement*,
 cloud services of any kind, client-side frameworks, GraphQL, and any component whose failure
