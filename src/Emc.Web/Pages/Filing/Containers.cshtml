@@ -1,0 +1,73 @@
+@page "/Filing/Containers/{roomId:int}"
+@model Emc.Web.Pages.Filing.ContainersModel
+@using Emc.Domain.Filing
+@{
+    ViewData["Title"] = "Paper DA Form 4137 files";
+}
+
+<h1>Paper DA Form 4137 files</h1>
+<partial name="_Messages" model="Model.Messages" />
+
+<p class="regulatory-note">
+    AR 195-5 para 2-4f(1): active DA Forms 4137 are filed in numerical sequence, no more than
+    50 vouchers with attached documents per folder or binder, the number range shown on the
+    outside. Para 2-4f(3): at least three suspense folders — USACIL, ADJUDICATION, PENDING
+    DISPOSITION APPROVAL. Para 2-4h: inactive files labeled by month and year of disposition,
+    maintained in the evidence room. Folder or binder is the unit's choice.
+</p>
+
+<div class="panel">
+    <table>
+        <thead><tr><th>Kind</th><th>Label</th><th>Range / disposition</th><th>Form</th><th>Vouchers</th><th>Status</th></tr></thead>
+        <tbody>
+        @foreach (var c in Model.Containers)
+        {
+            <tr>
+                <td>@c.Kind</td>
+                <td>@c.Label</td>
+                <td>@(c.DispositionLabel ?? $"{c.RangeFrom} – {c.RangeTo}")</td>
+                <td>@c.Form</td>
+                <td class="numeric">@c.VouchersFiled@(c.Kind == PhysicalFileKind.Active4137File ? $" / {PhysicalFileContainer.ActiveFileVoucherCapacity}" : "")</td>
+                <td>@(c.IsActive ? "Open" : "Closed")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (Model.CanManage)
+{
+    <div class="panel">
+        <h2>Record a file container</h2>
+        <form method="post" asp-route-roomId="@Model.EvidenceRoomId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+            <div class="form-row">
+                <label asp-for="Input.Kind">Kind</label>
+                <select asp-for="Input.Kind" asp-items="Html.GetEnumSelectList<PhysicalFileKind>()"></select>
+            </div>
+            <div class="form-row">
+                <label asp-for="Input.Form">Folder or binder</label>
+                <select asp-for="Input.Form" asp-items="Html.GetEnumSelectList<ContainerForm>()"></select>
+            </div>
+            <div class="form-row">
+                <label asp-for="Input.Label">Label (as written on the outside)</label>
+                <input asp-for="Input.Label" autocomplete="off" />
+            </div>
+            <div class="form-row">
+                <label asp-for="Input.RangeFrom">Document-number range (active files)</label>
+                <input asp-for="Input.RangeFrom" placeholder="001-26" autocomplete="off" />
+                <input asp-for="Input.RangeTo" placeholder="050-26" autocomplete="off" />
+            </div>
+            <div class="form-row">
+                <label asp-for="Input.DispositionMonth">Disposition month / year (inactive files, para 2-4h)</label>
+                <input asp-for="Input.DispositionMonth" type="number" min="1" max="12" placeholder="MM" />
+                <input asp-for="Input.DispositionYear" type="number" min="1990" max="2200" placeholder="YYYY" />
+            </div>
+            <div class="form-row">
+                <label asp-for="Input.Notes">Notes</label>
+                <textarea asp-for="Input.Notes"></textarea>
+            </div>
+            <button type="submit">Record container</button>
+        </form>
+    </div>
+}

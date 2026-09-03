@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Emc.Application.Authorization;
 using Emc.Application.Cases;
+using Emc.Application.Filing;
+using Emc.Domain.Filing;
 using Emc.Application.Reads;
 using Emc.Application.Time;
 using Emc.Domain.Cases;
@@ -27,14 +29,17 @@ public class DetailsModel : PageModel
     private readonly IEmcPageAuthorization _authorization;
 
     private readonly IEvidenceRoomTimeService _time;
+    private readonly IPhysicalDocumentService _physical;
 
     public DetailsModel(
         IEvidenceReadService reads,
         IVoucherService vouchers,
         IEvidenceIntakeService intake,
         IEmcPageAuthorization authorization,
-        IEvidenceRoomTimeService time)
+        IEvidenceRoomTimeService time,
+        IPhysicalDocumentService physical)
     {
+        _physical = physical;
         _reads = reads;
         _vouchers = vouchers;
         _intake = intake;
@@ -102,6 +107,13 @@ public class DetailsModel : PageModel
 
     [BindProperty]
     public WithdrawLineInput Withdraw { get; set; } = new();
+
+    [BindProperty]
+    public PhysicalActionInput Physical { get; set; } = new();
+
+    /// <summary>The PAPER DA Form 4137 record (AR 195-5 2-4d, 2-4f, 2-4h). Not the scan.</summary>
+    public PhysicalDocumentView? PhysicalDocument { get; private set; }
+    public bool CanManagePhysicalFiles { get; private set; }
 
     /// <summary>AR 195-5 2-3g - what each earlier submission of the form contained (VCH-025).</summary>
     public IReadOnlyList<FormRevisionRow> FormRevisions { get; private set; } = [];
@@ -199,6 +211,34 @@ public class DetailsModel : PageModel
 
         return Respond(id, result.Succeeded, result.Error, result.RequirementId,
             result.Warnings, "Correction recorded. Resubmit the voucher when the form is ready for the custodian.");
+    }
+
+    public async Task<IActionResult> OnPostRecordPhysicalAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        if (!IsValidForPrefix(nameof(Physical)))
+        {
+            return Page();
+        }
+
+        var occurred = await _time.ResolveLocalAsync(EvidenceRoomId, Physical.OccurredAtLocal, Physical.AmbiguousTimeChoice);
+        if (!occurred.Succeeded)
+        {
+            Messages.Error = occurred.Error;
+            Messages.RequirementId = occurred.RequirementId;
+            return Page();
+        }
+
+        var result = await _physical.RecordAsync(new PhysicalDocumentActionRequest(
+            id, Physical.Action, occurred.Value!.Value, Physical.ContainerId, Physical.Narrative,
+            Physical.CopyReason, Physical.GainingEvidenceRoom));
+
+        return Respond(id, result.Succeeded, result.Error, result.RequirementId,
+            result.Warnings, "Physical DA Form 4137 record updated.");
     }
 
     public async Task<IActionResult> OnPostWithdrawLineAsync(int id)
@@ -395,6 +435,15 @@ public class DetailsModel : PageModel
             && view.ReviewStage == VoucherReviewStage.CorrectedBySubmittingAgent;
         CanWithdrawLine = CanRecordAgentCorrection && view.Items.Any(i => !i.IsWithdrawnFromForm);
         FormRevisions = view.FormRevisions ?? [];
+
+        CanManagePhysicalFiles =
+            (await _authorization.CheckAsync(EmcPermissions.ManagePhysicalFiles, view.EvidenceRoomId)).IsAllowed;
+        PhysicalDocument = await _physical.GetForVoucherAsync(id);
+
+        if (Physical.OccurredAtLocal == default)
+        {
+            Physical.OccurredAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
+        }
         AuthorizationWarnings = numberDecision.Warnings ?? [];
 
         if (TempData[SuccessKey] is string success)
@@ -460,6 +509,22 @@ public class DetailsModel : PageModel
         /// (VCH-019). An attestation, not an initial; the application supplies neither.
         /// </summary>
         public bool PaperFormCorrectedAndInitialedAttested { get; set; }
+    }
+
+    public sealed class PhysicalActionInput
+    {
+        public PhysicalDocumentAction Action { get; set; } = PhysicalDocumentAction.FileOriginalInActiveFile;
+        public int? ContainerId { get; set; }
+        public DateTime OccurredAtLocal { get; set; }
+        public AmbiguousLocalTimeChoice AmbiguousTimeChoice { get; set; }
+
+        [StringLength(2000)]
+        public string? Narrative { get; set; }
+
+        public CopyRetentionReason CopyReason { get; set; }
+
+        [StringLength(256)]
+        public string? GainingEvidenceRoom { get; set; }
     }
 
     public sealed class WithdrawLineInput

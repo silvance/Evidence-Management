@@ -162,6 +162,35 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PhysicalFileContainers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    Form = table.Column<int>(type: "int", nullable: false),
+                    Label = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    DocumentNumberRangeFrom = table.Column<string>(type: "nvarchar(24)", maxLength: 24, nullable: true),
+                    DocumentNumberRangeTo = table.Column<string>(type: "nvarchar(24)", maxLength: 24, nullable: true),
+                    DispositionYear = table.Column<int>(type: "int", nullable: true),
+                    DispositionMonth = table.Column<int>(type: "int", nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PhysicalFileContainers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PhysicalFileContainers_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "StorageLocations",
                 columns: table => new
                 {
@@ -529,6 +558,60 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PhysicalVoucherDocuments",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    VoucherId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    OriginalStatus = table.Column<int>(type: "int", nullable: false),
+                    OriginalContainerId = table.Column<int>(type: "int", nullable: true),
+                    SuspenseCopyContainerId = table.Column<int>(type: "int", nullable: true),
+                    InactiveContainerId = table.Column<int>(type: "int", nullable: true),
+                    HoldsCopyOnly = table.Column<bool>(type: "bit", nullable: false),
+                    CopyReason = table.Column<int>(type: "int", nullable: false),
+                    InactiveSinceUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DestructionConfirmedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DestructionConfirmedByUserId = table.Column<int>(type: "int", nullable: true),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PhysicalVoucherDocuments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocuments_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocuments_EvidenceVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_InactiveContainerId",
+                        column: x => x.InactiveContainerId,
+                        principalTable: "PhysicalFileContainers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_OriginalContainerId",
+                        column: x => x.OriginalContainerId,
+                        principalTable: "PhysicalFileContainers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_SuspenseCopyContainerId",
+                        column: x => x.SuspenseCopyContainerId,
+                        principalTable: "PhysicalFileContainers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "VoucherFormRevisions",
                 columns: table => new
                 {
@@ -669,6 +752,37 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_ItemEvents_ItemEvents_CorrectsEventId",
                         column: x => x.CorrectsEventId,
                         principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PhysicalVoucherDocumentEvents",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DocumentId = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    ResultingOriginalStatus = table.Column<int>(type: "int", nullable: false),
+                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
+                    OccurredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ContainerId = table.Column<int>(type: "int", nullable: true),
+                    Narrative = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PhysicalVoucherDocumentEvents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocumentEvents_PhysicalVoucherDocuments_DocumentId",
+                        column: x => x.DocumentId,
+                        principalTable: "PhysicalVoucherDocuments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocumentEvents_Users_RecordedByUserId",
+                        column: x => x.RecordedByUserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -858,6 +972,48 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PhysicalFileContainers_EvidenceRoomId_Kind_Label",
+                table: "PhysicalFileContainers",
+                columns: new[] { "EvidenceRoomId", "Kind", "Label" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocumentEvents_DocumentId_OccurredAtUtc",
+                table: "PhysicalVoucherDocumentEvents",
+                columns: new[] { "DocumentId", "OccurredAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocumentEvents_RecordedByUserId",
+                table: "PhysicalVoucherDocumentEvents",
+                column: "RecordedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_EvidenceRoomId",
+                table: "PhysicalVoucherDocuments",
+                column: "EvidenceRoomId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_InactiveContainerId",
+                table: "PhysicalVoucherDocuments",
+                column: "InactiveContainerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_OriginalContainerId",
+                table: "PhysicalVoucherDocuments",
+                column: "OriginalContainerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_SuspenseCopyContainerId",
+                table: "PhysicalVoucherDocuments",
+                column: "SuspenseCopyContainerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_VoucherId",
+                table: "PhysicalVoucherDocuments",
+                column: "VoucherId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PrimaryCustodianTransitions_EvidenceRoomId_EffectiveFrom",
                 table: "PrimaryCustodianTransitions",
                 columns: new[] { "EvidenceRoomId", "EffectiveFrom" });
@@ -974,6 +1130,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "OfficialDocumentNumberAssignments");
 
             migrationBuilder.DropTable(
+                name: "PhysicalVoucherDocumentEvents");
+
+            migrationBuilder.DropTable(
                 name: "PrimaryCustodianTransitions");
 
             migrationBuilder.DropTable(
@@ -1001,6 +1160,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "EvidenceRoomNumberingPolicies");
 
             migrationBuilder.DropTable(
+                name: "PhysicalVoucherDocuments");
+
+            migrationBuilder.DropTable(
                 name: "CustodianAppointments");
 
             migrationBuilder.DropTable(
@@ -1011,6 +1173,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "VoucherFormRevisions");
+
+            migrationBuilder.DropTable(
+                name: "PhysicalFileContainers");
 
             migrationBuilder.DropTable(
                 name: "Users");

@@ -664,6 +664,161 @@ namespace Emc.Infrastructure.Migrations
                     b.UseTphMappingStrategy();
                 });
 
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalFileContainer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("DispositionMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DispositionYear")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DocumentNumberRangeFrom")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("DocumentNumberRangeTo")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Form")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId", "Kind", "Label")
+                        .IsUnique();
+
+                    b.ToTable("PhysicalFileContainers", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CopyReason")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DestructionConfirmedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("DestructionConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HoldsCopyOnly")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("InactiveContainerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("InactiveSinceUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("OriginalContainerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OriginalStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SuspenseCopyContainerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId");
+
+                    b.HasIndex("InactiveContainerId");
+
+                    b.HasIndex("OriginalContainerId");
+
+                    b.HasIndex("SuspenseCopyContainerId");
+
+                    b.HasIndex("VoucherId")
+                        .IsUnique();
+
+                    b.ToTable("PhysicalVoucherDocuments", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocumentEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ContainerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Narrative")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ResultingOriginalStatus")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("DocumentId", "OccurredAtUtc");
+
+                    b.ToTable("PhysicalVoucherDocumentEvents", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Identity.CustodianAppointment", b =>
                 {
                     b.Property<int>("Id")
@@ -1503,6 +1658,64 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalFileContainer", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", "EvidenceRoom")
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("EvidenceRoom");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocument", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
+                        .WithMany()
+                        .HasForeignKey("InactiveContainerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
+                        .WithMany()
+                        .HasForeignKey("OriginalContainerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
+                        .WithMany()
+                        .HasForeignKey("SuspenseCopyContainerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Cases.EvidenceVoucher", null)
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocumentEvent", b =>
+                {
+                    b.HasOne("Emc.Domain.Filing.PhysicalVoucherDocument", "Document")
+                        .WithMany("Events")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("Emc.Domain.Identity.CustodianAppointment", b =>
                 {
                     b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
@@ -1668,6 +1881,11 @@ namespace Emc.Infrastructure.Migrations
             modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevision", b =>
                 {
                     b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocument", b =>
+                {
+                    b.Navigation("Events");
                 });
 #pragma warning restore 612, 618
         }

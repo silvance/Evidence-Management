@@ -28,6 +28,8 @@ public interface IEmcDbContext
     DbSet<TemporaryIdentifierCounter> TemporaryIdentifierCounters { get; }
     DbSet<VoucherReviewAction> VoucherReviewActions { get; }
     DbSet<VoucherFormRevision> VoucherFormRevisions { get; }
+    DbSet<Emc.Domain.Filing.PhysicalFileContainer> PhysicalFileContainers { get; }
+    DbSet<Emc.Domain.Filing.PhysicalVoucherDocument> PhysicalVoucherDocuments { get; }
     DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments { get; }
     DbSet<EvidenceItem> EvidenceItems { get; }
     DbSet<ItemEvent> ItemEvents { get; }

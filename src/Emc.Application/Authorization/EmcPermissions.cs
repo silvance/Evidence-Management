@@ -35,6 +35,12 @@ public static class EmcPermissions
     /// correct and initial errors. A custodian act, so it needs an active appointment.
     /// </summary>
     public const string ReturnVoucherForCorrection = "voucher.return-for-correction";
+
+    /// <summary>
+    /// AR 195-5 1-4h(2), 2-4d, 2-4f, 2-4h - the custodian maintains the paper DA Form 4137 files.
+    /// Needs an active appointment.
+    /// </summary>
+    public const string ManagePhysicalFiles = "physical-file.manage";
     public const string RecordOfficialDocumentNumber = "evidence.record-document-number";
     public const string AssignStorageLocation = "evidence.assign-location";
     public const string RecordCustodyEvent = "evidence.record-custody";
@@ -103,6 +109,7 @@ public static class EmcPermissions
         {
             AcceptEvidenceIntake,
             ReturnVoucherForCorrection,
+            ManagePhysicalFiles,
             RecordOfficialDocumentNumber,
             AssignStorageLocation,
             RecordCustodyEvent,
@@ -140,6 +147,7 @@ public static class EmcPermissions
             UploadSourceDocument,
             AcceptEvidenceIntake,
             ReturnVoucherForCorrection,
+            ManagePhysicalFiles,
             RecordOfficialDocumentNumber,
             AssignStorageLocation,
             RecordCustodyEvent,

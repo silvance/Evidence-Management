@@ -184,6 +184,29 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+    /// <summary>AR 195-5 2-4f/2-4h. What happened to the paper DA Form 4137 is kept as it happened.</summary>
+    public const string CreatePhysicalDocumentEventsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_PhysicalVoucherDocumentEvents_AppendOnly_Update
+        ON dbo.PhysicalVoucherDocumentEvents
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50013, 'PhysicalVoucherDocumentEvents is append-only and cannot be modified.', 1;
+        END;
+        """;
+
+    public const string CreatePhysicalDocumentEventsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete
+        ON dbo.PhysicalVoucherDocumentEvents
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50014, 'PhysicalVoucherDocumentEvents is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -197,7 +220,9 @@ public static class AppendOnlyTriggers
         CreateFormRevisionsUpdateTrigger,
         CreateFormRevisionsDeleteTrigger,
         CreateFormRevisionLinesUpdateTrigger,
-        CreateFormRevisionLinesDeleteTrigger
+        CreateFormRevisionLinesDeleteTrigger,
+        CreatePhysicalDocumentEventsUpdateTrigger,
+        CreatePhysicalDocumentEventsDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -213,6 +238,8 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_VoucherFormRevisions_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_VoucherFormRevisions_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_PhysicalVoucherDocumentEvents_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete;"
     ];
 }

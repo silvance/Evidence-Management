@@ -292,6 +292,16 @@ of one.
 
 **Blocks:** RET-008.
 
+
+**What is now built, and what is not (this slice).** The evidence room's PAPER DA Form 4137 record
+computes and displays its 2-4h destruction eligibility — three years from the date the record
+became inactive — and the custodian records confirmed destruction. That is the paper. **EMC's own
+digital data and stored scans are retained; nothing digital is destroyed or scheduled for
+destruction on that rule**, and the UI says so beside every eligibility statement. The 2-4h
+eligibility of the evidence-room copy also says nothing about the copy in the investigative case
+file, which is a different record on a different schedule. This decision stays open until the
+records manager's determination exists.
+
 ---
 
 ## DEC-08 — May EMC hold restricted-reporting sexual assault data?

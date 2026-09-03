@@ -1,4 +1,6 @@
 @page "{id:int}"
+@using Emc.Application.Filing
+@using Emc.Domain.Filing
 @model Emc.Web.Pages.Vouchers.DetailsModel
 @{
     ViewData["Title"] = Model.DisplayIdentifier;
@@ -395,6 +397,111 @@
         <form method="post" asp-page-handler="Submit" asp-route-id="@Model.VoucherId">
             <button type="submit">Submit for custodian intake</button>
         </form>
+    </div>
+}
+
+@if (Model.PhysicalDocument is { } paper && Model.HasOfficialDocumentNumber)
+{
+    <div class="panel">
+        <h2>Physical DA Form 4137 (paper record)</h2>
+        <p class="regulatory-note">
+            This is where the <strong>paper</strong> DA Form 4137 is. A scan stored in this
+            application is a companion copy and is never the original (AR 195-5 paras 2-4d, 2-4f,
+            2-4h). Uploading a scan changes nothing here.
+        </p>
+        <table>
+            <tbody>
+                <tr><th>Original</th><td>@paper.OriginalStatus @(paper.OriginalContainerLabel is null ? "" : $"— {paper.OriginalContainerLabel}")</td></tr>
+                @if (paper.SuspenseCopyContainerLabel is not null)
+                {
+                    <tr><th>Suspense copy</th><td>@paper.SuspenseCopyContainerLabel (para 2-4f(2)/(3))</td></tr>
+                }
+                @if (paper.HoldsCopyOnly)
+                {
+                    <tr><th>This room holds</th><td>A copy only — @paper.CopyReason (para 2-4g / 2-7g)</td></tr>
+                }
+                @if (paper.InactiveSinceUtc is not null)
+                {
+                    <tr><th>Inactive since</th><td>@paper.InactiveSinceUtc.Value.ToString("dd MMM yyyy").ToUpperInvariant() — @paper.InactiveContainerLabel</td></tr>
+                    <tr><th>Paper destruction eligibility</th>
+                        <td>
+                            @paper.RetentionStatus — eligible @paper.DestructionEligibleAtUtc!.Value.ToString("dd MMM yyyy").ToUpperInvariant()
+                            (AR 195-5 para 2-4h: 3 years after the date the record became inactive).
+                            @if (paper.DestructionConfirmedAtUtc is not null)
+                            {
+                                <text>Destruction confirmed @paper.DestructionConfirmedAtUtc.Value.ToString("dd MMM yyyy").ToUpperInvariant().</text>
+                            }
+                        </td></tr>
+                }
+            </tbody>
+        </table>
+        <p class="regulatory-note">
+            Eligibility concerns the <strong>evidence room's paper record only</strong>. It does
+            not depend on whether the investigation is open, it says nothing about the copy in the
+            investigative case file, and it does not schedule or permit destruction of any digital
+            record or scan held by this application — those are retained pending the records
+            determination in DEC-07. Nothing is destroyed automatically.
+        </p>
+        @if (paper.Events.Count > 0)
+        {
+            <table>
+                <thead><tr><th>Event</th><th>By</th><th>When</th><th>File</th><th>Details</th></tr></thead>
+                <tbody>
+                @foreach (var e in paper.Events)
+                {
+                    <tr>
+                        <td>@e.Kind</td>
+                        <td>@e.RecordedByName</td>
+                        <td>@e.OccurredAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+                        <td>@e.ContainerLabel</td>
+                        <td>@e.Narrative</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        @if (Model.CanManagePhysicalFiles)
+        {
+            <form method="post" asp-page-handler="RecordPhysical" asp-route-id="@Model.VoucherId">
+                <div class="form-row">
+                    <label asp-for="Physical.Action">Action</label>
+                    <select asp-for="Physical.Action" asp-items="Html.GetEnumSelectList<PhysicalDocumentAction>()"></select>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Physical.ContainerId">File / folder</label>
+                    <select asp-for="Physical.ContainerId">
+                        <option value="">— none —</option>
+                        @foreach (var c in paper.RoomContainers.Where(c => c.IsActive))
+                        {
+                            <option value="@c.Id">@c.Kind — @c.Label (@c.VouchersFiled filed)</option>
+                        }
+                    </select>
+                    <span class="hint">Containers are created on the <a asp-page="/Filing/Containers" asp-route-roomId="@Model.EvidenceRoomId">paper files page</a>.</span>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Physical.OccurredAtLocal">Date and time (evidence-room local)</label>
+                    <input asp-for="Physical.OccurredAtLocal" type="datetime-local" />
+                    <select asp-for="Physical.AmbiguousTimeChoice">
+                        <option value="Unspecified">Not in the repeated DST hour</option>
+                        <option value="Earlier">First occurrence</option>
+                        <option value="Later">Second occurrence</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Physical.CopyReason">Copy-only reason (para 2-4g)</label>
+                    <select asp-for="Physical.CopyReason" asp-items="Html.GetEnumSelectList<CopyRetentionReason>()"></select>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Physical.GainingEvidenceRoom">Gaining evidence room (para 2-7g transfer)</label>
+                    <input asp-for="Physical.GainingEvidenceRoom" autocomplete="off" />
+                </div>
+                <div class="form-row">
+                    <label asp-for="Physical.Narrative">Details</label>
+                    <textarea asp-for="Physical.Narrative"></textarea>
+                </div>
+                <button type="submit">Record</button>
+            </form>
+        }
     </div>
 }
 
