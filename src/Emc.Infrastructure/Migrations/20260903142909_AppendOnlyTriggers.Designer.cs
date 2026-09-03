@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903141320_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260903142909_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -298,6 +298,35 @@ namespace Emc.Infrastructure.Migrations
                         .HasDatabaseName("UX_DocumentNumber_NeverReusedPerRoomPerYear");
 
                     b.ToTable("OfficialDocumentNumberAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.TemporaryIdentifierCounter", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LastOrdinal")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("TemporaryIdentifierCounters", (string)null);
                 });
 
             modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>
@@ -1319,6 +1348,15 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Voucher");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.TemporaryIdentifierCounter", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>

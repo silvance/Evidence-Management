@@ -188,6 +188,27 @@ public sealed class VoucherReviewActionConfiguration : IEntityTypeConfiguration<
     }
 }
 
+public sealed class TemporaryIdentifierCounterConfiguration : IEntityTypeConfiguration<TemporaryIdentifierCounter>
+{
+    public void Configure(EntityTypeBuilder<TemporaryIdentifierCounter> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("TemporaryIdentifierCounters");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.ConcurrencyStamp).IsConcurrencyToken();
+
+        // One counter per room per date. Two requests racing to create it collide here, and the
+        // allocator reads the survivor.
+        builder.HasIndex(c => new { c.EvidenceRoomId, c.Date }).IsUnique();
+
+        builder.HasOne<EvidenceRoom>()
+            .WithMany()
+            .HasForeignKey(c => c.EvidenceRoomId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public sealed class OfficialDocumentNumberAssignmentConfiguration
     : IEntityTypeConfiguration<OfficialDocumentNumberAssignment>
 {

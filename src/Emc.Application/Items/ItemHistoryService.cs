@@ -84,7 +84,14 @@ public sealed record ItemHistoryView(
     /// discrepancy work resolve items by identifier (AUD-016).
     /// </summary>
     int? CurrentLocationId = null,
-    int? CurrentCustodyHolderPartyId = null);
+    int? CurrentCustodyHolderPartyId = null,
+
+    /// <summary>
+    /// The item's stored summary checked against its history (AUD-021) - reported apart from
+    /// <paramref name="ChainVerification"/> because they mean different things: a chain failure
+    /// is an altered history; a snapshot mismatch is an intact history with a wrong summary.
+    /// </summary>
+    SnapshotVerificationResult? SnapshotVerification = null);
 
 /// <summary>
 /// A correction request.
@@ -262,7 +269,10 @@ public sealed class ItemHistoryService : IItemHistoryService
             // AUD-016. The identifiers move with the corrections, so the row a projection points
             // at and the text a reader sees describe the same thing.
             CurrentLocationId: latestLocation?.EffectiveStorageLocationId,
-            CurrentCustodyHolderPartyId: latestCustody?.EffectiveReceivedByPartyId);
+            CurrentCustodyHolderPartyId: latestCustody?.EffectiveReceivedByPartyId,
+
+            // AUD-021 - verified on every view too, and shown separately from the chain result.
+            SnapshotVerification: SnapshotVerifier.Verify(item, events));
     }
 
     /// <summary>

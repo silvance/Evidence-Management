@@ -303,9 +303,10 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
 
         // Invariant I-12. AR 195-5 2-4e places the location in the DA Form 4137's location block,
         // which presupposes the evidence has been received into the evidence room under 2-4c.
-        if (item.AccountabilityStatus is AccountabilityStatus.Draft
-            or AccountabilityStatus.Acquired
-            or AccountabilityStatus.AwaitingCustodian)
+        // Stated as a predicate on the state machine rather than a list here, which is how the
+        // earlier list came to omit TemporaryStorage (4-3a) - an item in a temporary facility is
+        // not in the evidence room either.
+        if (!AccountabilityStateMachine.MayHoldEvidenceRoomLocation(item.AccountabilityStatus))
         {
             return OperationResult.Failure(
                 "AR 195-5 para 2-4c: the evidence must be received by the evidence custodian and "

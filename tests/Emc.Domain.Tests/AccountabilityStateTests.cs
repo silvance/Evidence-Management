@@ -60,6 +60,63 @@ public class AccountabilityStateTests
     }
 
     [Fact]
+    public void EveryStatusIsEitherBeforeOrAfterCustodianReceipt_NeverBothOrNeither()
+    {
+        // The exhaustiveness guard for the semantic predicates. A status added to the enum and
+        // the machine without being classified fails here, instead of silently counting as
+        // "accepted" because of where it landed in the numeric order.
+        var all = Enum.GetValues<AccountabilityStatus>();
+
+        Assert.Equal(all.Length, AccountabilityStateMachine.AllStatuses.Count);
+
+        foreach (var status in all)
+        {
+            var before = AccountabilityStateMachine.IsBeforeCustodianReceipt(status);
+            var after = AccountabilityStateMachine.HasBeenReceivedByCustodian(status);
+
+            Assert.True(before ^ after, $"{status} must be exactly one of before/after receipt.");
+        }
+    }
+
+    [Theory]
+    [InlineData(AccountabilityStatus.Draft)]
+    [InlineData(AccountabilityStatus.Acquired)]
+    [InlineData(AccountabilityStatus.TemporaryStorage)]
+    [InlineData(AccountabilityStatus.AwaitingCustodian)]
+    public void PreAcceptanceStatesCannotHoldAnEvidenceRoomLocation(AccountabilityStatus status)
+    {
+        // AR 195-5 2-4e presupposes receipt under 2-4c. TemporaryStorage (4-3a) is the one the
+        // earlier hand-written list left out.
+        Assert.True(AccountabilityStateMachine.IsBeforeCustodianReceipt(status));
+        Assert.False(AccountabilityStateMachine.MayHoldEvidenceRoomLocation(status));
+    }
+
+    [Theory]
+    [InlineData(AccountabilityStatus.InEvidenceRoom, true)]
+    [InlineData(AccountabilityStatus.TemporarilyReleased, true)]
+    [InlineData(AccountabilityStatus.DiscrepancyReview, true)]
+    [InlineData(AccountabilityStatus.LongTermRetention, true)]
+    [InlineData(AccountabilityStatus.Disposed, false)]
+    [InlineData(AccountabilityStatus.ReliefGranted, false)]
+    [InlineData(AccountabilityStatus.PermanentlyTransferred, false)]
+    public void ReceivedItemsMayHoldALocationUnlessTerminal(AccountabilityStatus status, bool mayHold)
+    {
+        Assert.True(AccountabilityStateMachine.HasBeenReceivedByCustodian(status));
+        Assert.Equal(mayHold, AccountabilityStateMachine.MayHoldEvidenceRoomLocation(status));
+    }
+
+    [Fact]
+    public void PredicatesDoNotDependOnEnumOrder()
+    {
+        // The specific regression. DiscrepancyReview (8) and Inquiry (9) are numerically ABOVE
+        // Disposed (7) and below nothing meaningful; LongTermRetention sits after ReliefGranted.
+        // None of that is what decides receipt.
+        Assert.True(AccountabilityStateMachine.HasBeenReceivedByCustodian(AccountabilityStatus.Inquiry));
+        Assert.True(AccountabilityStateMachine.HasBeenReceivedByCustodian(AccountabilityStatus.LongTermRetention));
+        Assert.False(AccountabilityStateMachine.HasBeenReceivedByCustodian(AccountabilityStatus.TemporaryStorage));
+    }
+
+    [Fact]
     public void ReliefGrantedIsTerminal()
     {
         // AR 195-5 3-3c - relief "permits the closure of the DA Form 4137" (LOSS-005).

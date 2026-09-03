@@ -1,4 +1,5 @@
 using Emc.Domain.Common;
+using Emc.Domain.Events;
 
 namespace Emc.Domain.Cases;
 
@@ -180,7 +181,9 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
                 return VoucherDerivedStatus.Inactive;
             }
 
-            var acceptedCount = _items.Count(i => i.AccountabilityStatus >= AccountabilityStatus.InEvidenceRoom);
+            // By meaning, not by enum order (see AccountabilityStateMachine).
+            var acceptedCount = _items.Count(
+                i => AccountabilityStateMachine.HasBeenReceivedByCustodian(i.AccountabilityStatus));
             if (acceptedCount == 0)
             {
                 return VoucherDerivedStatus.AwaitingCustodianAcceptance;
@@ -192,10 +195,9 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
         }
     }
 
+    /// <summary>One definition of terminal, owned by the state machine.</summary>
     public static bool IsTerminal(AccountabilityStatus status)
-        => status is AccountabilityStatus.Disposed
-            or AccountabilityStatus.ReliefGranted
-            or AccountabilityStatus.PermanentlyTransferred;
+        => AccountabilityStateMachine.IsTerminal(status);
 
     /// <summary>
     /// AR 195-5 2-3g contemplates the custodian having the submitting agent "correct and initial

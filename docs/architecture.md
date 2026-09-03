@@ -183,6 +183,29 @@ A future control could sign periodic integrity checkpoints with a key held outsi
 which would close the recompute gap. That is deliberately not built now: it adds PKI and key
 custody, and the honest description above is enough for V1 provided nobody overstates it.
 
+### 4.3a The item's summary is verified against its history
+
+`EvidenceItem` carries three derived fields — `AccountabilityStatus`, `LastEventSequenceNumber`,
+`LastEventHash` — because reading them is cheaper than replaying the history on every list. They
+are summaries, and a summary modified out of band drifts from its source: a single
+`UPDATE EvidenceItems SET AccountabilityStatus = 7` would show an item as disposed while its
+history says it is in the evidence room, and the hash chain would not notice, because the chain
+protects the events and not the summary.
+
+`SnapshotVerifier` checks the three against the events on every history view and in the
+room-wide report, and the result is kept **distinct** from chain verification because the two
+mean different things:
+
+| | Meaning | Response |
+|---|---|---|
+| **Event chain failure** | The history itself was altered, inserted into or truncated | An incident. Not repairable by software. AR 195-5 3-3. |
+| **Snapshot mismatch** | The history verifies; the item's summary of it is wrong | Recompute the summary from the history; find out how it was changed. |
+
+The room-wide report (`IIntegrityVerificationService`) carries identifiers and problems only —
+no description, serial number or custody party — so the application administrator, who holds
+`VerifyIntegrity` but no evidence-read permission, can run it (IAM-009, IAM-017). A test asserts
+the report row's shape.
+
 ### 4.4 Corrections never destroy history
 
 Modelled on AR 195-5 **2-5b(5)** (an erroneous ledger entry is struck through *so it may still be

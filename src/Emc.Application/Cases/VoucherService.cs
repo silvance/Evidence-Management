@@ -85,6 +85,7 @@ public sealed class VoucherService : IVoucherService
     private readonly IAuditRecorder _audit;
     private readonly IItemEventRecorder _events;
     private readonly IClock _clock;
+    private readonly ITemporaryIdentifierAllocator _temporaryIdentifiers;
 
     public VoucherService(
         IEmcDbContext db,
@@ -92,7 +93,8 @@ public sealed class VoucherService : IVoucherService
         ICurrentUser currentUser,
         IAuditRecorder audit,
         IItemEventRecorder events,
-        IClock clock)
+        IClock clock,
+        ITemporaryIdentifierAllocator temporaryIdentifiers)
     {
         _db = db;
         _authorization = authorization;
@@ -100,6 +102,7 @@ public sealed class VoucherService : IVoucherService
         _audit = audit;
         _events = events;
         _clock = clock;
+        _temporaryIdentifiers = temporaryIdentifiers;
     }
 
     public async Task<OperationResult<int>> CreateDraftAsync(
@@ -124,8 +127,9 @@ public sealed class VoucherService : IVoucherService
         // VCH-003 / EMC-002. AR 195-5 2-4c reserves assignment of the official document number to
         // the evidence custodian, by order of precedence from the evidence ledger. EMC issues an
         // unmistakably temporary identifier until the custodian transcribes the real one.
-        var temporaryIdentifier = await AllocateTemporaryIdentifierAsync(
-            owningCase.EvidenceRoomId, request.AcquiredAtLocal, ct);
+        // VCH-024. Database-backed and retried on contention; never COUNT + 1.
+        var temporaryIdentifier = await _temporaryIdentifiers.AllocateAsync(
+            owningCase.EvidenceRoomId, DateOnly.FromDateTime(request.AcquiredAtLocal.Date), ct);
 
         EvidenceVoucher voucher;
         try
@@ -581,20 +585,6 @@ public sealed class VoucherService : IVoucherService
             + "based on supposition or suspicion (for example \"suspected to be marijuana\"). "
             + "Review the wording before the voucher is submitted."
         ];
-    }
-
-    private async Task<TemporaryEvidenceIdentifier> AllocateTemporaryIdentifierAsync(
-        int evidenceRoomId, DateTimeOffset acquiredAtLocal, CancellationToken ct)
-    {
-        var date = DateOnly.FromDateTime(acquiredAtLocal.Date);
-        var prefix = $"TMP-{date:yyyyMMdd}-";
-
-        var used = await _db.EvidenceVouchers
-            .AsNoTracking()
-            .CountAsync(v => v.EvidenceRoomId == evidenceRoomId
-                             && v.TemporaryIdentifier.StartsWith(prefix), ct);
-
-        return TemporaryEvidenceIdentifier.Create(date, used + 1);
     }
 
     private Task<EvidenceVoucher?> LoadVoucherWithItemsAsync(int voucherId, CancellationToken ct)

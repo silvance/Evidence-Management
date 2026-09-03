@@ -192,6 +192,28 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "TemporaryIdentifierCounters",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateOnly>(type: "date", nullable: false),
+                    LastOrdinal = table.Column<int>(type: "int", nullable: false),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TemporaryIdentifierCounters", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TemporaryIdentifierCounters_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "CustodianAppointments",
                 columns: table => new
                 {
@@ -835,6 +857,12 @@ namespace Emc.Infrastructure.Migrations
                 column: "ParentId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_TemporaryIdentifierCounters_EvidenceRoomId_Date",
+                table: "TemporaryIdentifierCounters",
+                columns: new[] { "EvidenceRoomId", "Date" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Users_ActiveDirectorySid",
                 table: "Users",
                 column: "ActiveDirectorySid",
@@ -883,6 +911,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "SystemConfigurations");
+
+            migrationBuilder.DropTable(
+                name: "TemporaryIdentifierCounters");
 
             migrationBuilder.DropTable(
                 name: "VoucherReviewActions");

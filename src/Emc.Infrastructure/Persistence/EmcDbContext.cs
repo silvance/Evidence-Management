@@ -26,6 +26,7 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
     public DbSet<Case> Cases => Set<Case>();
     public DbSet<EvidenceVoucher> EvidenceVouchers => Set<EvidenceVoucher>();
+    public DbSet<TemporaryIdentifierCounter> TemporaryIdentifierCounters => Set<TemporaryIdentifierCounter>();
     public DbSet<VoucherReviewAction> VoucherReviewActions => Set<VoucherReviewAction>();
     public DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments
         => Set<OfficialDocumentNumberAssignment>();

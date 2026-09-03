@@ -297,6 +297,35 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("OfficialDocumentNumberAssignments", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Cases.TemporaryIdentifierCounter", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LastOrdinal")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("TemporaryIdentifierCounters", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>
                 {
                     b.Property<int>("Id")
@@ -1316,6 +1345,15 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Voucher");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.TemporaryIdentifierCounter", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>

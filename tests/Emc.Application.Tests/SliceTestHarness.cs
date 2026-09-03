@@ -37,11 +37,11 @@ public sealed class SliceTestHarness : IDisposable
             pragma.ExecuteNonQuery();
         }
 
-        var options = new DbContextOptionsBuilder<EmcDbContext>()
+        _options = new DbContextOptionsBuilder<EmcDbContext>()
             .UseSqlite(_connection)
             .Options;
 
-        Db = new EmcDbContext(options);
+        Db = new EmcDbContext(_options);
         Db.Database.EnsureCreated();
 
         Clock = new TestClock(new DateTimeOffset(2026, 9, 3, 13, 15, 0, TimeSpan.Zero));
@@ -50,7 +50,17 @@ public sealed class SliceTestHarness : IDisposable
         Seed();
     }
 
+    private readonly DbContextOptions<EmcDbContext> _options;
+
     public EmcDbContext Db { get; }
+
+    /// <summary>
+    /// A second context on the same in-memory database - a second "request". Lets a test hold a
+    /// stale tracked row in one context while another commits, which is how a concurrency
+    /// conflict is produced without a test seam in production code.
+    /// </summary>
+    public EmcDbContext CreateSecondContext() => new(_options);
+
     public TestClock Clock { get; }
     public TestCurrentUser CurrentUser { get; }
 
@@ -87,7 +97,9 @@ public sealed class SliceTestHarness : IDisposable
     public ICaseService Cases => new CaseService(Db, Authorization, CurrentUser, Audit, Clock);
 
     public IVoucherService Vouchers
-        => new VoucherService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
+        => new VoucherService(
+            Db, Authorization, CurrentUser, Audit, EventRecorder, Clock,
+            new TemporaryIdentifierAllocator(Db));
 
     public IEvidenceIntakeService Intake
         => new EvidenceIntakeService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);

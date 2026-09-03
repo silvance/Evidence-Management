@@ -122,4 +122,43 @@ public static class AccountabilityStateMachine
 
     public static bool IsTerminal(AccountabilityStatus status)
         => Allowed.TryGetValue(status, out var targets) && targets.Length == 0;
+
+    /// <summary>
+    /// States an item passes through BEFORE the evidence custodian receives it under AR 195-5
+    /// 2-4c: the agent has it (2-1a), it is in a temporary facility (4-3a), or it is submitted
+    /// and due to the custodian (2-4a). Listed by name, deliberately. An earlier check used
+    /// "status >= InEvidenceRoom", which made the meaning of a state depend on the numeric order
+    /// of the enum - so inserting or reordering a member would have silently changed who counted
+    /// as accepted.
+    /// </summary>
+    private static readonly HashSet<AccountabilityStatus> PreAcceptance =
+    [
+        AccountabilityStatus.Draft,
+        AccountabilityStatus.Acquired,
+        AccountabilityStatus.TemporaryStorage,
+        AccountabilityStatus.AwaitingCustodian
+    ];
+
+    /// <summary>True while the custodian has not yet received the item (AR 195-5 2-4c).</summary>
+    public static bool IsBeforeCustodianReceipt(AccountabilityStatus status)
+        => PreAcceptance.Contains(status);
+
+    /// <summary>
+    /// True once the custodian has received the item and assigned the document number
+    /// (AR 195-5 2-4c), whatever has happened since - released, pending disposition, disposed,
+    /// under inquiry, transferred. The complement of <see cref="IsBeforeCustodianReceipt"/>,
+    /// and every status is exactly one or the other (a test asserts it).
+    /// </summary>
+    public static bool HasBeenReceivedByCustodian(AccountabilityStatus status)
+        => Allowed.ContainsKey(status) && !PreAcceptance.Contains(status);
+
+    /// <summary>
+    /// True when an evidence-room location may be recorded for the item. AR 195-5 2-4e places
+    /// the location in the DA Form 4137's location block, which presupposes receipt under 2-4c.
+    /// </summary>
+    public static bool MayHoldEvidenceRoomLocation(AccountabilityStatus status)
+        => HasBeenReceivedByCustodian(status) && !IsTerminal(status);
+
+    /// <summary>Every status the machine knows. For exhaustiveness tests.</summary>
+    public static IReadOnlyCollection<AccountabilityStatus> AllStatuses => Allowed.Keys;
 }

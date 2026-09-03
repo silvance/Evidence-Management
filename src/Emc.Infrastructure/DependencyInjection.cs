@@ -42,8 +42,11 @@ public static class DependencyInjection
 
         services.AddScoped<ICaseService, CaseService>();
         services.AddScoped<IVoucherService, VoucherService>();
+        services.AddScoped<ITemporaryIdentifierAllocator, TemporaryIdentifierAllocator>();
         services.AddScoped<IEvidenceIntakeService, EvidenceIntakeService>();
         services.AddScoped<IItemHistoryService, ItemHistoryService>();
+        services.AddScoped<Emc.Application.Integrity.IIntegrityVerificationService,
+            Emc.Application.Integrity.IntegrityVerificationService>();
 
         // AUD-011 / AUD-020. Local evidence times are interpreted in the evidence room's zone,
         // never the host's; this is the only route to that interpretation.
