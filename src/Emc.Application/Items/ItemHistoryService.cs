@@ -1,0 +1,295 @@
+using Emc.Application.Abstractions;
+using Emc.Application.Audit;
+using Emc.Application.Authorization;
+using Emc.Domain.Cases;
+using Emc.Domain.Common;
+using Emc.Domain.Events;
+using Microsoft.EntityFrameworkCore;
+
+namespace Emc.Application.Items;
+
+/// <summary>
+/// One row of an item's chronological history.
+///
+/// <paramref name="IsSuperseded"/> drives the UI's "Corrected" marker. AR 195-5 2-5b(5) requires
+/// a struck-through ledger entry to remain READABLE, so a superseded event is never hidden — it
+/// is marked, and the correction that replaced it is linked (AUD-006).
+/// </summary>
+public sealed record ItemHistoryRow(
+    int EventId,
+    int SequenceNumber,
+    ItemEventKind Kind,
+    DateTimeOffset OccurredAtLocal,
+    DateTimeOffset RecordedAtUtc,
+    string RecordedByName,
+    string Summary,
+    string? Notes,
+    bool IsSuperseded,
+    int? SupersededByEventId,
+    int? CorrectsEventId,
+    string? CorrectionFieldName,
+    string? CorrectionOriginalValue,
+    string? CorrectionNewValue,
+    string? CorrectionReason,
+    string? CorrectionMfrReference,
+    bool CorrectionSatisfies1_7c3);
+
+public sealed record ItemHistoryView(
+    int ItemId,
+    int ItemNumber,
+    string VoucherIdentifier,
+    string CaseControlNumber,
+    string DescriptionForForm,
+    AccountabilityStatus AccountabilityStatus,
+    string? CurrentLocationPath,
+    string? CurrentCustodyHolder,
+    IReadOnlyList<ItemHistoryRow> History,
+    ChainVerificationResult ChainVerification);
+
+public sealed record RecordCorrectionRequest(
+    int CorrectedEventId,
+    string FieldName,
+    string? OriginalValue,
+    string? CorrectedValue,
+    string Reason,
+    string? MfrReference,
+    int? SupervisorNotifiedUserId,
+    DateTimeOffset? SupervisorNotifiedAtUtc);
+
+public interface IItemHistoryService
+{
+    Task<ItemHistoryView?> GetAsync(int itemId, CancellationToken ct = default);
+    Task<OperationResult> RecordCorrectionAsync(RecordCorrectionRequest request, CancellationToken ct = default);
+}
+
+/// <summary>
+/// The item history read model, and the correction workflow.
+///
+/// The history is a single ordered query over one table because all event kinds share it
+/// (docs/architecture.md §4.1), and it includes superseded events. AR 195-5's model for an
+/// erroneous entry is a single line through it "so it may still be read" (2-5b(5)) — not
+/// removal — and the software analogue is the same: mark it, link the correction, never hide it.
+/// </summary>
+public sealed class ItemHistoryService : IItemHistoryService
+{
+    private readonly IEmcDbContext _db;
+    private readonly IEvidenceAuthorizationService _authorization;
+    private readonly ICurrentUser _currentUser;
+    private readonly IAuditRecorder _audit;
+    private readonly IItemEventRecorder _events;
+    private readonly IClock _clock;
+
+    public ItemHistoryService(
+        IEmcDbContext db,
+        IEvidenceAuthorizationService authorization,
+        ICurrentUser currentUser,
+        IAuditRecorder audit,
+        IItemEventRecorder events,
+        IClock clock)
+    {
+        _db = db;
+        _authorization = authorization;
+        _currentUser = currentUser;
+        _audit = audit;
+        _events = events;
+        _clock = clock;
+    }
+
+    public async Task<ItemHistoryView?> GetAsync(int itemId, CancellationToken ct = default)
+    {
+        var item = await _db.EvidenceItems
+            .AsNoTracking()
+            .Include(i => i.Voucher!).ThenInclude(v => v.Case)
+            .Include(i => i.Voucher!).ThenInclude(v => v.DocumentNumberAssignments)
+            .FirstOrDefaultAsync(i => i.Id == itemId, ct);
+
+        if (item?.Voucher is null)
+        {
+            return null;
+        }
+
+        var events = await _db.ItemEvents
+            .AsNoTracking()
+            .Where(e => e.EvidenceItemId == itemId)
+            .OrderBy(e => e.OccurredAtUtc)
+            .ThenBy(e => e.SequenceNumber)
+            .ToListAsync(ct);
+
+        var userNames = await ResolveUserNamesAsync(events, ct);
+
+        var rows = events.Select(e => new ItemHistoryRow(
+            EventId: e.Id,
+            SequenceNumber: e.SequenceNumber,
+            Kind: e.Kind,
+            OccurredAtLocal: e.OccurredAtLocal,
+            RecordedAtUtc: e.RecordedAtUtc,
+            RecordedByName: userNames.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
+            Summary: e.Summarize(),
+            Notes: e.Notes,
+            IsSuperseded: e.SupersededByEventId is not null,
+            SupersededByEventId: e.SupersededByEventId,
+            CorrectsEventId: (e as CorrectionEvent)?.CorrectsEventId,
+            CorrectionFieldName: (e as CorrectionEvent)?.FieldName,
+            CorrectionOriginalValue: (e as CorrectionEvent)?.OriginalValue,
+            CorrectionNewValue: (e as CorrectionEvent)?.CorrectedValue,
+            CorrectionReason: (e as CorrectionEvent)?.Reason,
+            CorrectionMfrReference: (e as CorrectionEvent)?.MfrReference,
+            CorrectionSatisfies1_7c3: (e as CorrectionEvent)?.SatisfiesParagraph1_7c3 ?? false))
+            .ToList();
+
+        var latestLocation = events.OfType<LocationEvent>()
+            .Where(e => e.SupersededByEventId is null)
+            .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.SequenceNumber)
+            .FirstOrDefault();
+
+        var latestCustody = events.OfType<CustodyEvent>()
+            .Where(e => e.SupersededByEventId is null)
+            .OrderByDescending(e => e.OccurredAtUtc).ThenByDescending(e => e.SequenceNumber)
+            .FirstOrDefault();
+
+        return new ItemHistoryView(
+            ItemId: item.Id,
+            ItemNumber: item.ItemNumber,
+            VoucherIdentifier: item.Voucher.DisplayIdentifier,
+            CaseControlNumber: item.Voucher.Case?.CaseControlNumber ?? string.Empty,
+            DescriptionForForm: item.DescriptionForForm,
+            AccountabilityStatus: item.AccountabilityStatus,
+            CurrentLocationPath: latestLocation?.StorageLocationPath,
+            CurrentCustodyHolder: latestCustody?.ReceivedBy?.DisplayName,
+            History: rows,
+
+            // AUD-008 — verified on every view so a broken chain surfaces where someone will see
+            // it, not only when an integrity report is deliberately run.
+            ChainVerification: EventHashChain.Verify(events));
+    }
+
+    /// <summary>
+    /// Records a correction.
+    ///
+    /// AR 195-5 2-5b(5) — the erroneous entry is voided with one line "so it may still be read"
+    /// and initialed. AR 195-5 1-7c(3) — the custodian immediately informs the supervisor and
+    /// prepares an MFR outlining the error and the corrective action, filed with the DA Form 4137
+    /// with a copy in the case file.
+    ///
+    /// The corrected event is preserved and marked superseded. Nothing is overwritten
+    /// (AUD-003, AUD-004, AUD-005).
+    /// </summary>
+    public async Task<OperationResult> RecordCorrectionAsync(
+        RecordCorrectionRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var correctedEvent = await _db.ItemEvents
+            .FirstOrDefaultAsync(e => e.Id == request.CorrectedEventId, ct);
+
+        if (correctedEvent is null)
+        {
+            return OperationResult.Failure("The event to be corrected was not found.", "AUD-003");
+        }
+
+        var item = await _db.EvidenceItems
+            .Include(i => i.Voucher)
+            .FirstOrDefaultAsync(i => i.Id == correctedEvent.EvidenceItemId, ct);
+
+        if (item?.Voucher is null)
+        {
+            return OperationResult.Failure("Item not found.", "ITEM-001");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(
+            EmcPermissions.RecordCorrection, item.Voucher.EvidenceRoomId, ct);
+
+        if (!decision.IsAllowed)
+        {
+            _audit.Record(
+                AuditEventType.PermissionDenied,
+                nameof(CorrectionEvent), request.CorrectedEventId.ToString(),
+                reason: decision.Reason, succeeded: false);
+
+            await _db.SaveChangesAsync(ct);
+            return OperationResult.Failure(decision.Reason!, decision.RequirementId);
+        }
+
+        if (correctedEvent.SupersededByEventId is not null)
+        {
+            return OperationResult.Failure(
+                $"Event #{correctedEvent.Id} has already been corrected by event "
+                + $"#{correctedEvent.SupersededByEventId}. Correct the most recent entry instead.",
+                "AUD-003");
+        }
+
+        var now = _clock.UtcNow;
+        CorrectionEvent correction;
+
+        try
+        {
+            correction = new CorrectionEvent(
+                correctedEvent: correctedEvent,
+                fieldName: request.FieldName,
+                originalValue: request.OriginalValue,
+                correctedValue: request.CorrectedValue,
+                reason: request.Reason,
+                occurredAtLocal: now,
+                recordedAtUtc: now,
+                correctedByUserId: _currentUser.UserId,
+                mfrReference: request.MfrReference,
+                supervisorNotifiedUserId: request.SupervisorNotifiedUserId,
+                supervisorNotifiedAtUtc: request.SupervisorNotifiedAtUtc);
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        await _events.AppendAsync(item, correction, ct);
+
+        // Save once so the correction has an identity, then link the superseded event to it. The
+        // SupersededByEventId transition (null -> value, once) is the ONLY mutation permitted on
+        // an append-only record (invariant I-14).
+        await _db.SaveChangesAsync(ct);
+
+        correction.ApplySupersession();
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded,
+            nameof(CorrectionEvent),
+            $"{item.Voucher.DisplayIdentifier}/{item.ItemNumber}#{correctedEvent.Id}",
+            previousValue: request.OriginalValue,
+            newValue: request.CorrectedValue,
+            reason: request.Reason);
+
+        await _db.SaveChangesAsync(ct);
+
+        var warnings = new List<string>();
+
+        if (!correction.SatisfiesParagraph1_7c3)
+        {
+            // Surfaced rather than blocked: whether a given field-level correction rises to the
+            // 1-7c(3) threshold is a matter of local policy, and an incomplete correction is
+            // visible in the item history and to an inspector either way.
+            warnings.Add(
+                "AR 195-5 para 1-7c(3): when a primary or alternate evidence custodian finds an "
+                + "incorrect entry they will immediately inform the responsible CI supervisor and "
+                + "prepare an MFR outlining the error and the corrective action taken, filed with "
+                + "the proper DA Form 4137 with a copy in the case file. This correction records "
+                + (correction.MfrReference is null ? "no MFR reference" : "an MFR reference")
+                + " and "
+                + (request.SupervisorNotifiedUserId is null
+                    ? "no supervisor notification."
+                    : "a supervisor notification."));
+        }
+
+        return OperationResult.Success([.. warnings]);
+    }
+
+    private async Task<Dictionary<int, string>> ResolveUserNamesAsync(
+        IReadOnlyCollection<ItemEvent> events, CancellationToken ct)
+    {
+        var ids = events.Select(e => e.RecordedByUserId).Distinct().ToList();
+
+        return await _db.Users
+            .AsNoTracking()
+            .Where(u => ids.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.PrintedNameAndGrade, ct);
+    }
+}

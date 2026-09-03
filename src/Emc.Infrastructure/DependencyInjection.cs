@@ -1,0 +1,47 @@
+using Emc.Application.Abstractions;
+using Emc.Application.Audit;
+using Emc.Application.Authorization;
+using Emc.Application.Cases;
+using Emc.Application.Items;
+using Emc.Domain.Common;
+using Emc.Infrastructure.Persistence;
+using Emc.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Emc.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddEmcInfrastructure(
+        this IServiceCollection services, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddDbContext<EmcDbContext>(options => options
+            .UseSqlServer(connectionString, sql => sql
+                .EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), null))
+
+            // Accountability data must never be silently stale. Explicit tracking behaviour, and
+            // no lazy loading, so a query that needs history says so.
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll));
+
+        services.AddScoped<IEmcDbContext>(sp => sp.GetRequiredService<EmcDbContext>());
+
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUser, HttpCurrentUser>();
+        services.AddScoped<IRequestContext, HttpRequestContext>();
+        services.AddSingleton<IClock, SystemClock>();
+
+        services.AddScoped<IAuditRecorder, AuditRecorder>();
+        services.AddScoped<IEvidenceAuthorizationService, EvidenceAuthorizationService>();
+        services.AddScoped<IItemEventRecorder, ItemEventRecorder>();
+
+        services.AddScoped<ICaseService, CaseService>();
+        services.AddScoped<IVoucherService, VoucherService>();
+        services.AddScoped<IEvidenceIntakeService, EvidenceIntakeService>();
+        services.AddScoped<IItemHistoryService, ItemHistoryService>();
+
+        return services;
+    }
+}
