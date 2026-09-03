@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <LangVersion>12.0</LangVersion>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -9,20 +9,13 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <InvariantGlobalization>true</InvariantGlobalization>
 
-    <!-- Dependency advisories are audited, including transitives, at every severity.
-
-         NU1903 is reported as a WARNING rather than an error, deliberately. Two current
-         advisories have no patched release on the .NET 8 LTS band at all, so treating them as
-         errors would mean either an unbuildable repository or a blanket NoWarn that hides
-         future advisories too. Each open advisory is assessed and recorded in
-         docs/dependency-advisories.md, which must be reviewed before deployment and whenever
-         the build reports a new NU1903.
-
-         Targeted per-advisory suppression (NuGetAuditSuppress) needs the .NET 9 SDK; adopt it
-         and restore error severity when the toolchain moves. -->
+    <!-- Dependency advisories are audited, including transitives, at every severity, and a
+         finding FAILS THE BUILD. On .NET 8 two advisories in
+         Microsoft.AspNetCore.Authentication.Negotiate had no patched release, which forced
+         NU1903 down to a warning; .NET 10 resolves them, so error severity is restored.
+         docs/dependency-advisories.md records the process and the history. -->
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>low</NuGetAuditLevel>
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903;NU1902</WarningsNotAsErrors>
   </PropertyGroup>
 </Project>

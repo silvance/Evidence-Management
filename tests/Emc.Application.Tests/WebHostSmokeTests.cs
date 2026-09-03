@@ -126,8 +126,25 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             // Swap SQL Server for SQLite. Nothing else about the application is replaced.
-            services.RemoveAll<DbContextOptions<EmcDbContext>>();
-            services.RemoveAll<EmcDbContext>();
+            //
+            // EF Core 10 refuses to resolve a DbContext when two providers are registered in the
+            // same container, so every EF-contributed descriptor is removed before SQLite is
+            // added back - removing only DbContextOptions leaves the SQL Server provider
+            // services behind.
+            var efDescriptors = services
+                .Where(d =>
+                    d.ServiceType.FullName?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true
+                    || d.ImplementationType?.Assembly.GetName().Name?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true
+                    || d.ServiceType == typeof(EmcDbContext)
+                    || d.ServiceType == typeof(DbContextOptions)
+                    || d.ServiceType == typeof(DbContextOptions<EmcDbContext>)
+                    || d.ServiceType == typeof(IEmcDbContext))
+                .ToList();
+
+            foreach (var descriptor in efDescriptors)
+            {
+                services.Remove(descriptor);
+            }
 
             _connection = new SqliteConnection("DataSource=:memory:");
             _connection.Open();

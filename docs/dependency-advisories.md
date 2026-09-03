@@ -3,73 +3,73 @@
 The build audits every dependency, including transitives, at every severity
 (`NuGetAudit` / `NuGetAuditMode=all` / `NuGetAuditLevel=low` in `Directory.Build.props`).
 
-**NU1903 is reported as a warning, not an error, and that is a deliberate choice.** One current
-advisory has no patched release on the .NET 8 LTS band at all, so treating advisories as errors
-would mean either an unbuildable repository or a blanket `NoWarn` that would hide *future*
-advisories too. Instead, every open advisory is assessed here.
+**A finding fails the build.** NU1903 is at error severity.
 
-Targeted per-advisory suppression (`NuGetAuditSuppress`) requires the **.NET 9 SDK**. When the
-toolchain moves, adopt it and restore NU1903 to error severity — then this file becomes a record
-of suppressions rather than a substitute for them.
+## Current status
+
+**No vulnerable packages, direct or transitive, in any project.**
+
+Verify with:
+
+```
+dotnet build                                   # fails on any advisory
+dotnet list <project> package --vulnerable --include-transitive
+```
 
 ## Process
 
-1. **Any new NU1903 in a build must be assessed and recorded here before it is merged.**
+1. **Any new NU1903 must be resolved, or assessed and recorded here, before it is merged.**
 2. Review this file before every deployment.
 3. Re-check for patched releases whenever dependencies are updated.
-4. This file is a *risk register*, not an *exemption*. An advisory recorded here is still open.
+4. An advisory recorded here as accepted is still open. This is a risk register, not an exemption.
 
-## Open advisories
+For each open advisory, record: the advisory, the affected package and version, **whether the
+vulnerable code path is reachable from EMC**, the mitigation, and the deployment consequence.
+
+## Resolved
 
 ### GHSA-2p3q-h3hg-jcqq and GHSA-8prm-248r-h957 — `Microsoft.AspNetCore.Authentication.Negotiate`
 
 | | |
 |---|---|
 | **Severity** | High |
-| **Affected** | All `8.0.x` releases available at time of writing (checked through 8.0.25) |
-| **Fixed in** | No patched release exists on the .NET 8 band |
-| **Reachable from EMC?** | **Requires assessment — see below** |
-| **Status** | **OPEN — action required before deployment** |
+| **Was affected** | All `8.0.x` releases (checked through 8.0.25) — **no patched release existed on the .NET 8 band** |
+| **Resolved by** | Retargeting to .NET 10 LTS; `Microsoft.AspNetCore.Authentication.Negotiate` **10.0.11** carries the fix |
 
-**Why the package is present.** Windows Authentication (Negotiate/Kerberos) is the authentication
-mechanism (`docs/architecture.md` §8, IAM-003). EMC deliberately stores no passwords, so this is
-not a dependency that can simply be dropped.
+This was the reason NU1903 was previously demoted to a warning: with no patched release available,
+treating it as an error meant either an unbuildable repository or a blanket `NoWarn` that would
+have hidden future advisories. The .NET 10 retarget removed the dilemma, and **error severity has
+been restored**.
 
-**Assessment.** These advisories concern the Negotiate handler. EMC uses the handler only to
-establish the Windows identity; **roles and all authorization decisions are resolved
-server-side from EMC's own database** (IAM-002, `EvidenceAuthorizationService`), and EMC does not
-use the handler's LDAP-based role retrieval. That narrows the exposure but **does not by itself
-clear it.**
-
-**Required before deployment — this is a decision for the organization, not for the application:**
-
-1. Read both advisories against the deployed configuration and confirm the affected code path is
-   not reachable in EMC's usage.
-2. Prefer moving to a .NET release where the package is patched, if the target environment allows
-   it. Retargeting is a small change; the dependency direction and code do not depend on the
-   framework version.
-3. If neither is possible, obtain a documented risk acceptance from the organization's security
-   authority and record the reference here.
-
-Because EMC's authentication surface is exactly one mechanism, this advisory should be closed out
-deliberately rather than carried indefinitely. **Do not deploy to an Army environment without
-completing step 1.**
-
-## Closed
+Windows Authentication is EMC's only authentication mechanism (IAM-003), so this dependency cannot
+simply be dropped — which is why it was worth resolving properly rather than accepting.
 
 ### GHSA-2m69-gcr7-jv3q — `SQLitePCLRaw.lib.e_sqlite3`
 
 | | |
 |---|---|
 | **Severity** | High |
-| **Resolution** | Closed twice over |
+| **Resolved by** | Removed from production entirely, and updated where it remains |
 
-1. **Removed from production entirely.** SQLite was pulled into `Emc.Infrastructure` only by a
-   provider-detection helper (`Database.IsSqlite()`). That check now reads
-   `Database.ProviderName` instead, which needs no package reference, so **no production assembly
-   references SQLite at all**. SQL Server is the only production provider.
-2. **Updated where it remains.** The test projects still use SQLite in-memory for relational
-   integration tests, pinned to `SQLitePCLRaw.bundle_e_sqlite3` 3.0.0, which carries the fix.
+1. SQLite was pulled into `Emc.Infrastructure` only by a provider-detection helper
+   (`Database.IsSqlite()`). That check now reads `Database.ProviderName`, which needs no package
+   reference, so **no production assembly references SQLite at all**.
+2. The test projects still use SQLite in-memory for relational integration tests, pinned to
+   `SQLitePCLRaw.bundle_e_sqlite3` 3.0.0.
 
-Test-only dependencies are not shipped, but they still run on developer machines and build
-agents, so they are updated rather than excused.
+### `System.Net.Http` 4.3.0 and `System.Text.RegularExpressions` 4.3.0
+
+Stale transitives of the .NET 8 test tooling, previously pinned to patched versions. **.NET 10
+provides both in-box and prunes the references entirely** (NU1510), so the pins were removed.
+
+## Framework support
+
+| | |
+|---|---|
+| **Target** | .NET 10 LTS |
+| **Support ends** | November 2028 |
+| **Previous target** | .NET 8 LTS, support ended 10 November 2026 |
+
+Retargeting was a security action, not a modernisation exercise: it resolved a high-severity
+advisory that had no fix on the previous band, and moved the application off a runtime that is now
+out of support.
