@@ -25,11 +25,6 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.ActiveDirectorySid).IsUnique();
         builder.HasIndex(u => u.UserPrincipalName).IsUnique();
 
-        builder.HasMany(u => u.Roles)
-            .WithOne(r => r.User)
-            .HasForeignKey(r => r.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
-
         builder.Ignore(u => u.PrintedNameAndGrade);
     }
 }
@@ -48,22 +43,42 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
     }
 }
 
-public sealed class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
+public sealed class RoleAssignmentConfiguration : IEntityTypeConfiguration<RoleAssignment>
 {
-    public void Configure(EntityTypeBuilder<UserRole> builder)
+    public void Configure(EntityTypeBuilder<RoleAssignment> builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.ToTable("UserRoles");
-        builder.HasKey(ur => ur.Id);
+        builder.ToTable("RoleAssignments");
+        builder.HasKey(ra => ra.Id);
 
-        builder.HasOne(ur => ur.Role)
+        builder.HasOne(ra => ra.User)
             .WithMany()
-            .HasForeignKey(ur => ur.RoleId)
+            .HasForeignKey(ra => ra.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(ur => new { ur.UserId, ur.RoleId }).IsUnique();
-        builder.Ignore(ur => ur.IsSelfGrant);
+        builder.HasOne(ra => ra.Role)
+            .WithMany()
+            .HasForeignKey(ra => ra.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Null EvidenceRoomId means a global grant, which only the administrator role may hold
+        // (IAM-016). The nullable FK is what makes room scoping expressible at all.
+        builder.HasOne<Domain.Storage.EvidenceRoom>()
+            .WithMany()
+            .HasForeignKey(ra => ra.EvidenceRoomId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // One open grant of a role per user per room. Filtered so a revoked grant does not block
+        // re-granting the same role later.
+        builder.HasIndex(ra => new { ra.UserId, ra.RoleId, ra.EvidenceRoomId })
+            .HasDatabaseName("UX_RoleAssignments_OneOpenPerUserRoleRoom")
+            .HasFilter("EffectiveTo IS NULL")
+            .IsUnique();
+
+        builder.HasIndex(ra => new { ra.UserId, ra.EvidenceRoomId });
+
+        builder.Ignore(ra => ra.IsSelfGrant);
     }
 }
 

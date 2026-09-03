@@ -1,24 +1,24 @@
 using System.ComponentModel.DataAnnotations;
-using Emc.Application.Abstractions;
 using Emc.Application.Authorization;
+using Emc.Application.Reads;
 using Emc.Application.Cases;
 using Emc.Domain.Common;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
 
 namespace Emc.Web.Pages.Cases;
 
 public class DetailsModel : PageModel
 {
-    private readonly IEmcDbContext _db;
+    private readonly IEvidenceReadService _reads;
     private readonly IVoucherService _vouchers;
     private readonly IEmcPageAuthorization _authorization;
 
-    public DetailsModel(IEmcDbContext db, IVoucherService vouchers, IEmcPageAuthorization authorization)
+    public DetailsModel(
+        IEvidenceReadService reads, IVoucherService vouchers, IEmcPageAuthorization authorization)
     {
-        _db = db;
+        _reads = reads;
         _vouchers = vouchers;
         _authorization = authorization;
     }
@@ -27,7 +27,7 @@ public class DetailsModel : PageModel
     public string Title { get; private set; } = string.Empty;
     public string? Synopsis { get; private set; }
     public int EvidenceRoomId { get; private set; }
-    public IReadOnlyList<VoucherRow> Vouchers { get; private set; } = [];
+    public IReadOnlyList<VoucherListRow> Vouchers { get; private set; } = [];
     public bool CanCreateVoucher { get; private set; }
     public PageMessages Messages { get; } = new();
 
@@ -93,51 +93,26 @@ public class DetailsModel : PageModel
 
     private async Task<bool> LoadAsync(int id)
     {
-        var owningCase = await _db.Cases.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
-        if (owningCase is null)
+        // Authorizes before returning anything, and returns null when the caller may not read
+        // the case - so guessing identifiers cannot confirm which cases exist (IAM-018).
+        var view = await _reads.GetCaseAsync(id);
+        if (view is null)
         {
             return false;
         }
 
-        CaseControlNumber = owningCase.CaseControlNumber;
-        Title = owningCase.Title;
-        Synopsis = owningCase.Synopsis;
-        EvidenceRoomId = owningCase.EvidenceRoomId;
+        CaseControlNumber = view.CaseControlNumber;
+        Title = view.Title;
+        Synopsis = view.Synopsis;
+        EvidenceRoomId = view.EvidenceRoomId;
+        Vouchers = view.Vouchers;
 
         CanCreateVoucher =
             (await _authorization.CheckAsync(EmcPermissions.CreateDraftVoucher, EvidenceRoomId))
             .IsAllowed;
 
-        var vouchers = await _db.EvidenceVouchers
-            .AsNoTracking()
-            .Include(v => v.Items)
-            .Include(v => v.DocumentNumberAssignments)
-            .Where(v => v.CaseId == id)
-            .OrderBy(v => v.CreatedAtUtc)
-            .ToListAsync();
-
-        Vouchers = vouchers
-            .Select(v => new VoucherRow(
-                v.Id,
-                v.DisplayIdentifier,
-                v.HasOfficialDocumentNumber,
-
-                // VCH-007 - derived from the items, never a stored column (AR 195-5 2-4h).
-                v.DerivedStatus,
-                v.Items.Count,
-                v.AcquiredAtLocal))
-            .ToList();
-
         return true;
     }
-
-    public sealed record VoucherRow(
-        int Id,
-        string DisplayIdentifier,
-        bool HasOfficialDocumentNumber,
-        VoucherDerivedStatus DerivedStatus,
-        int ItemCount,
-        DateTimeOffset AcquiredAtLocal);
 
     public sealed class NewVoucherInput
     {

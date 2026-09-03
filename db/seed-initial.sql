@@ -105,19 +105,29 @@ BEGIN
 END;
 
 /* ---------------------------------------------------------------------------------------------
-   5. Role assignment.
+   5. Role assignments.
+
+   OPERATIONAL ROLES ARE SCOPED TO AN EVIDENCE ROOM (IAM-016). A grant in one room confers
+   nothing in another, and holding no grant in a room means the user cannot even READ its records
+   (IAM-017). Only ApplicationAdministrator may be granted globally, because it carries no
+   authority over evidence at all.
 
    GrantedByUserId records who made the grant. A grant where GrantedByUserId equals UserId is a
    self-grant, which the application flags (IAM-010). For this bootstrap row that is unavoidable
    and expected; subsequent grants should be made by an identified administrator.
 --------------------------------------------------------------------------------------------- */
 DECLARE @UserId INT = (SELECT TOP 1 Id FROM dbo.Users ORDER BY Id);
+DECLARE @RoomId INT = (SELECT TOP 1 Id FROM dbo.EvidenceRooms ORDER BY Id);
 
-INSERT INTO dbo.UserRoles (UserId, RoleId, GrantedByUserId, GrantedAtUtc)
-SELECT @UserId, r.Id, @UserId, SYSUTCDATETIME()
+INSERT INTO dbo.RoleAssignments
+    (UserId, RoleId, EvidenceRoomId, EffectiveFrom, EffectiveTo, GrantedByUserId, GrantedAtUtc)
+SELECT @UserId, r.Id, @RoomId, SYSDATETIMEOFFSET(), NULL, @UserId, SYSUTCDATETIME()
 FROM dbo.Roles r
 WHERE r.Name IN (N'Agent', N'PrimaryEvidenceCustodian')  -- <-- EDIT: roles for this person
-  AND NOT EXISTS (SELECT 1 FROM dbo.UserRoles ur WHERE ur.UserId = @UserId AND ur.RoleId = r.Id);
+  AND NOT EXISTS (
+      SELECT 1 FROM dbo.RoleAssignments ra
+      WHERE ra.UserId = @UserId AND ra.RoleId = r.Id AND ra.EvidenceRoomId = @RoomId
+        AND ra.EffectiveTo IS NULL);
 
 /* ---------------------------------------------------------------------------------------------
    6. Custodian appointment.
@@ -132,8 +142,6 @@ WHERE r.Name IN (N'Agent', N'PrimaryEvidenceCustodian')  -- <-- EDIT: roles for 
 
    Only insert this row for a person who genuinely holds written appointment orders.
 --------------------------------------------------------------------------------------------- */
-DECLARE @RoomId INT = (SELECT TOP 1 Id FROM dbo.EvidenceRooms ORDER BY Id);
-
 IF NOT EXISTS (SELECT 1 FROM dbo.CustodianAppointments WHERE EvidenceRoomId = @RoomId)
 BEGIN
     INSERT INTO dbo.CustodianAppointments

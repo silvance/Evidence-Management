@@ -10,9 +10,10 @@ namespace Emc.Infrastructure.Migrations;
 /// Installs INSTEAD OF UPDATE / DELETE triggers on the accountability tables. Layers 1 and 2
 /// (domain immutability and the SaveChanges guard) protect against mistakes made THROUGH the
 /// application; this layer protects against changes made OUTSIDE it, including by an
-/// administrator using SSMS - which is the case IAM-009 is actually about.
+/// administrator using SSMS.
 ///
-/// SQL Server only. SQLite test runs exercise layers 1 and 2, which have their own tests.
+/// SQL Server only. SQLite test runs exercise layers 1 and 2, which have their own tests; the
+/// trigger layer is covered by the SQL Server integration suite.
 /// </summary>
 public partial class AppendOnlyTriggers : Migration
 {

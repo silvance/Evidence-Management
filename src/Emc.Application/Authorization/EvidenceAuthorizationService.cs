@@ -61,7 +61,19 @@ public sealed class EvidenceAuthorizationService : IEvidenceAuthorizationService
             return AuthorizationDecision.Deny("Not authenticated.", "IAM-002");
         }
 
-        var roles = _currentUser.Roles;
+        // IAM-016 / IAM-017. Every permission except the global administrative ones is scoped to
+        // an evidence room. Refusing when no room is named is what stops an unscoped query from
+        // silently reading across rooms.
+        if (evidenceRoomId is null && !EmcPermissions.GlobalPermissions.Contains(permission))
+        {
+            return AuthorizationDecision.Deny(
+                "This action is scoped to an evidence room, and no evidence room was identified.",
+                "IAM-016");
+        }
+
+        // Only grants that apply to THIS evidence room are considered. A grant in another room
+        // confers nothing here (IAM-016).
+        var roles = _currentUser.RolesFor(evidenceRoomId);
 
         if (!RolePermissionMap.AnyRoleHasPermission(roles, permission))
         {
@@ -73,14 +85,19 @@ public sealed class EvidenceAuthorizationService : IEvidenceAuthorizationService
             {
                 return AuthorizationDecision.Deny(
                     "The Application Administrator role administers the application. It carries no "
-                    + "authority over evidence accountability. Performing this action requires a "
-                    + "role and, for evidence-room actions, a current written custodian "
+                    + "authority over evidence accountability, and no ability to read evidence "
+                    + "content. Performing this action requires an operational role in this "
+                    + "evidence room and, for evidence-room actions, a current written custodian "
                     + "appointment under AR 195-5 para 1-4g(1).",
                     "IAM-009");
             }
 
             return AuthorizationDecision.Deny(
-                "Your assigned roles do not include this permission.", "IAM-002");
+                _currentUser.Grants.Count == 0
+                    ? "Your account is not registered in this application, or holds no active role "
+                      + "assignments, so no application data is available to you."
+                    : "Your role assignments for this evidence room do not include this permission.",
+                "IAM-017");
         }
 
         if (!EmcPermissions.RequireActiveCustodianAppointment.Contains(permission))

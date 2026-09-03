@@ -1,13 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
-using Emc.Application.Abstractions;
 using Emc.Application.Authorization;
 using Emc.Application.Cases;
+using Emc.Application.Reads;
 using Emc.Domain.Common;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
 
 namespace Emc.Web.Pages.Vouchers;
 
@@ -20,18 +19,18 @@ public class DetailsModel : PageModel
     private const string SuccessKey = "Success";
     private const string WarningsKey = "Warnings";
 
-    private readonly IEmcDbContext _db;
+    private readonly IEvidenceReadService _reads;
     private readonly IVoucherService _vouchers;
     private readonly IEvidenceIntakeService _intake;
     private readonly IEmcPageAuthorization _authorization;
 
     public DetailsModel(
-        IEmcDbContext db,
+        IEvidenceReadService reads,
         IVoucherService vouchers,
         IEvidenceIntakeService intake,
         IEmcPageAuthorization authorization)
     {
-        _db = db;
+        _reads = reads;
         _vouchers = vouchers;
         _intake = intake;
         _authorization = authorization;
@@ -51,7 +50,7 @@ public class DetailsModel : PageModel
     public string ReceivedFrom { get; private set; } = string.Empty;
     public DateTimeOffset AcquiredAtLocal { get; private set; }
 
-    public IReadOnlyList<ItemRow> Items { get; private set; } = [];
+    public IReadOnlyList<ItemListRow> Items { get; private set; } = [];
     public IReadOnlyList<DocumentNumberRow> DocumentNumbers { get; private set; } = [];
 
     public bool CanEditDraft { get; private set; }
@@ -221,68 +220,39 @@ public class DetailsModel : PageModel
 
     private async Task<bool> LoadAsync(int id)
     {
-        var voucher = await _db.EvidenceVouchers
-            .AsNoTracking()
-            .Include(v => v.Case)
-            .Include(v => v.Items)
-            .Include(v => v.DocumentNumberAssignments)
-            .FirstOrDefaultAsync(v => v.Id == id);
-
-        if (voucher?.Case is null)
+        // Authorizes before returning anything; null when the caller may not read this voucher,
+        // which the page turns into a 404 so identifiers cannot be enumerated (IAM-018).
+        var view = await _reads.GetVoucherAsync(id);
+        if (view is null)
         {
             return false;
         }
 
-        VoucherId = voucher.Id;
-        CaseId = voucher.CaseId;
-        CaseControlNumber = voucher.Case.CaseControlNumber;
-        RequestingOfficeCaseNumber = voucher.RequestingOfficeCaseNumber;
-        DisplayIdentifier = voucher.DisplayIdentifier;
-        TemporaryIdentifier = voucher.TemporaryIdentifier;
-        HasOfficialDocumentNumber = voucher.HasOfficialDocumentNumber;
-        IsSubmitted = voucher.IsSubmitted;
-        DerivedStatus = voucher.DerivedStatus;
-        ReceivingActivity = voucher.ReceivingActivity;
-        ReceivingActivityLocation = voucher.ReceivingActivityLocation;
-        ReceivedFrom = voucher.ReceivedFrom;
-        AcquiredAtLocal = voucher.AcquiredAtLocal;
-
-        var ordered = voucher.Items.OrderBy(i => i.ItemNumber).ToList();
-
-        Items = ordered
-            .Select((item, index) => new ItemRow(
-                item.Id,
-                item.ItemNumber,
-
-                // AR 195-5 para 2-3l - POSSIBLE BIOHAZARD is derived on render, so it can never
-                // drift from the flag (ITEM-007).
-                item.DescriptionForForm,
-                item.Quantity,
-                item.SerialNumber,
-                item.UniqueDeviceIdentifier,
-                item.IsPossibleBiohazard,
-                item.IsSealed,
-                item.AccountabilityStatus,
-
-                // AR 195-5 para 2-3d - LAST ITEM after the last listed item (ITEM-008).
-                index == ordered.Count - 1))
-            .ToList();
-
-        DocumentNumbers = voucher.DocumentNumberAssignments
-            .OrderBy(a => a.EnteredAtUtc)
-            .Select(a => new DocumentNumberRow(
-                a.DocumentNumber, a.EnteredAtUtc, a.IsCurrent, a.SupersessionReason))
-            .ToList();
+        VoucherId = view.Id;
+        CaseId = view.CaseId;
+        CaseControlNumber = view.CaseControlNumber;
+        RequestingOfficeCaseNumber = view.RequestingOfficeCaseNumber;
+        DisplayIdentifier = view.DisplayIdentifier;
+        TemporaryIdentifier = view.TemporaryIdentifier;
+        HasOfficialDocumentNumber = view.HasOfficialDocumentNumber;
+        IsSubmitted = view.IsSubmitted;
+        DerivedStatus = view.DerivedStatus;
+        ReceivingActivity = view.ReceivingActivity;
+        ReceivingActivityLocation = view.ReceivingActivityLocation;
+        ReceivedFrom = view.ReceivedFrom;
+        AcquiredAtLocal = view.AcquiredAtLocal;
+        Items = view.Items;
+        DocumentNumbers = view.DocumentNumbers;
 
         var editDecision = await _authorization.CheckAsync(
-            EmcPermissions.EditDraftVoucher, voucher.EvidenceRoomId);
+            EmcPermissions.EditDraftVoucher, view.EvidenceRoomId);
 
         var numberDecision = await _authorization.CheckAsync(
-            EmcPermissions.RecordOfficialDocumentNumber, voucher.EvidenceRoomId);
+            EmcPermissions.RecordOfficialDocumentNumber, view.EvidenceRoomId);
 
-        CanEditDraft = editDecision.IsAllowed && voucher.AllowsItemEditing;
-        CanSubmit = editDecision.IsAllowed && voucher.AllowsItemEditing && voucher.Items.Count > 0;
-        CanRecordDocumentNumber = numberDecision.IsAllowed && voucher.IsSubmitted;
+        CanEditDraft = editDecision.IsAllowed && view.AllowsItemEditing;
+        CanSubmit = editDecision.IsAllowed && view.AllowsItemEditing && view.Items.Count > 0;
+        CanRecordDocumentNumber = numberDecision.IsAllowed && view.IsSubmitted;
         AuthorizationWarnings = numberDecision.Warnings ?? [];
 
         if (TempData[SuccessKey] is string success)
@@ -292,8 +262,7 @@ public class DetailsModel : PageModel
 
         if (TempData[WarningsKey] is string packed && packed.Length > 0)
         {
-            Messages.Warnings =
-                JsonSerializer.Deserialize<List<string>>(packed) ?? [];
+            Messages.Warnings = JsonSerializer.Deserialize<List<string>>(packed) ?? [];
         }
 
         if (DocumentNumber.ReceivedAtLocal == default)
@@ -303,24 +272,6 @@ public class DetailsModel : PageModel
 
         return true;
     }
-
-    public sealed record ItemRow(
-        int Id,
-        int ItemNumber,
-        string DescriptionForForm,
-        string? Quantity,
-        string? SerialNumber,
-        string? UniqueDeviceIdentifier,
-        bool IsPossibleBiohazard,
-        bool IsSealed,
-        AccountabilityStatus AccountabilityStatus,
-        bool IsLastItem);
-
-    public sealed record DocumentNumberRow(
-        string DocumentNumber,
-        DateTimeOffset EnteredAtUtc,
-        bool IsCurrent,
-        string? SupersessionReason);
 
     public sealed class NewItemInput
     {

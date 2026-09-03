@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903104928_AppendOnlyTriggers")]
+    [Migration("20260903121601_AppendOnlyTriggers")]
     partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
@@ -20,7 +20,7 @@ namespace Emc.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -622,6 +622,51 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("Roles", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Identity.RoleAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveTo")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("GrantedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("GrantedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("UserId", "EvidenceRoomId");
+
+                    b.HasIndex("UserId", "RoleId", "EvidenceRoomId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RoleAssignments_OneOpenPerUserRoleRoom")
+                        .HasFilter("EffectiveTo IS NULL");
+
+                    b.ToTable("RoleAssignments", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Identity.User", b =>
                 {
                     b.Property<int>("Id")
@@ -669,36 +714,6 @@ namespace Emc.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
-                });
-
-            modelBuilder.Entity("Emc.Domain.Identity.UserRole", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("GrantedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<int>("GrantedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RoleId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RoleId");
-
-                    b.HasIndex("UserId", "RoleId")
-                        .IsUnique();
-
-                    b.ToTable("UserRoles", (string)null);
                 });
 
             modelBuilder.Entity("Emc.Domain.Storage.EvidenceRoom", b =>
@@ -1076,8 +1091,13 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Emc.Domain.Identity.UserRole", b =>
+            modelBuilder.Entity("Emc.Domain.Identity.RoleAssignment", b =>
                 {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Emc.Domain.Identity.Role", "Role")
                         .WithMany()
                         .HasForeignKey("RoleId")
@@ -1085,9 +1105,9 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("Emc.Domain.Identity.User", "User")
-                        .WithMany("Roles")
+                        .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Role");
@@ -1158,11 +1178,6 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("DocumentNumberAssignments");
 
                     b.Navigation("Items");
-                });
-
-            modelBuilder.Entity("Emc.Domain.Identity.User", b =>
-                {
-                    b.Navigation("Roles");
                 });
 #pragma warning restore 612, 618
         }

@@ -116,7 +116,12 @@ public class AuthorizationTests : IDisposable
             EmcPermissions.AcceptEvidenceIntake, otherRoom.Id);
 
         Assert.False(decision.IsAllowed);
-        Assert.Equal("IAM-005", decision.RequirementId);
+
+        // Room scoping denies BEFORE the appointment check is reached: the custodian holds no
+        // role grant in that room at all, so there is nothing to check an appointment against
+        // (IAM-016, IAM-017). The earlier behaviour reached IAM-005, which was a weaker denial
+        // because it presumed the role already applied there.
+        Assert.Equal("IAM-017", decision.RequirementId);
     }
 
     [Fact]

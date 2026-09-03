@@ -78,15 +78,20 @@ public sealed class SliceTestHarness : IDisposable
     public IEvidenceIntakeService Intake
         => new EvidenceIntakeService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
 
+    public Reads.IEvidenceReadService Reads
+        => new Reads.EvidenceReadService(Db, Authorization, CurrentUser);
+
     public IItemHistoryService History
         => new ItemHistoryService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
 
-    /// <summary>Signs in as an agent (AR 195-5 2-3b).</summary>
-    public void SignInAsAgent() => CurrentUser.SignIn(AgentUserId, "SA SMITH, JOHN A.", EmcRoles.Agent);
+    /// <summary>Signs in as an agent in this harness's evidence room (AR 195-5 2-3b).</summary>
+    public void SignInAsAgent()
+        => CurrentUser.SignIn(AgentUserId, "SA SMITH, JOHN A.", EvidenceRoomId, EmcRoles.Agent);
 
     /// <summary>Signs in as the appointed primary evidence custodian (AR 195-5 1-4g(1), 1-4h).</summary>
     public void SignInAsCustodian()
-        => CurrentUser.SignIn(CustodianUserId, "SA BAKER, ALICE C.", EmcRoles.PrimaryEvidenceCustodian);
+        => CurrentUser.SignIn(
+            CustodianUserId, "SA BAKER, ALICE C.", EvidenceRoomId, EmcRoles.PrimaryEvidenceCustodian);
 
     /// <summary>
     /// Signs in as a user holding the custodian ROLE but with no written appointment - the case
@@ -94,15 +99,17 @@ public sealed class SliceTestHarness : IDisposable
     /// </summary>
     public void SignInAsUnappointedCustodian()
         => CurrentUser.SignIn(
-            AlternateCustodianUserId, "SA CHEN, DAVID L.", EmcRoles.AlternateEvidenceCustodian);
+            AlternateCustodianUserId, "SA CHEN, DAVID L.", EvidenceRoomId,
+            EmcRoles.AlternateEvidenceCustodian);
 
-    /// <summary>Signs in as an application administrator (IAM-009).</summary>
+    /// <summary>Signs in as an application administrator - a GLOBAL grant (IAM-009, IAM-016).</summary>
     public void SignInAsAdministrator()
-        => CurrentUser.SignIn(
+        => CurrentUser.SignInGlobal(
             AdministratorUserId, "MR. DOE, ROBERT", EmcRoles.ApplicationAdministrator);
 
     public void SignInAsCommander()
-        => CurrentUser.SignIn(CommanderUserId, "MAJ EVANS, SARAH", EmcRoles.CommanderOrSac);
+        => CurrentUser.SignIn(
+            CommanderUserId, "MAJ EVANS, SARAH", EvidenceRoomId, EmcRoles.CommanderOrSac);
 
     private void Seed()
     {
@@ -132,11 +139,14 @@ public sealed class SliceTestHarness : IDisposable
         AdministratorUserId = administrator.Id;
         CommanderUserId = commander.Id;
 
-        GrantRole(agent.Id, EmcRoles.Agent);
-        GrantRole(custodian.Id, EmcRoles.PrimaryEvidenceCustodian);
-        GrantRole(alternate.Id, EmcRoles.AlternateEvidenceCustodian);
-        GrantRole(administrator.Id, EmcRoles.ApplicationAdministrator);
-        GrantRole(commander.Id, EmcRoles.CommanderOrSac);
+        GrantRoleInRoom(agent.Id, EmcRoles.Agent, room.Id);
+        GrantRoleInRoom(custodian.Id, EmcRoles.PrimaryEvidenceCustodian, room.Id);
+        GrantRoleInRoom(alternate.Id, EmcRoles.AlternateEvidenceCustodian, room.Id);
+        GrantRoleInRoom(commander.Id, EmcRoles.CommanderOrSac, room.Id);
+
+        // IAM-016 - the administrator is the only role held globally, and it carries no
+        // authority over evidence.
+        GrantRoleGlobally(administrator.Id, EmcRoles.ApplicationAdministrator);
 
         // AR 195-5 1-4g(1) - the primary custodian is appointed IN WRITING. Only the appointed
         // custodian holds evidence-room authority; the alternate above is deliberately left
@@ -174,10 +184,25 @@ public sealed class SliceTestHarness : IDisposable
         return user;
     }
 
-    private void GrantRole(int userId, string roleName)
+    public void GrantRoleInRoom(int userId, string roleName, int evidenceRoomId)
     {
         var role = Db.Roles.Single(r => r.Name == roleName);
-        Db.UserRoles.Add(new UserRole(userId, role.Id, userId, Clock.UtcNow));
+
+        Db.RoleAssignments.Add(new RoleAssignment(
+            userId, role.Id, roleName, evidenceRoomId,
+            Clock.UtcNow.AddDays(-60), userId, Clock.UtcNow.AddDays(-60)));
+
+        Db.SaveChanges();
+    }
+
+    private void GrantRoleGlobally(int userId, string roleName)
+    {
+        var role = Db.Roles.Single(r => r.Name == roleName);
+
+        Db.RoleAssignments.Add(new RoleAssignment(
+            userId, role.Id, roleName, null,
+            Clock.UtcNow.AddDays(-60), userId, Clock.UtcNow.AddDays(-60)));
+
         Db.SaveChanges();
     }
 
@@ -199,30 +224,51 @@ public sealed class TestClock : IClock
 
 public sealed class TestCurrentUser : ICurrentUser
 {
-    private readonly List<string> _roles = [];
+    private readonly List<RoleGrant> _grants = [];
 
     public bool IsAuthenticated { get; private set; }
     public int UserId { get; private set; }
-    public string DisplayName { get; private set; } = "(unauthenticated)";
-    public IReadOnlyCollection<string> Roles => _roles;
+    public string DisplayName { get; private set; } = "(unregistered)";
+    public IReadOnlyCollection<RoleGrant> Grants => _grants;
 
-    public bool IsInRole(string role) => _roles.Contains(role);
-
-    public void SignIn(int userId, string displayName, params string[] roles)
+    /// <summary>Signs in with roles scoped to one evidence room.</summary>
+    public void SignIn(int userId, string displayName, int evidenceRoomId, params string[] roles)
     {
         IsAuthenticated = true;
         UserId = userId;
         DisplayName = displayName;
-        _roles.Clear();
-        _roles.AddRange(roles);
+        _grants.Clear();
+        _grants.AddRange(roles.Select(r => new RoleGrant(r, evidenceRoomId)));
+    }
+
+    /// <summary>Signs in with global grants - only valid for the administrator role.</summary>
+    public void SignInGlobal(int userId, string displayName, params string[] roles)
+    {
+        IsAuthenticated = true;
+        UserId = userId;
+        DisplayName = displayName;
+        _grants.Clear();
+        _grants.AddRange(roles.Select(r => new RoleGrant(r, null)));
+    }
+
+    /// <summary>
+    /// A valid Windows principal with no EMC user record. IsAuthenticated is false because
+    /// authentication is not registration, and no grants exist (IAM-017).
+    /// </summary>
+    public void SignInAsUnregisteredWindowsPrincipal()
+    {
+        IsAuthenticated = false;
+        UserId = 0;
+        DisplayName = "(unregistered)";
+        _grants.Clear();
     }
 
     public void SignOut()
     {
         IsAuthenticated = false;
         UserId = 0;
-        DisplayName = "(unauthenticated)";
-        _roles.Clear();
+        DisplayName = "(unregistered)";
+        _grants.Clear();
     }
 }
 

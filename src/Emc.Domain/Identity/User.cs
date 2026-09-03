@@ -13,8 +13,6 @@ namespace Emc.Domain.Identity;
 /// </summary>
 public class User : Entity, IConcurrencyStamped
 {
-    private readonly List<UserRole> _roles = [];
-
     private User() { }
 
     public User(string activeDirectorySid, string userPrincipalName, string displayName)
@@ -38,8 +36,6 @@ public class User : Entity, IConcurrencyStamped
     public string? OrganizationOrUnit { get; private set; }
     public bool IsActive { get; private set; }
     public Guid ConcurrencyStamp { get; set; }
-
-    public IReadOnlyCollection<UserRole> Roles => _roles.AsReadOnly();
 
     public void UpdateProfile(string displayName, string? rankOrGrade, string? organizationOrUnit)
     {
@@ -69,33 +65,4 @@ public class Role : Entity
 
     public string Name { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
-}
-
-public class UserRole : Entity
-{
-    private UserRole() { }
-
-    public UserRole(int userId, int roleId, int grantedByUserId, DateTimeOffset grantedAtUtc)
-    {
-        UserId = userId;
-        RoleId = roleId;
-        GrantedByUserId = grantedByUserId;
-        GrantedAtUtc = grantedAtUtc;
-    }
-
-    public int UserId { get; private set; }
-    public User? User { get; private set; }
-
-    public int RoleId { get; private set; }
-    public Role? Role { get; private set; }
-
-    public int GrantedByUserId { get; private set; }
-    public DateTimeOffset GrantedAtUtc { get; private set; }
-
-    /// <summary>
-    /// True when the grantor and the grantee are the same person. An administrator granting
-    /// themselves a custodian role cannot be prevented, so EMC makes it visible instead
-    /// (IAM-010). Surfaced in the audit log and on the administration screens.
-    /// </summary>
-    public bool IsSelfGrant => UserId == GrantedByUserId;
 }

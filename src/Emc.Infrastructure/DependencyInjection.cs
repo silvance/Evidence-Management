@@ -37,6 +37,9 @@ public static class DependencyInjection
         services.AddScoped<IEvidenceAuthorizationService, EvidenceAuthorizationService>();
         services.AddScoped<IItemEventRecorder, ItemEventRecorder>();
 
+        services.AddScoped<Emc.Application.Reads.IEvidenceReadService,
+            Emc.Application.Reads.EvidenceReadService>();
+
         services.AddScoped<ICaseService, CaseService>();
         services.AddScoped<IVoucherService, VoucherService>();
         services.AddScoped<IEvidenceIntakeService, EvidenceIntakeService>();

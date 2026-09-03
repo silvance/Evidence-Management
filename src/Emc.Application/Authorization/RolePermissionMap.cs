@@ -24,6 +24,11 @@ public static class RolePermissionMap
         // evidence into the evidence room, or anything else reserved to the custodian (IAM-011).
         [EmcRoles.Agent] = new(StringComparer.Ordinal)
         {
+            EmcPermissions.ViewCase,
+            EmcPermissions.ViewVoucher,
+            EmcPermissions.ViewEvidenceItem,
+            EmcPermissions.ViewEvidenceHistory,
+            EmcPermissions.ViewSourceDocument,
             EmcPermissions.CreateCase,
             EmcPermissions.CreateDraftVoucher,
             EmcPermissions.EditDraftVoucher,
@@ -35,6 +40,13 @@ public static class RolePermissionMap
         // authorized) disposes of all evidence, and maintains all evidence records.
         [EmcRoles.PrimaryEvidenceCustodian] = new(StringComparer.Ordinal)
         {
+            EmcPermissions.ViewCase,
+            EmcPermissions.ViewVoucher,
+            EmcPermissions.ViewEvidenceItem,
+            EmcPermissions.ViewEvidenceHistory,
+            EmcPermissions.ViewSourceDocument,
+            EmcPermissions.DownloadSourceDocument,
+            EmcPermissions.ViewAudit,
             EmcPermissions.CreateCase,
             EmcPermissions.CreateDraftVoucher,
             EmcPermissions.EditDraftVoucher,
@@ -57,6 +69,13 @@ public static class RolePermissionMap
         // (IAM-006, DEC-05).
         [EmcRoles.AlternateEvidenceCustodian] = new(StringComparer.Ordinal)
         {
+            EmcPermissions.ViewCase,
+            EmcPermissions.ViewVoucher,
+            EmcPermissions.ViewEvidenceItem,
+            EmcPermissions.ViewEvidenceHistory,
+            EmcPermissions.ViewSourceDocument,
+            EmcPermissions.DownloadSourceDocument,
+            EmcPermissions.ViewAudit,
             EmcPermissions.CreateCase,
             EmcPermissions.CreateDraftVoucher,
             EmcPermissions.EditDraftVoucher,
@@ -78,6 +97,13 @@ public static class RolePermissionMap
         // approvals, dashboards.
         [EmcRoles.CommanderOrSac] = new(StringComparer.Ordinal)
         {
+            EmcPermissions.ViewCase,
+            EmcPermissions.ViewVoucher,
+            EmcPermissions.ViewEvidenceItem,
+            EmcPermissions.ViewEvidenceHistory,
+            EmcPermissions.ViewSourceDocument,
+            EmcPermissions.DownloadSourceDocument,
+            EmcPermissions.ViewAudit,
             EmcPermissions.ConductInspection,
             EmcPermissions.ReviewDiscrepancy,
             EmcPermissions.ApproveDisposition,
@@ -86,8 +112,14 @@ public static class RolePermissionMap
         },
 
         // AR 195-5 3-1, 3-2 — restricted to an assigned inspection or inventory session.
+        // AR 195-5 3-2b(1)(b)/(c) - an inventory participant must be able to compare evidence
+        // against the DA Form 4137 and the ledger, so they can read, but nothing more.
         [EmcRoles.InspectorOrInventoryParticipant] = new(StringComparer.Ordinal)
         {
+            EmcPermissions.ViewCase,
+            EmcPermissions.ViewVoucher,
+            EmcPermissions.ViewEvidenceItem,
+            EmcPermissions.ViewEvidenceHistory,
             EmcPermissions.ParticipateInInventory
         },
 
@@ -98,7 +130,12 @@ public static class RolePermissionMap
             EmcPermissions.ManageRoles,
             EmcPermissions.ManageStorageLocations,
             EmcPermissions.ManageSystemConfiguration,
-            EmcPermissions.VerifyIntegrity
+            EmcPermissions.VerifyIntegrity,
+
+            // Configuration only. Deliberately NOT any evidence read permission: an
+            // administrator must not be able to read case control numbers, evidence
+            // descriptions, serial numbers, custody history or locations (IAM-009, IAM-017).
+            EmcPermissions.ViewConfiguration
         }
     };
 

@@ -97,6 +97,27 @@ public sealed class ItemHistoryService : IItemHistoryService
 
     public async Task<ItemHistoryView?> GetAsync(int itemId, CancellationToken ct = default)
     {
+        // IAM-017 / IAM-018. Item history contains evidence descriptions, serial numbers, unique
+        // device identifiers, custody parties and locations - the most sensitive content in the
+        // application. Authorize on the owning evidence room BEFORE any of it is read, and report
+        // an unauthorized item as ABSENT so identifiers cannot be enumerated.
+        var owningRoomId = await _db.EvidenceItems
+            .AsNoTracking()
+            .Where(i => i.Id == itemId)
+            .Select(i => (int?)i.Voucher!.EvidenceRoomId)
+            .FirstOrDefaultAsync(ct);
+
+        if (owningRoomId is null)
+        {
+            return null;
+        }
+
+        if (!(await _authorization.AuthorizeAsync(
+                EmcPermissions.ViewEvidenceHistory, owningRoomId, ct)).IsAllowed)
+        {
+            return null;
+        }
+
         var item = await _db.EvidenceItems
             .AsNoTracking()
             .Include(i => i.Voucher!).ThenInclude(v => v.Case)

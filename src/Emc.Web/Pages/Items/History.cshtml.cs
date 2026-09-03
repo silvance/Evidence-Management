@@ -3,6 +3,7 @@ using Emc.Application.Abstractions;
 using Emc.Application.Authorization;
 using Emc.Application.Cases;
 using Emc.Application.Items;
+using Emc.Application.Reads;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -20,17 +21,20 @@ namespace Emc.Web.Pages.Items;
 public class HistoryModel : PageModel
 {
     private readonly IEmcDbContext _db;
+    private readonly IEvidenceReadService _reads;
     private readonly IItemHistoryService _history;
     private readonly IEvidenceIntakeService _intake;
     private readonly IEmcPageAuthorization _authorization;
 
     public HistoryModel(
         IEmcDbContext db,
+        IEvidenceReadService reads,
         IItemHistoryService history,
         IEvidenceIntakeService intake,
         IEmcPageAuthorization authorization)
     {
         _db = db;
+        _reads = reads;
         _history = history;
         _intake = intake;
         _authorization = authorization;
@@ -156,18 +160,19 @@ public class HistoryModel : PageModel
             return false;
         }
 
-        var item = await _db.EvidenceItems
-            .AsNoTracking()
-            .Include(i => i.Voucher)
-            .FirstOrDefaultAsync(i => i.Id == id);
-
-        if (item?.Voucher is null)
+        // The history service already authorized the read; this resolves the owning room for the
+        // write-permission checks below, and re-checks read permission on the way.
+        var evidenceRoomId = await _reads.GetReadableItemEvidenceRoomIdAsync(id);
+        if (evidenceRoomId is null)
         {
             return false;
         }
 
-        VoucherId = item.VoucherId;
-        var evidenceRoomId = item.Voucher.EvidenceRoomId;
+        VoucherId = await _db.EvidenceItems
+            .AsNoTracking()
+            .Where(i => i.Id == id)
+            .Select(i => i.VoucherId)
+            .FirstAsync();
 
         CanAssignLocation =
             (await _authorization.CheckAsync(EmcPermissions.AssignStorageLocation, evidenceRoomId))

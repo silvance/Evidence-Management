@@ -89,7 +89,7 @@ public class WebHostSmokeTests : IClassFixture<EmcWebFactory>
         Assert.Contains("Integrity check passed", text, StringComparison.Ordinal);
 
         // AR 195-5 2-4c - the recorded official document number is displayed.
-        Assert.Contains("037-26", text, StringComparison.Ordinal);
+        Assert.Contains(example.DocumentNumber, text, StringComparison.Ordinal);
 
         // AR 195-5 2-5b(5) - the correction rationale is stated on the page itself, so a reader
         // can see why a superseded entry is still shown.
@@ -110,12 +110,16 @@ public class WebHostSmokeTests : IClassFixture<EmcWebFactory>
 }
 
 /// <summary>Hosts the real application with a test identity and a SQLite database.</summary>
-public sealed class EmcWebFactory : WebApplicationFactory<Program>
+public class EmcWebFactory : WebApplicationFactory<Program>
 {
     private SqliteConnection? _connection;
 
     public int EvidenceRoomId { get; private set; }
     public int CustodianUserId { get; private set; }
+
+    /// <summary>Overridden by factories that host a different Windows identity.</summary>
+    protected virtual TestIdentity CreateTestIdentity()
+        => new(TestAuthenticationHandler.Sid, "BAKER, ALICE C.");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -154,6 +158,8 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
 
             // Windows Authentication cannot run here, so a test handler supplies the identity
             // the real HttpCurrentUser then resolves against the database.
+            services.AddSingleton(CreateTestIdentity());
+
             services.AddAuthentication()
                 .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
                     TestAuthenticationHandler.SchemeName, _ => { });
@@ -211,7 +217,11 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
         foreach (var roleName in new[] { EmcRoles.Agent, EmcRoles.PrimaryEvidenceCustodian })
         {
             var role = db.Roles.Single(r => r.Name == roleName);
-            db.UserRoles.Add(new UserRole(custodian.Id, role.Id, custodian.Id, DateTimeOffset.UtcNow));
+
+            // IAM-016 - operational roles are granted for a specific evidence room.
+            db.RoleAssignments.Add(new RoleAssignment(
+                custodian.Id, role.Id, roleName, room.Id,
+                DateTimeOffset.UtcNow.AddDays(-10), custodian.Id, DateTimeOffset.UtcNow.AddDays(-10)));
         }
 
         // AR 195-5 1-4g(1) - custodial authority requires a written appointment.
@@ -232,13 +242,19 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
     /// Builds a worked example by POSTing to the real pages, so the POST handlers, model binding
     /// and anti-forgery validation are exercised rather than bypassed.
     /// </summary>
+    private int _seedSequence;
+
     public async Task<WorkedExample> SeedWorkedExampleAsync(HttpClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
 
+        // Unique per call so a test class can seed more than once. Deliberately and obviously
+        // fictitious - no real case control number may ever appear in this repository.
+        var caseNumber = $"0{++_seedSequence:D3}-2026-CID902-XXXXX";
+
         var caseLocation = await PostAsync(client, "/Cases", new Dictionary<string, string>
         {
-            ["Input.CaseControlNumber"] = "0142-2026-CID902-XXXXX",
+            ["Input.CaseControlNumber"] = caseNumber,
             ["Input.Title"] = "Worked example",
             ["Input.EvidenceRoomId"] = EvidenceRoomId.ToString(CultureInfo.InvariantCulture)
         });
@@ -266,7 +282,9 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
 
         await PostAsync(client, voucherLocation, new Dictionary<string, string>
         {
-            ["DocumentNumber.Value"] = "037-26",
+            // AR 195-5 2-4c numbers documents in sequence within the calendar year, so each
+            // seeded voucher takes the next number rather than reusing one.
+            ["DocumentNumber.Value"] = $"{36 + _seedSequence:D3}-26",
             ["DocumentNumber.ReceivedAtLocal"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
 
             // EMC-002 / VCH-006 - the custodian's explicit attestation that the number was
@@ -293,11 +311,12 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
             ["Location.Reason"] = "Initial placement following intake"
         }, handler: "AssignLocation");
 
-        return new WorkedExample(caseLocation, voucherLocation, itemUrl);
+        return new WorkedExample(caseLocation, voucherLocation, itemUrl, $"{36 + _seedSequence:D3}-26");
     }
 
     /// <summary>The URLs the worked example produced, taken from the handlers' own redirects.</summary>
-    public sealed record WorkedExample(string CaseUrl, string VoucherUrl, string ItemUrl);
+    public sealed record WorkedExample(
+        string CaseUrl, string VoucherUrl, string ItemUrl, string DocumentNumber);
 
     /// <summary>
     /// GETs the page to obtain its anti-forgery token, then POSTs. Anti-forgery validation is
@@ -390,26 +409,63 @@ public sealed class EmcWebFactory : WebApplicationFactory<Program>
 public sealed class TestAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
     public const string SchemeName = "Test";
+
+    /// <summary>The SID of the seeded, registered EMC user.</summary>
     public const string Sid = "S-1-5-21-TEST-CUSTODIAN";
+
+    /// <summary>
+    /// A valid domain account that is NOT registered in EMC. Used to prove that authentication
+    /// alone exposes nothing (IAM-017).
+    /// </summary>
+    public const string UnregisteredSid = "S-1-5-21-TEST-UNREGISTERED";
+
+    private readonly TestIdentity _identity;
 
     public TestAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder)
+        UrlEncoder encoder,
+        TestIdentity identity)
         : base(options, logger, encoder)
     {
+        _identity = identity;
     }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        // Windows Authentication would supply exactly this: an OS-established identity. Whether
+        // that identity maps to an EMC user is a separate question the application answers.
         var identity = new ClaimsIdentity(
             [
-                new Claim(ClaimTypes.Name, "BAKER, ALICE C."),
-                new Claim(ClaimTypes.PrimarySid, Sid)
+                new Claim(ClaimTypes.Name, _identity.DisplayName),
+                new Claim(ClaimTypes.PrimarySid, _identity.Sid)
             ],
             SchemeName);
 
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
+}
+
+/// <summary>The Windows identity the test host presents. Registered per factory.</summary>
+public sealed class TestIdentity
+{
+    public TestIdentity(string sid, string displayName)
+    {
+        Sid = sid;
+        DisplayName = displayName;
+    }
+
+    public string Sid { get; }
+    public string DisplayName { get; }
+}
+
+/// <summary>
+/// Hosts the application as a valid domain account that has NO EMC user record - the exact
+/// situation the read-authorization fix addresses (IAM-017, IAM-018).
+/// </summary>
+public sealed class UnregisteredPrincipalWebFactory : EmcWebFactory
+{
+    protected override TestIdentity CreateTestIdentity()
+        => new(TestAuthenticationHandler.UnregisteredSid, "OUTSIDER, DANA");
 }

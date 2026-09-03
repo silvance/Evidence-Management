@@ -21,6 +21,7 @@ public sealed class HttpCurrentUser : ICurrentUser
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly EmcDbContext _db;
     private UserProfile? _resolved;
+    private bool _resolutionAttempted;
 
     public HttpCurrentUser(IHttpContextAccessor httpContextAccessor, EmcDbContext db)
     {
@@ -28,22 +29,27 @@ public sealed class HttpCurrentUser : ICurrentUser
         _db = db;
     }
 
+    /// <summary>
+    /// True only for a REGISTERED, ACTIVE EMC user - not merely a valid Windows principal. A
+    /// domain account that authenticates but has no EMC record resolves to nothing and therefore
+    /// holds no grants, so it can read nothing (IAM-017).
+    /// </summary>
     public bool IsAuthenticated => Resolve() is not null;
 
     public int UserId => Resolve()?.Id ?? 0;
 
-    public string DisplayName => Resolve()?.DisplayName ?? "(unauthenticated)";
+    public string DisplayName => Resolve()?.DisplayName ?? "(unregistered)";
 
-    public IReadOnlyCollection<string> Roles => Resolve()?.Roles ?? [];
-
-    public bool IsInRole(string role) => Roles.Contains(role);
+    public IReadOnlyCollection<RoleGrant> Grants => Resolve()?.Grants ?? [];
 
     private UserProfile? Resolve()
     {
-        if (_resolved is not null)
+        if (_resolutionAttempted)
         {
             return _resolved;
         }
+
+        _resolutionAttempted = true;
 
         var principal = _httpContextAccessor.HttpContext?.User;
         if (principal?.Identity?.IsAuthenticated != true)
@@ -72,17 +78,23 @@ public sealed class HttpCurrentUser : ICurrentUser
             return null;
         }
 
-        var roles = (from userRole in _db.UserRoles.AsNoTracking()
-                     join role in _db.Roles.AsNoTracking() on userRole.RoleId equals role.Id
-                     where userRole.UserId == user.Id
-                     select role.Name)
+        var now = DateTimeOffset.UtcNow;
+
+        // IAM-002: grants come from the database, per request, and carry the evidence room they
+        // apply to. Nothing role-related is read from the client.
+        var grants = (from assignment in _db.RoleAssignments.AsNoTracking()
+                      join role in _db.Roles.AsNoTracking() on assignment.RoleId equals role.Id
+                      where assignment.UserId == user.Id
+                            && assignment.EffectiveFrom <= now
+                            && (assignment.EffectiveTo == null || assignment.EffectiveTo > now)
+                      select new RoleGrant(role.Name, assignment.EvidenceRoomId))
             .ToList();
 
-        _resolved = new UserProfile(user.Id, user.DisplayName, roles);
+        _resolved = new UserProfile(user.Id, user.DisplayName, grants);
         return _resolved;
     }
 
-    private sealed record UserProfile(int Id, string DisplayName, IReadOnlyCollection<string> Roles);
+    private sealed record UserProfile(int Id, string DisplayName, IReadOnlyCollection<RoleGrant> Grants);
 }
 
 /// <summary>Per-request context for audit correlation. Never carries investigative content.</summary>

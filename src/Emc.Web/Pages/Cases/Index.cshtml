@@ -40,7 +40,7 @@
             <div class="form-row">
                 <label asp-for="Input.EvidenceRoomId">Evidence room</label>
                 <select asp-for="Input.EvidenceRoomId"
-                        asp-items="@(new SelectList(Model.EvidenceRooms, nameof(Emc.Web.Pages.Cases.IndexModel.EvidenceRoomOption.Id), nameof(Emc.Web.Pages.Cases.IndexModel.EvidenceRoomOption.Name)))"></select>
+                        asp-items="@(new SelectList(Model.EvidenceRooms, nameof(Emc.Application.Reads.EvidenceRoomOption.Id), nameof(Emc.Application.Reads.EvidenceRoomOption.Name)))"></select>
                 <span class="hint">
                     AR 195-5 para 2-4c runs the document-number series per evidence room, per
                     calendar year.
@@ -56,7 +56,10 @@
     <h2>Existing cases</h2>
     @if (Model.Cases.Count == 0)
     {
-        <p>No cases have been recorded.</p>
+        <p>
+            No cases are available to you. You are shown only cases in evidence rooms where you
+            hold a current role assignment.
+        </p>
     }
     else
     {
@@ -65,6 +68,7 @@
                 <tr>
                     <th>Case control number</th>
                     <th>Title</th>
+                    <th>Evidence room</th>
                     <th class="numeric">Vouchers</th>
                     <th>Status</th>
                     <th></th>
@@ -76,6 +80,7 @@
                 <tr>
                     <td><span class="identifier">@item.CaseControlNumber</span></td>
                     <td>@item.Title</td>
+                    <td>@item.EvidenceRoomName</td>
                     <td class="numeric">@item.VoucherCount</td>
                     <td>@(item.IsClosed ? "Closed" : "Open")</td>
                     <td><a asp-page="./Details" asp-route-id="@item.Id">Open</a></td>

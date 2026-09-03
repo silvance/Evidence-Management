@@ -6,6 +6,20 @@ namespace Emc.Application.Authorization;
 /// </summary>
 public static class EmcPermissions
 {
+    // --- Read surface ---
+    //
+    // Reads are permissions in their own right. Authentication is NOT authorization: a domain
+    // user who authenticates successfully but holds no EMC role must see no case control
+    // numbers, evidence descriptions, serial numbers, custody history or locations (IAM-017).
+    public const string ViewCase = "case.view";
+    public const string ViewVoucher = "voucher.view";
+    public const string ViewEvidenceItem = "evidence-item.view";
+    public const string ViewEvidenceHistory = "evidence-history.view";
+    public const string ViewSourceDocument = "source-document.view";
+    public const string DownloadSourceDocument = "source-document.download";
+    public const string ViewAudit = "audit.view";
+    public const string ViewConfiguration = "configuration.view";
+
     // --- Agent surface (AR 195-5 2-3b) ---
     public const string CreateCase = "case.create";
     public const string CreateDraftVoucher = "voucher.create";
@@ -40,6 +54,37 @@ public static class EmcPermissions
     public const string VerifyIntegrity = "admin.verify-integrity";
 
     /// <summary>
+    /// Permissions that administer the application rather than an evidence room, and are
+    /// therefore held globally. Everything not in this set requires an evidence room.
+    /// </summary>
+    public static readonly IReadOnlySet<string> GlobalPermissions =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            ManageUsers,
+            ManageRoles,
+            ManageStorageLocations,
+            ManageSystemConfiguration,
+            VerifyIntegrity,
+            ViewConfiguration
+        };
+
+    /// <summary>
+    /// Read permissions over evidence content. Grouped so the administrator-denial test can
+    /// assert over all of them, and so no read can be added without landing in that test.
+    /// </summary>
+    public static readonly IReadOnlySet<string> EvidenceReadPermissions =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            ViewCase,
+            ViewVoucher,
+            ViewEvidenceItem,
+            ViewEvidenceHistory,
+            ViewSourceDocument,
+            DownloadSourceDocument,
+            ViewAudit
+        };
+
+    /// <summary>
     /// Permissions that additionally require an ACTIVE CustodianAppointment, not merely a
     /// custodian role (IAM-005, invariant I-11).
     ///
@@ -68,6 +113,13 @@ public static class EmcPermissions
     public static readonly IReadOnlySet<string> AccountabilityPermissions =
         new HashSet<string>(StringComparer.Ordinal)
         {
+            ViewCase,
+            ViewVoucher,
+            ViewEvidenceItem,
+            ViewEvidenceHistory,
+            ViewSourceDocument,
+            DownloadSourceDocument,
+            ViewAudit,
             CreateCase,
             CreateDraftVoucher,
             EditDraftVoucher,

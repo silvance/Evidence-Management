@@ -47,6 +47,21 @@ public static class EmcRoles
     /// <see cref="Emc.Domain.Identity.CustodianAppointment"/> exists (IAM-005, invariant I-11).
     /// The role alone is never sufficient.
     /// </summary>
+    /// <summary>
+    /// Roles that may be granted globally rather than for a single evidence room. Only the
+    /// administrator qualifies: it carries no authority over evidence (IAM-009), so a global
+    /// grant leaks nothing. Every operational role is room-scoped (IAM-016).
+    /// </summary>
+    public static readonly IReadOnlySet<string> MayBeHeldGlobally =
+        new HashSet<string>(StringComparer.Ordinal) { ApplicationAdministrator };
+
+    /// <summary>
+    /// Roles that are meaningless scoped to one room, because they administer the application
+    /// rather than an evidence room.
+    /// </summary>
+    public static readonly IReadOnlySet<string> MayOnlyBeHeldGlobally =
+        new HashSet<string>(StringComparer.Ordinal) { ApplicationAdministrator };
+
     public static readonly IReadOnlyList<string> CustodianRoles =
     [
         PrimaryEvidenceCustodian,

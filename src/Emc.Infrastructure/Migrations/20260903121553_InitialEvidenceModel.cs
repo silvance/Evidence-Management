@@ -226,31 +226,40 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "UserRoles",
+                name: "RoleAssignments",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     UserId = table.Column<int>(type: "int", nullable: false),
                     RoleId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: true),
+                    EffectiveFrom = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    EffectiveTo = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     GrantedByUserId = table.Column<int>(type: "int", nullable: false),
                     GrantedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_UserRoles", x => x.Id);
+                    table.PrimaryKey("PK_RoleAssignments", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_UserRoles_Roles_RoleId",
+                        name: "FK_RoleAssignments_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_RoleAssignments_Roles_RoleId",
                         column: x => x.RoleId,
                         principalTable: "Roles",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_UserRoles_Users_UserId",
+                        name: "FK_RoleAssignments_Users_UserId",
                         column: x => x.UserId,
                         principalTable: "Users",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -573,6 +582,28 @@ namespace Emc.Infrastructure.Migrations
                 filter: "SupersededByAssignmentId IS NULL");
 
             migrationBuilder.CreateIndex(
+                name: "IX_RoleAssignments_EvidenceRoomId",
+                table: "RoleAssignments",
+                column: "EvidenceRoomId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RoleAssignments_RoleId",
+                table: "RoleAssignments",
+                column: "RoleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RoleAssignments_UserId_EvidenceRoomId",
+                table: "RoleAssignments",
+                columns: new[] { "UserId", "EvidenceRoomId" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_RoleAssignments_OneOpenPerUserRoleRoom",
+                table: "RoleAssignments",
+                columns: new[] { "UserId", "RoleId", "EvidenceRoomId" },
+                unique: true,
+                filter: "EffectiveTo IS NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Roles_Name",
                 table: "Roles",
                 column: "Name",
@@ -589,17 +620,6 @@ namespace Emc.Infrastructure.Migrations
                 name: "IX_StorageLocations_ParentId",
                 table: "StorageLocations",
                 column: "ParentId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserRoles_RoleId",
-                table: "UserRoles",
-                column: "RoleId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserRoles_UserId_RoleId",
-                table: "UserRoles",
-                columns: new[] { "UserId", "RoleId" },
-                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_ActiveDirectorySid",
@@ -630,13 +650,13 @@ namespace Emc.Infrastructure.Migrations
                 name: "OfficialDocumentNumberAssignments");
 
             migrationBuilder.DropTable(
+                name: "RoleAssignments");
+
+            migrationBuilder.DropTable(
                 name: "StorageLocations");
 
             migrationBuilder.DropTable(
                 name: "SystemConfigurations");
-
-            migrationBuilder.DropTable(
-                name: "UserRoles");
 
             migrationBuilder.DropTable(
                 name: "CustodyParties");
