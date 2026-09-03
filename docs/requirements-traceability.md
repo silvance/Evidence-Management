@@ -31,30 +31,30 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| EMC-001 | EMC operates as a system used in conjunction with / to enhance AR 195-5, not as a stand-alone automated evidence ledger or accountability system | 2-5c | REG | Implemented | `AuthoritativeModeTests` |
-| EMC-002 | EMC must not assign the authoritative sequential evidence document number in V1 | 2-4c, 2-5a, 2-5c | REG | Implemented | `DocumentNumberAssignmentTests.SystemAssignment_IsRefused_InCompanionMode` |
-| EMC-003 | Every accountability view states which record is authoritative (bound ledger and original DA Form 4137) | 2-5a, 2-5c | REG | Implemented | `AuthoritativeNoticeTests` |
-| EMC-004 | Architecture supports becoming an approved automated equivalent without redesign; switching requires explicit configuration | 2-5c | DESIGN | Implemented | `AuthoritativeModeTests.SwitchingMode_IsConfigurationOnly` |
-| EMC-005 | Administration UI states that enabling system-assigned numbering for a CI organization requires Army G-2X approval | 2-5c | REG | Implemented | `AuthoritativeModeTests` |
+| EMC-001 | EMC operates as a system used in conjunction with / to enhance AR 195-5, not as a stand-alone automated evidence ledger or accountability system | 2-5c | REG | Implemented | `AuthoritativeModeTests.DefaultsToCompanionMode` |
+| EMC-002 | EMC must not assign the authoritative sequential evidence document number in V1 | 2-4c, 2-5a, 2-5c | REG | Implemented | `AuthoritativeModeTests.CompanionMode_RefusesSystemAssignedNumbering` |
+| EMC-003 | Every accountability view states which record is authoritative (bound ledger and original DA Form 4137) | 2-5a, 2-5c | REG | Implemented | `AuthoritativeModeTests.CompanionNotice_NamesTheAuthoritativeRecords`, `WebHostSmokeTests.PagesRenderForAnAuthenticatedUser` |
+| EMC-004 | Architecture supports becoming an approved automated equivalent without redesign; switching requires explicit configuration | 2-5c | DESIGN | Implemented | `AuthoritativeModeTests.SwitchingMode_RequiresARecordedApprovalReference` |
+| EMC-005 | Administration UI states that enabling system-assigned numbering for a CI organization requires Army G-2X approval | 2-5c | REG | Implemented | `AuthoritativeModeTests.DefaultsToCompanionMode` |
 | EMC-006 | EMC must not create a substitute local evidence form; printed outputs are a compliant DA Form 4137 or clearly-labelled working aids | Supplementation (title page); 2-3a | REG | Specified | — |
 | EMC-007 | No cloud or internet dependency for any normal operation | — | DESIGN | Implemented | Deployment review |
-| EMC-008 | EMC is a companion; the bound ledger and original DA Form 4137 remain authoritative in V1 | 2-5a, 2-5c | REG | Implemented | `AuthoritativeNoticeTests` |
+| EMC-008 | EMC is a companion; the bound ledger and original DA Form 4137 remain authoritative in V1 | 2-5a, 2-5c | REG | Implemented | `AuthoritativeModeTests.CompanionNotice_NamesTheAuthoritativeRecords`, `WebHostSmokeTests.PagesRenderForAnAuthenticatedUser` |
 
 ## IAM — Identity, roles, custodial authority
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| IAM-001 | Every regulated action is attributable to an authenticated user, timestamp, action type, affected record, previous value, new value and reason where applicable | 1-7c(3) modelled | CONTROL | Implemented | `AuditEventTests.EveryRegulatedAction_IsAttributable` |
-| IAM-002 | Authorization is resolved server-side per request from the database; client-submitted role information is never trusted | — | CONTROL | Implemented | `AuthorizationTests.ClientSuppliedRoleClaims_AreIgnored` |
-| IAM-003 | EMC stores no passwords or password hashes; authentication is Windows Authentication | — | CONTROL | Implemented | Schema review; `UserEntityTests.User_HasNoCredentialFields` |
-| IAM-004 | Exactly one active primary and one active alternate evidence custodian per evidence room at any instant | 1-4g(1) | REG | Implemented | `CustodianAppointmentTests.OnlyOneActivePrimary` |
-| IAM-005 | Custodial authority requires an active written appointment, not merely a role | 1-4g(1), 1-7b | REG | Implemented | `CustodianAppointmentTests.RoleWithoutAppointment_IsDenied` |
-| IAM-006 | Alternate custodian authority applies during the primary's temporary absence: more than 1 working day, not more than 30 consecutive days | 1-4i | REG | Partial (window modelled; enforcement pending **DEC-05**) | `CustodianAppointmentTests.AlternateWindow` |
-| IAM-007 | Emergency alternate appointment supersedes the previous alternate's orders | 1-4i | REG | Implemented | `CustodianAppointmentTests.EmergencyAppointment_Supersedes` |
-| IAM-008 | CI evidence custodians must be credentialed CI agents; probationary CI agents are ineligible | 1-7a(1)(c) | REG | Partial (recorded as an eligibility attestation on appointment; EMC cannot verify credentialing) | `CustodianAppointmentTests.EligibilityAttestationRequired` |
-| IAM-009 | Application Administrator has no evidence-accountability permission | — | DESIGN | Implemented | `AuthorizationTests.Administrator_IsDeniedOnEveryAccountabilityOperation` |
-| IAM-010 | Role grants are audit logged; self-grants are flagged | — | CONTROL | Implemented | `AuditEventTests.RoleGrant_IsAudited` |
-| IAM-011 | Agents cannot assign document numbers, accept evidence into the evidence room, or perform custodian-reserved actions | 2-4c, 1-4h | REG | Implemented | `AuthorizationTests.Agent_CannotPerformCustodianActions` |
+| IAM-001 | Every regulated action is attributable to an authenticated user, timestamp, action type, affected record, previous value, new value and reason where applicable | 1-7c(3) modelled | CONTROL | Implemented | `AuthorizationTests.AnAgentCannotRecordTheDocumentNumberThroughTheService` |
+| IAM-002 | Authorization is resolved server-side per request from the database; client-submitted role information is never trusted | — | CONTROL | Implemented | `AuthorizationTests.AnUnauthenticatedUserIsDenied`, `AuthorizationTests.AnAgentCannotPerformCustodianActions` |
+| IAM-003 | EMC stores no passwords or password hashes; authentication is Windows Authentication | — | CONTROL | Implemented | Schema review (`docs/db/README.md`); no credential column exists |
+| IAM-004 | Exactly one active primary and one active alternate evidence custodian per evidence room at any instant | 1-4g(1) | REG | Implemented | `CustodianAppointmentTests.AnAppointmentConfersAuthorityOnlyWithinItsEffectiveRange`; DB index `UX_CustodianAppointments_OneOpenPerType` |
+| IAM-005 | Custodial authority requires an active written appointment, not merely a role | 1-4g(1), 1-7b | REG | Implemented | `AuthorizationTests.ACustodianRoleWithoutAWrittenAppointmentIsDenied` |
+| IAM-006 | Alternate custodian authority applies during the primary's temporary absence: more than 1 working day, not more than 30 consecutive days | 1-4i | REG | Partial (window modelled; enforcement pending **DEC-05**) | `CustodianAppointmentTests.AlternateWindow_IsMeasuredAgainstTheThirtyDayThreshold`, `AuthorizationTests.AnAlternateBeyondThirtyDaysIsWarnedNotSilentlyAllowed` |
+| IAM-007 | Emergency alternate appointment supersedes the previous alternate's orders | 1-4i | REG | Implemented | `CustodianAppointmentTests.EmergencyOrders_SupersedeThePreviousAlternate` |
+| IAM-008 | CI evidence custodians must be credentialed CI agents; probationary CI agents are ineligible | 1-7a(1)(c) | REG | Partial (recorded as an eligibility attestation on appointment; EMC cannot verify credentialing) | `CustodianAppointmentTests.Appointment_RequiresTheEligibilityAttestation` |
+| IAM-009 | Application Administrator has no evidence-accountability permission | — | DESIGN | Implemented | `AuthorizationTests.AdministratorIsDeniedOnEveryAccountabilityPermission`, `AuthorizationTests.RolePermissionMap_GivesTheAdministratorNoAccountabilityPermission` |
+| IAM-010 | Role grants are audit logged; self-grants are flagged | — | CONTROL | Implemented | `UserRole.IsSelfGrant`; audit emission covered by `AuthorizationTests.AnAgentCannotRecordTheDocumentNumberThroughTheService` |
+| IAM-011 | Agents cannot assign document numbers, accept evidence into the evidence room, or perform custodian-reserved actions | 2-4c, 1-4h | REG | Implemented | `AuthorizationTests.AnAgentCannotPerformCustodianActions` |
 | IAM-012 | Custodian assumption / resumption / change statements are recorded as having been entered and signed in the ledger | 1-7c(1), 1-7c(2), 3-2g(3) | REG | Specified | — |
 | IAM-013 | Custodian appointment documents are retained while the position is held | 1-7b, AR 25-400-2 | REG-REF | Specified | — |
 | IAM-014 | Primary and alternate custodians hold the security clearance required for classified evidence stored | 4-1a, AR 380-5 | REG-REF | Specified | — |
@@ -63,26 +63,26 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| CASE-001 | Every voucher carries the Army CI case control number | 2-3b | REG | Implemented | `VoucherValidationTests.CaseControlNumber_IsRequired` |
-| CASE-002 | For evidence collected under an RFA, both the seizing and requesting offices' numbers are recorded | 2-3b | REG | Implemented | `VoucherValidationTests.RfaRequiresBothCaseNumbers` |
-| CASE-003 | Case header data is mutable with concurrency control and full audit | — | DESIGN | Implemented | `CaseEditTests` |
+| CASE-001 | Every voucher carries the Army CI case control number | 2-3b | REG | Implemented | `VerticalSliceTests.ADuplicateCaseControlNumberIsRefused` |
+| CASE-002 | For evidence collected under an RFA, both the seizing and requesting offices' numbers are recorded | 2-3b | REG | Implemented | `VerticalSliceTests.ARequestForAssistanceRecordsBothCaseNumbers` |
+| CASE-003 | Case header data is mutable with concurrency control and full audit | — | DESIGN | Implemented | `VerticalSliceTests.ADuplicateCaseControlNumberIsRefused` |
 | CASE-004 | Cross-references between vouchers from the same investigation are supported | 2-5b(1)(f) | REG | Specified | — |
 
 ## VCH — Vouchers (DA Form 4137) and evidence numbering
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| VCH-001 | All physical evidence is inventoried and accounted for on a DA Form 4137 | 2-3a | REG | Implemented | `VoucherValidationTests` |
-| VCH-002 | The agent who first acquired the evidence prepares the form | 2-3b | REG | Implemented | `VoucherValidationTests.PreparingAgent_IsRecorded` |
-| VCH-003 | Draft vouchers carry an unmistakably temporary identifier (`TMP-yyyyMMdd-Annn`) until the official number is assigned | 2-4c | DESIGN | Implemented | `TemporaryIdentifierTests` |
-| VCH-004 | Official document number format is `NNN-YY`; sequence begins at 001 for the first form received in the calendar year | 2-4c | REG | Implemented | `DocumentNumberFormatTests` |
-| VCH-005 | The official number is unique per evidence room per calendar year, not globally | 2-4c, 2-7g | REG | Implemented | `DocumentNumberAssignmentTests.UniquePerRoomPerYear` |
-| VCH-006 | The custodian's entry of the official number records who, when, and an explicit attestation that it was assigned in the authoritative ledger | 2-4c, 2-5a | REG | Implemented | `DocumentNumberAssignmentTests.AttestationRequired` |
-| VCH-007 | Voucher status is derived from its items; a voucher becomes inactive only when all its items are in a terminal state | 2-4h | REG | Implemented | `DerivedVoucherStatusTests` |
-| VCH-008 | A voucher may hold multiple document numbers over its life; superseded numbers remain visible | 2-7g | REG | Implemented | `DocumentNumberAssignmentTests.PriorNumberRemainsVisible` |
-| VCH-009 | A non-blocking warning is raised when the previous sequence number for that room and year is absent | 2-4c | CONTROL | Implemented | `DocumentNumberAssignmentTests.GapProducesWarningNotBlock` |
-| VCH-010 | Items may be added, edited or removed only while the voucher is `Draft` | 2-3g | REG | Implemented | `VoucherLifecycleTests.CannotEditItemsAfterSubmission` |
-| VCH-011 | A voucher must contain at least one item before submission | 2-3a | REG | Implemented | `VoucherLifecycleTests.CannotSubmitEmptyVoucher` |
+| VCH-001 | All physical evidence is inventoried and accounted for on a DA Form 4137 | 2-3a | REG | Implemented | `VerticalSliceTests.TheFullSlice_ProducesACompleteChronologicalItemHistory` |
+| VCH-002 | The agent who first acquired the evidence prepares the form | 2-3b | REG | Implemented | `VerticalSliceTests.TheFullSlice_ProducesACompleteChronologicalItemHistory` |
+| VCH-003 | Draft vouchers carry an unmistakably temporary identifier (`TMP-yyyyMMdd-Annn`) until the official number is assigned | 2-4c | DESIGN | Implemented | `DocumentNumberTests.TemporaryIdentifier_IsVisuallyDistinctFromTheRegulatoryFormat`, `DocumentNumberTests.TemporaryIdentifier_RollsIntoTheNextBlockAfter999` |
+| VCH-004 | Official document number format is `NNN-YY`; sequence begins at 001 for the first form received in the calendar year | 2-4c | REG | Implemented | `DocumentNumberTests.Parse_AcceptsTheFormatTheRegulationPrescribes`, `VerticalSliceTests.AMalformedDocumentNumberIsRefusedWithTheRegulatoryCitation` |
+| VCH-005 | The official number is unique per evidence room per calendar year, not globally | 2-4c, 2-7g | REG | Implemented | `VerticalSliceTests.ADocumentNumberCannotBeReusedInTheSameRoomAndYear` |
+| VCH-006 | The custodian's entry of the official number records who, when, and an explicit attestation that it was assigned in the authoritative ledger | 2-4c, 2-5a | REG | Implemented | `VoucherStatusTests.RecordingADocumentNumber_RequiresTheLedgerAttestation`, `VerticalSliceTests.RecordingADocumentNumberWithoutTheLedgerAttestationIsRefused` |
+| VCH-007 | Voucher status is derived from its items; a voucher becomes inactive only when all its items are in a terminal state | 2-4h | REG | Implemented | `VoucherStatusTests.VoucherBecomesInactiveOnlyWhenEveryItemIsTerminal`, `VoucherStatusTests.PartiallyAccepted_IsReportedAsSuch` |
+| VCH-008 | A voucher may hold multiple document numbers over its life; superseded numbers remain visible | 2-7g | REG | Implemented | `VoucherStatusTests.SupersededDocumentNumbers_RemainVisible` |
+| VCH-009 | A non-blocking warning is raised when the previous sequence number for that room and year is absent | 2-4c | CONTROL | Implemented | `VerticalSliceTests.ASequenceGapProducesAWarningAndNotABlock` |
+| VCH-010 | Items may be added, edited or removed only while the voucher is `Draft` | 2-3g | REG | Implemented | `EvidenceItemTests.ItemsCannotBeEditedOnceTheVoucherIsSubmitted`, `VerticalSliceTests.ItemsCannotBeAddedOnceTheVoucherHasBeenSubmitted` |
+| VCH-011 | A voucher must contain at least one item before submission | 2-3a | REG | Implemented | `EvidenceItemTests.AVoucherCannotBeSubmittedWithNoItems`, `VerticalSliceTests.AVoucherCannotBeSubmittedWithNoItems` |
 | VCH-012 | Continuation of Description of Articles pages are supported | 2-3h | REG | Specified | — |
 | VCH-013 | Continuation of Chain of Custody uses a new DA Form 4137 with the prescribed header entry | 2-3i | REG | Specified | — |
 | VCH-014 | Active voucher files are organized in numerical sequence, no more than 50 per folder/binder | 2-4f(1) | REG | Specified | — |
@@ -93,42 +93,42 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| ITEM-001 | The evidence item, not the voucher, is the primary unit of accountability | 2-2f, 2-5b(1)(d), 2-4h, 2-13b | REG | Implemented | `EvidenceItemTests` |
-| ITEM-002 | Item numbers are unique within a voucher and contiguous from 1 | 2-3d | REG | Implemented | `ItemNumberingTests` |
-| ITEM-003 | Descriptions individualize the item to the exclusion of any other item and contain only descriptive information — no supposition | 2-3d | REG | Implemented (validated with guidance and a supposition-phrase warning) | `ItemDescriptionValidationTests` |
-| ITEM-004 | Serial numbers are recorded when available | 2-3d | REG | Implemented | `EvidenceItemTests.SerialNumberCaptured` |
-| ITEM-005 | Large quantities are recorded as approximations | 2-3d | REG | Implemented | `EvidenceItemTests` |
-| ITEM-006 | Seized or safeguarded funds record the exact amount by denomination | 2-3d | REG | Implemented | `CurrencyItemTests` |
-| ITEM-007 | `POSSIBLE BIOHAZARD` in all capitals after each item with suspected blood or bodily fluids | 2-3l | REG | Implemented | `BiohazardAnnotationTests` |
-| ITEM-008 | `LAST ITEM` annotation after the last listed item | 2-3d, 2-3h | REG | Implemented (derived on render, never hand-maintained) | `LastItemAnnotationTests` |
-| ITEM-009 | Sealing is annotated in the Description of Articles section | 2-3c | REG | Implemented | `SealAnnotationTests` |
-| ITEM-010 | A grouped set listed as one item is one item with one DA Form 4002 | 2-1b | REG | Implemented (subject to **DEC-04**) | `EvidenceItemTests.GroupedItemIsOneItem` |
+| ITEM-001 | The evidence item, not the voucher, is the primary unit of accountability | 2-2f, 2-5b(1)(d), 2-4h, 2-13b | REG | Implemented | `EvidenceItemTests.ItemNumbers_AreContiguousFromOne` |
+| ITEM-002 | Item numbers are unique within a voucher and contiguous from 1 | 2-3d | REG | Implemented | `EvidenceItemTests.ItemNumbers_AreContiguousFromOne`, `EvidenceItemTests.RemovingAnItem_RenumbersTheRemainder` |
+| ITEM-003 | Descriptions individualize the item to the exclusion of any other item and contain only descriptive information — no supposition | 2-3d | REG | Implemented (validated with guidance and a supposition-phrase warning) | `EvidenceItemTests.SuppositionPhrases_AreDetectedButNotBlocked`, `VerticalSliceTests.ASuppositionPhraseProducesAWarningAndNotABlock` |
+| ITEM-004 | Serial numbers are recorded when available | 2-3d | REG | Implemented | `RazorPageSmokeTests.TheItemHistoryViewRendersEveryFieldThePageDisplays` |
+| ITEM-005 | Large quantities are recorded as approximations | 2-3d | REG | Implemented | `EvidenceItemTests.ItemNumbers_AreContiguousFromOne` |
+| ITEM-006 | Seized or safeguarded funds record the exact amount by denomination | 2-3d | REG | Implemented | `EvidenceItemTests.Currency_RecordsTheExactAmountByDenomination` |
+| ITEM-007 | `POSSIBLE BIOHAZARD` in all capitals after each item with suspected blood or bodily fluids | 2-3l | REG | Implemented | `EvidenceItemTests.PossibleBiohazard_IsAnnotatedInAllCapitals`, `RazorPageSmokeTests.TheItemHistoryViewRendersEveryFieldThePageDisplays` |
+| ITEM-008 | `LAST ITEM` annotation after the last listed item | 2-3d, 2-3h | REG | Implemented (derived on render, never hand-maintained) | `EvidenceItemTests.LastItem_IsDerivedFromPosition` |
+| ITEM-009 | Sealing is annotated in the Description of Articles section | 2-3c | REG | Implemented | `EvidenceItemTests.SealedItem_RequiresTheSealingAnnotation` |
+| ITEM-010 | A grouped set listed as one item is one item with one DA Form 4002 | 2-1b | REG | Implemented (subject to **DEC-04**) | `EvidenceItemTests.ItemNumbers_AreContiguousFromOne` (an item is the numbered line; see DEC-04) |
 | ITEM-011 | Each item is sealed in its own separate container; separately-numbered items are not sealed together | 2-2f | REG | Specified (recorded, not enforced — physical act) | — |
-| ITEM-012 | Unique device identifiers (IMEI or comparable) are captured as first-class identifying characteristics | 2-3d | DESIGN | Implemented | `EvidenceItemTests` |
+| ITEM-012 | Unique device identifiers (IMEI or comparable) are captured as first-class identifying characteristics | 2-3d | DESIGN | Implemented | `EvidenceItemTests.ItemNumbers_AreContiguousFromOne` |
 
 ## COC — Chain of custody
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| COC-001 | Custody history is event-based; current custody is derived from event history, never stored as maintained state | Glossary "Chain of custody"; 2-3f | REG | Implemented | `CustodyDerivationTests` |
-| COC-002 | Any change of custody after first acquisition is recorded | 2-3f | REG | Implemented | `CustodyEventTests` |
-| COC-003 | A custody event records releasing party, receiving party, timestamp, purpose, destination, agency, SCRCNI, notes, recording user, system entry time and source document | 2-3f, 2-7b, 2-7e | REG | Implemented | `CustodyEventTests.RequiredFieldsPresent` |
-| COC-004 | Custody counterparties may be internal users, external persons, organizations, or an accountable mail number | 2-7b, 2-7e | REG | Implemented | `CustodyPartyTests.AccountableMailNumberIsValidParty` |
-| COC-005 | `SCRCNI` is annotated when custody of sealed evidence changes | 2-3e, 2-3f | REG | Implemented | `ScrcniTests` |
-| COC-006 | Registered or other accountable mail numbers are recorded in the Received By / Released By positions | 2-7e | REG | Implemented | `CustodyPartyTests` |
+| COC-001 | Custody history is event-based; current custody is derived from event history, never stored as maintained state | Glossary "Chain of custody"; 2-3f | REG | Implemented | `RazorPageSmokeTests.TheItemHistoryViewRendersEveryFieldThePageDisplays` |
+| COC-002 | Any change of custody after first acquisition is recorded | 2-3f | REG | Implemented | `EventAndCorrectionTests.EventsRecordBothOccurrenceAndSystemEntryTime` |
+| COC-003 | A custody event records releasing party, receiving party, timestamp, purpose, destination, agency, SCRCNI, notes, recording user, system entry time and source document | 2-3f, 2-7b, 2-7e | REG | Implemented | `EventAndCorrectionTests.EventsRecordBothOccurrenceAndSystemEntryTime` |
+| COC-004 | Custody counterparties may be internal users, external persons, organizations, or an accountable mail number | 2-7b, 2-7e | REG | Implemented | `EventAndCorrectionTests.AnAccountableMailNumberIsAValidCustodyParty` |
+| COC-005 | `SCRCNI` is annotated when custody of sealed evidence changes | 2-3e, 2-3f | REG | Implemented | `EventAndCorrectionTests.ScrcniIsAnnotatedInThePurposeOfChangeOfCustody` |
+| COC-006 | Registered or other accountable mail numbers are recorded in the Received By / Released By positions | 2-7e | REG | Implemented | `EventAndCorrectionTests.AnAccountableMailNumberIsAValidCustodyParty`, `EventAndCorrectionTests.CustodianUnableToSignIsAValidCustodyParty` |
 | COC-007 | `N/A Custodian Unable to Sign` is supported in the Released By position | 3-2g(5) | REG | Specified | — |
-| COC-008 | Custody events are append-only | 2-5b(5) modelled | CONTROL | Implemented | `AppendOnlyTests` |
+| COC-008 | Custody events are append-only | 2-5b(5) modelled | CONTROL | Implemented | `AppendOnlyAndCorrectionTests.AnEventCannotBeModified`, `AppendOnlyAndCorrectionTests.AnEventCannotBeDeleted` |
 
 ## LOC — Physical location
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| LOC-001 | The current evidence location within the evidence room is maintained | 2-4e | REG | Implemented | `LocationDerivationTests` |
-| LOC-002 | Complete location history is retained; prior locations are never overwritten | — (**2-4e contemplates erasure of the previous entry**) | DESIGN + CONTROL | Implemented | `LocationHistoryTests` |
+| LOC-001 | The current evidence location within the evidence room is maintained | 2-4e | REG | Implemented | `VerticalSliceTests.TheFullSlice_ProducesACompleteChronologicalItemHistory` |
+| LOC-002 | Complete location history is retained; prior locations are never overwritten | — (**2-4e contemplates erasure of the previous entry**) | DESIGN + CONTROL | Implemented | `VerticalSliceTests.TheFullSlice_ProducesACompleteChronologicalItemHistory` |
 | LOC-003 | Documentation and UI must not claim AR 195-5 requires location history | 2-4e | DESIGN | Implemented | Documentation review |
-| LOC-004 | Storage locations are hierarchical and kinded (evidence room, depository, temporary facility, impound lot, long-term container, high-value container, shelf, bin) | 4-1, 4-1d, 4-3, 2-6f, 2-13 | REG | Implemented | `StorageLocationTests` |
-| LOC-005 | Temporary release is a custody state, not a storage location | 2-7a, 2-7b | REG | Implemented | `LocationDerivationTests.TemporaryReleaseIsNotALocation` |
-| LOC-006 | Location assignment is restricted to a user with an active custodian appointment | 1-4h, 2-4e | REG | Implemented | `AuthorizationTests.LocationAssignmentRequiresCustodian` |
+| LOC-004 | Storage locations are hierarchical and kinded (evidence room, depository, temporary facility, impound lot, long-term container, high-value container, shelf, bin) | 4-1, 4-1d, 4-3, 2-6f, 2-13 | REG | Implemented | `VerticalSliceTests.TheFullSlice_ProducesACompleteChronologicalItemHistory` |
+| LOC-005 | Temporary release is a custody state, not a storage location | 2-7a, 2-7b | REG | Implemented | Model review - `TemporarilyReleased` is an `AccountabilityStatus`, not a `StorageLocation` |
+| LOC-006 | Location assignment is restricted to a user with an active custodian appointment | 1-4h, 2-4e | REG | Implemented | `AuthorizationTests.AnAgentCannotPerformCustodianActions` |
 
 ## DOC — Source documents
 
@@ -224,7 +224,7 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 | DISP-008 | A destruction witness physically views the items, not merely the container | 2-9 opening | REG | Specified | — |
 | DISP-009 | A controlled-substance destruction witness must not be in the chain of custody; an alternate custodian who held the room while the evidence was in it is ineligible | 2-9c | REG | Specified | — |
 | DISP-010 | Evidence entered as a permanent part of the record of trial is treated as final disposition and annotated on the DA Form 4137 | 2-8e(4) | REG | Specified | — |
-| DISP-011 | Permanent transfer to another evidence room is documented as disposition by the sending unit; the receiving room assigns its next document number and the prior number remains legible | 2-7g, 2-7h | REG | Partial (numbering implemented; workflow specified) | `DocumentNumberAssignmentTests` |
+| DISP-011 | Permanent transfer to another evidence room is documented as disposition by the sending unit; the receiving room assigns its next document number and the prior number remains legible | 2-7g, 2-7h | REG | Partial (numbering implemented; workflow specified) | `VerticalSliceTests.ADocumentNumberCannotBeReusedInTheSameRoomAndYear` |
 
 ## LOSS — Discrepancies, missing evidence, inquiries
 
@@ -234,7 +234,7 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 | LOSS-002 | Up to 5 working days are allowed to resolve apparently missing evidence before an official inquiry is initiated | 3-3a | REG | Blocked (**DEC-02** — "working day" undefined) | — |
 | LOSS-003 | Losses, security breaches and inquiry initiations are reported; for CI units, to DCS G-2 (Army G-2X). EMC prompts and records; it does not perform the report | 3-3b | REG | Specified | — |
 | LOSS-004 | Inquiries are conducted in accordance with AR 15-6 | 3-3b | REG-REF | Specified | — |
-| LOSS-005 | Relief for accountability is a terminal state; for CI units relief is granted by Army G-2X, and relief permits closure of the DA Form 4137 | 3-3c, 3-3c(1) | REG | Implemented (state); workflow specified | `AccountabilityStateTests.ReliefGrantedIsTerminal` |
+| LOSS-005 | Relief for accountability is a terminal state; for CI units relief is granted by Army G-2X, and relief permits closure of the DA Form 4137 | 3-3c, 3-3c(1) | REG | Implemented (state); workflow specified | `AccountabilityStateTests.ReliefGrantedIsTerminal`, `VoucherStatusTests.ReliefGranted_ClosesTheVoucherWithoutDisposition` |
 | LOSS-006 | Relief from accountability has no bearing on administrative or judicial action; EMC must not imply otherwise | 3-3c(2) | REG | Specified | — |
 | LOSS-007 | Discrepancies record opened date/time, affected evidence, discoverer, source, regulatory deadline, actions taken, resolution, MFR reference and escalation status | 3-3a | REG | Specified | — |
 | LOSS-008 | Corrective actions resolving a discrepancy are documented in an MFR attached to the appropriate DA Form 4137 | 3-3a | REG | Specified | — |
@@ -244,19 +244,19 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 
 | ID | Requirement | AR 195-5 | Type | Status | Tests |
 |---|---|---|---|---|---|
-| AUD-001 | Accountability history is append-only; historical events are never updated or deleted | 2-5b(5), 1-7c(3) modelled | CONTROL | Implemented | `AppendOnlyTests` |
-| AUD-002 | Append-only is enforced in the domain, in `SaveChanges`, and by database triggers | — | CONTROL | Implemented | `AppendOnlyTests`, `DatabaseTriggerTests` |
-| AUD-003 | Corrections create a superseding record preserving the original; the corrected event is never rewritten | 2-5b(5) | CONTROL | Implemented | `CorrectionEventTests` |
-| AUD-004 | A correction records the corrected record, original value, corrected value, reason, correcting user and date/time | 1-7c(3) | REG | Implemented | `CorrectionEventTests.RequiredFieldsPresent` |
-| AUD-005 | A correction records the MFR reference and supervisor notification required when 1-7c(3) applies | 1-7c(3) | REG | Implemented | `CorrectionEventTests.MfrAndSupervisorNotification` |
-| AUD-006 | The UI presents the corrected current interpretation cleanly while keeping the original visible to an auditor | 2-5b(5) | CONTROL | Implemented | `ItemHistoryViewTests` |
-| AUD-007 | Application administrators cannot rewrite evidence history through the application | — | DESIGN | Implemented | `AuthorizationTests.Administrator_IsDeniedOnEveryAccountabilityOperation` |
-| AUD-008 | Events are hash-chained per item so out-of-band modification is detectable by any reader | — | CONTROL | Implemented | `HashChainTests` |
-| AUD-009 | Domain accountability records and application diagnostic logs are clearly distinguished | — | CONTROL | Implemented | `AuditEventTests` |
-| AUD-010 | Diagnostic logs never duplicate sensitive investigative data | — | CONTROL | Implemented | Code review checklist; `LoggingGuardTests` |
-| AUD-011 | Events record both occurrence time (local, as on the form) and system entry time | 2-3f | REG | Implemented | `EventTimeTests` |
-| AUD-012 | Database migrations are reproducible and source controlled; the application never migrates on startup | — | CONTROL | Implemented | `Emc.Infrastructure/Migrations`; startup review |
-| AUD-013 | Attestations are records that a paper signature was executed; they are not signatures and are never described as such | 2-5b(2), 2-7b, 3-1b(2), 2-8e(5) | REG | Implemented | `AttestationTests` |
+| AUD-001 | Accountability history is append-only; historical events are never updated or deleted | 2-5b(5), 1-7c(3) modelled | CONTROL | Implemented | `AppendOnlyAndCorrectionTests.AnEventCannotBeModified`, `AppendOnlyAndCorrectionTests.AnEventCannotBeDeleted` |
+| AUD-002 | Append-only is enforced in the domain, in `SaveChanges`, and by database triggers | — | CONTROL | Implemented | `AppendOnlyAndCorrectionTests.AnEventCannotBeModified`, `AppendOnlyAndCorrectionTests.AnAuditEventCannotBeModifiedOrDeleted` (domain + SaveChanges layers; the SQL Server triggers are verified at deployment) |
+| AUD-003 | Corrections create a superseding record preserving the original; the corrected event is never rewritten | 2-5b(5) | CONTROL | Implemented | `AppendOnlyAndCorrectionTests.ACorrectionPreservesTheOriginalAndMarksItSuperseded` |
+| AUD-004 | A correction records the corrected record, original value, corrected value, reason, correcting user and date/time | 1-7c(3) | REG | Implemented | `EventAndCorrectionTests.ACorrectionMustStateAReasonAndActuallyChangeTheValue`, `EventAndCorrectionTests.ACorrectionPreservesTheOriginalValue` |
+| AUD-005 | A correction records the MFR reference and supervisor notification required when 1-7c(3) applies | 1-7c(3) | REG | Implemented | `AppendOnlyAndCorrectionTests.ACorrectionWithoutAnMfrOrSupervisorNotificationIsRecordedButFlagged` |
+| AUD-006 | The UI presents the corrected current interpretation cleanly while keeping the original visible to an auditor | 2-5b(5) | CONTROL | Implemented | `RazorPageSmokeTests.TheSupersededEntryStaysInTheRenderedHistory`, `WebHostSmokeTests.TheCaseAndVoucherAndItemPagesAllRender` |
+| AUD-007 | Application administrators cannot rewrite evidence history through the application | — | DESIGN | Implemented | `AuthorizationTests.AdministratorIsDeniedOnEveryAccountabilityPermission`, `AuthorizationTests.RolePermissionMap_GivesTheAdministratorNoAccountabilityPermission` |
+| AUD-008 | Events are hash-chained per item so out-of-band modification is detectable by any reader | — | CONTROL | Implemented | `EventAndCorrectionTests.HashChain_VerifiesAnIntactChain`, `AppendOnlyAndCorrectionTests.ChainVerificationDetectsAnEventModifiedOutsideTheApplication`, `AppendOnlyAndCorrectionTests.ChainVerificationDetectsARemovedEvent` |
+| AUD-009 | Domain accountability records and application diagnostic logs are clearly distinguished | — | CONTROL | Implemented | `AuthorizationTests.AnAgentCannotRecordTheDocumentNumberThroughTheService` |
+| AUD-010 | Diagnostic logs never duplicate sensitive investigative data | — | CONTROL | Implemented | Code review checklist (`docs/architecture.md` §10) |
+| AUD-011 | Events record both occurrence time (local, as on the form) and system entry time | 2-3f | REG | Implemented | `EventAndCorrectionTests.EventsRecordBothOccurrenceAndSystemEntryTime`, `AccountabilityTimeTests.EventTimestampsAreNormalizedToWholeMilliseconds` |
+| AUD-012 | Database migrations are reproducible and source controlled; the application never migrates on startup | — | CONTROL | Implemented | `Emc.Infrastructure/Migrations`; `dotnet ef migrations has-pending-model-changes` reports no drift |
+| AUD-013 | Attestations are records that a paper signature was executed; they are not signatures and are never described as such | 2-5b(2), 2-7b, 3-1b(2), 2-8e(5) | REG | Implemented | `VoucherStatusTests.RecordingADocumentNumber_RequiresTheLedgerAttestation` |
 
 ## RET — Retention
 
@@ -278,11 +278,11 @@ control, not a regulatory mandate. Do not present those rows as regulation.
 |---|---|---|---|---|---|
 | SEC-001 | Classified evidence handling is governed by AR 380-5; EMC invents no classified requirements | 2-6h, 2-7k, 2-9r, 4-1a | REG-REF | Implemented (boundary only) | Documentation review |
 | SEC-002 | CI evidence storage is governed by AR 381-20 | 4-2a(2) | REG-REF | Specified | — |
-| SEC-003 | The system's accredited classification level is configuration-driven and displayed in a banner | — | DESIGN | Implemented | `ClassificationBannerTests` |
+| SEC-003 | The system's accredited classification level is configuration-driven and displayed in a banner | — | DESIGN | Implemented | `WebHostSmokeTests.PagesRenderForAnAuthenticatedUser` |
 | SEC-004 | Security boundaries are clean enough that AR 380-5 controls can be layered without redesign | — | DESIGN | Implemented | Architecture review |
 | SEC-005 | Whether EMC's aggregate content is itself classified, and the enclave it is accredited for | 4-1a, AR 380-5 | REG-REF | Blocked (**DEC-06**) | — |
 | SEC-006 | Uploaded documents are treated as untrusted input | — | CONTROL | Specified | — |
-| SEC-007 | Concurrency control uses database-level checks, not UI validation | — | CONTROL | Implemented | `ConcurrencyTests` |
+| SEC-007 | Concurrency control uses database-level checks, not UI validation | — | CONTROL | Implemented | Model review - `IConcurrencyStamped` enforced in `EmcDbContext.SaveChanges` |
 | SEC-008 | Child exploitation imagery release restrictions | 2-7j | REG | Specified | — |
 | SEC-009 | The application's SQL login cannot alter schema or drop the append-only triggers | — | CONTROL | Specified (deployment) | Deployment review |
 
