@@ -13,6 +13,10 @@ public class EventAndCorrectionTests
     private static readonly DateTimeOffset Local =
         new(2026, 9, 3, 9, 15, 0, TimeSpan.FromHours(-4));
 
+    /// <summary>A fictitious responsible CI supervisor, recorded without an EMC account.</summary>
+    private static SupervisorNotification Supervisor()
+        => SupervisorNotification.OfPerson("RIVERA, LUIS M.", "CW3", "902d MI Group", Local.ToUniversalTime());
+
     private static LocationEvent NewLocationEvent(int storageLocationId = 14)
         => new(
             storageLocationId: storageLocationId,
@@ -174,14 +178,15 @@ public class EventAndCorrectionTests
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 17,
             mfrReference: "MFR-2026-014",
-            supervisorNotifiedUserId: 4,
-            supervisorNotifiedAtUtc: Local.ToUniversalTime().AddMinutes(9));
+            supervisorNotification: SupervisorNotification.OfPerson(
+                "RIVERA, LUIS M.", "CW3", "902d MI Group", Local.ToUniversalTime().AddMinutes(9)));
 
         // AR 195-5 2-5b(5) - the original stays readable.
         Assert.Equal("Received into evidence room", correction.OriginalValue);
         Assert.Equal("Released to trial counsel", correction.CorrectedValue);
         Assert.Equal(17, correction.RecordedByUserId);
-        Assert.True(correction.SatisfiesParagraph1_7c3);
+        Assert.Equal("CW3 RIVERA, LUIS M.", correction.SupervisorNotification!.PrintedNameAndGrade);
+        Assert.Null(correction.SupervisorNotifiedUserId);
     }
 
     [Fact]
@@ -244,7 +249,8 @@ public class EventAndCorrectionTests
             recordedAtUtc: Local.ToUniversalTime(),
             correctedByUserId: 3,
             mfrReference: "MFR-2026-021",
-            supervisorNotifiedUserId: 4);
+            supervisorNotification: SupervisorNotification.OfPerson(
+                "RIVERA, LUIS M.", "CW3", "902d MI Group", Local.ToUniversalTime()));
 
         Assert.True(correction.IsReferenceCorrection);
         Assert.Equal(CorrectableFieldReference.StorageLocation, correction.ReferenceKind);
@@ -266,7 +272,8 @@ public class EventAndCorrectionTests
         CorrectionEvent Correction(int toId) => CorrectionFactory.CreateReferenceCorrection(
             located, [], nameof(LocationEvent.StorageLocationPath), toId, "Shelf B / Bin 19",
             "reason", CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            Local, Local.ToUniversalTime(), 1);
+            Local, Local.ToUniversalTime(), 1,
+            mfrReference: "MFR-1", supervisorNotification: Supervisor());
 
         Assert.NotEqual(
             EventHashChain.ComputeHash(Correction(42), null),
@@ -312,29 +319,104 @@ public class EventAndCorrectionTests
         // those would misstate the regulation.
         var corrected = NewCustodyEvent();
 
-        var custodianCorrection = CorrectionFactory.Create(
+        CorrectionEvent Correct(CorrectionCategory category, string? mfr, SupervisorNotification? supervisor)
+            => CorrectionFactory.Create(
+                corrected, [], nameof(CustodyEvent.Notes), "new", "reason", category,
+                Local, Local.ToUniversalTime(), 1,
+                mfrReference: mfr, supervisorNotification: supervisor);
+
+        var agentCorrection = Correct(CorrectionCategory.PreAcceptanceFormCorrection, null, null);
+        Assert.False(agentCorrection.RequiresParagraph1_7c3Documentation);
+        Assert.Null(agentCorrection.MfrReference);
+        Assert.Null(agentCorrection.SupervisorNotification);
+
+        var transcriptionCorrection = Correct(CorrectionCategory.TranscriptionVerification, null, null);
+        Assert.False(transcriptionCorrection.RequiresParagraph1_7c3Documentation);
+
+        var custodianCorrection = Correct(
+            CorrectionCategory.PostAcceptanceAccountabilityRecord, "MFR-2026-014", Supervisor());
+        Assert.True(custodianCorrection.RequiresParagraph1_7c3Documentation);
+        Assert.Equal("MFR-2026-014", custodianCorrection.MfrReference);
+        Assert.NotNull(custodianCorrection.SupervisorNotification);
+    }
+
+    [Fact]
+    public void APostAcceptanceCorrectionIsRefusedWithoutItsParagraph1_7c3Documentation()
+    {
+        // AUD-005, enforced. An earlier version recorded the correction and showed a warning,
+        // which changed the accountability record before the documentation AR 195-5 1-7c(3)
+        // attaches to that change existed. The regulation's verbs are "will immediately inform"
+        // and "will prepare" - not "should".
+        var corrected = NewCustodyEvent();
+
+        CorrectionEvent Correct(string? mfr, SupervisorNotification? supervisor)
+            => CorrectionFactory.Create(
+                corrected, [], nameof(CustodyEvent.Notes), "new", "reason",
+                CorrectionCategory.PostAcceptanceAccountabilityRecord,
+                Local, Local.ToUniversalTime(), 1,
+                mfrReference: mfr, supervisorNotification: supervisor);
+
+        var noMfr = Assert.Throws<DomainRuleViolationException>(() => Correct(null, Supervisor()));
+        Assert.Equal("AUD-005", noMfr.RequirementId);
+        Assert.Contains("MFR", noMfr.Message, StringComparison.Ordinal);
+
+        var noSupervisor = Assert.Throws<DomainRuleViolationException>(() => Correct("MFR-1", null));
+        Assert.Equal("AUD-005", noSupervisor.RequirementId);
+        Assert.Contains("1-7c(3)", noSupervisor.Message, StringComparison.Ordinal);
+
+        var neither = Assert.Throws<DomainRuleViolationException>(() => Correct(null, null));
+        Assert.Equal("AUD-005", neither.RequirementId);
+    }
+
+    [Fact]
+    public void TheSupervisorInformedNeedNotHoldAnEmcAccount()
+    {
+        // AUD-018. AR 195-5 1-7c(3) names a PERSON - "the responsible ... CI supervisor" - and
+        // that person is often not a user of an evidence-room application. The notification
+        // records them as an MFR would: printed name, grade or title, organization, and when.
+        var notification = SupervisorNotification.OfPerson(
+            "RIVERA, LUIS M.", "CW3", "902d MI Group", Local.ToUniversalTime());
+
+        Assert.Null(notification.UserId);
+        Assert.Equal("RIVERA, LUIS M.", notification.PrintedName);
+        Assert.Equal("CW3 RIVERA, LUIS M.", notification.PrintedNameAndGrade);
+        Assert.Equal("902d MI Group", notification.Organization);
+
+        Assert.Throws<DomainRuleViolationException>(
+            () => SupervisorNotification.OfPerson("   ", "CW3", null, Local.ToUniversalTime()));
+    }
+
+    [Fact]
+    public void ASupervisorWithAnAccountIsRecordedFromTheUserRecord_NotFromTheCaller()
+    {
+        // The particulars come from the user, so a notification linked to user 12 cannot be
+        // recorded under some other name.
+        var user = new Emc.Domain.Identity.User("S-1-5-21-TEST-SUPERVISOR", "rivera@example.mil", "RIVERA, LUIS M.");
+        user.UpdateProfile("RIVERA, LUIS M.", "CW3", "902d MI Group");
+
+        var notification = SupervisorNotification.OfUser(user, Local.ToUniversalTime());
+
+        Assert.Equal("RIVERA, LUIS M.", notification.PrintedName);
+        Assert.Equal("CW3", notification.GradeOrTitle);
+        Assert.Equal("902d MI Group", notification.Organization);
+    }
+
+    [Fact]
+    public void TheSupervisorNotificationIsHashed()
+    {
+        // AUD-008. Who was told, and when, is part of the record 1-7c(3) requires; it must be
+        // part of what the chain protects.
+        var corrected = NewCustodyEvent();
+
+        CorrectionEvent With(string name) => CorrectionFactory.Create(
             corrected, [], nameof(CustodyEvent.Notes), "new", "reason",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            Local, Local.ToUniversalTime(), 1);
+            Local, Local.ToUniversalTime(), 1, mfrReference: "MFR-1",
+            supervisorNotification: SupervisorNotification.OfPerson(name, "CW3", null, Local.ToUniversalTime()));
 
-        Assert.True(custodianCorrection.RequiresParagraph1_7c3Documentation);
-        Assert.False(custodianCorrection.SatisfiesParagraph1_7c3);
-
-        var agentCorrection = CorrectionFactory.Create(
-            corrected, [], nameof(CustodyEvent.Notes), "new", "reason",
-            CorrectionCategory.PreAcceptanceFormCorrection,
-            Local, Local.ToUniversalTime(), 1);
-
-        Assert.False(agentCorrection.RequiresParagraph1_7c3Documentation);
-        Assert.True(agentCorrection.SatisfiesParagraph1_7c3);
-
-        var transcriptionCorrection = CorrectionFactory.Create(
-            corrected, [], nameof(CustodyEvent.Notes), "new", "OCR read 8G4P2K8; verified 8G4P2K3",
-            CorrectionCategory.TranscriptionVerification,
-            Local, Local.ToUniversalTime(), 1);
-
-        Assert.False(transcriptionCorrection.RequiresParagraph1_7c3Documentation);
-        Assert.True(transcriptionCorrection.SatisfiesParagraph1_7c3);
+        Assert.NotEqual(
+            EventHashChain.ComputeHash(With("RIVERA, LUIS M."), null),
+            EventHashChain.ComputeHash(With("OKAFOR, ADAEZE N."), null));
     }
 
     [Fact]

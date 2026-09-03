@@ -27,19 +27,22 @@ public class HistoryModel : PageModel
     private readonly IItemHistoryService _history;
     private readonly IEvidenceIntakeService _intake;
     private readonly IEmcPageAuthorization _authorization;
+    private readonly IClock _clock;
 
     public HistoryModel(
         IEmcDbContext db,
         IEvidenceReadService reads,
         IItemHistoryService history,
         IEvidenceIntakeService intake,
-        IEmcPageAuthorization authorization)
+        IEmcPageAuthorization authorization,
+        IClock clock)
     {
         _db = db;
         _reads = reads;
         _history = history;
         _intake = intake;
         _authorization = authorization;
+        _clock = clock;
     }
 
     public ItemHistoryView? View { get; private set; }
@@ -129,9 +132,18 @@ public class HistoryModel : PageModel
             MfrReference: Correction.MfrReference,
             SupervisorNotifiedUserId: Correction.SupervisorNotifiedUserId,
             CorrectedReferenceId: Correction.CorrectedStorageLocationId,
-            SupervisorNotifiedAtUtc: Correction.SupervisorNotifiedUserId is null
-                ? null
-                : DateTimeOffset.UtcNow));
+            SupervisorNotifiedName: Correction.SupervisorNotifiedName,
+            SupervisorNotifiedGradeOrTitle: Correction.SupervisorNotifiedGradeOrTitle,
+            SupervisorNotifiedOrganization: Correction.SupervisorNotifiedOrganization,
+
+            // The clock is injected so the recorded moment is the application's, testable and
+            // consistent with every other timestamp EMC writes - never the web server's ambient
+            // DateTimeOffset.UtcNow.
+            SupervisorNotifiedAtUtc:
+                Correction.SupervisorNotifiedUserId is null
+                && string.IsNullOrWhiteSpace(Correction.SupervisorNotifiedName)
+                    ? null
+                    : _clock.UtcNow));
 
         if (!result.Succeeded)
         {
@@ -291,8 +303,21 @@ public class HistoryModel : PageModel
         [StringLength(256)]
         public string? MfrReference { get; set; }
 
-        /// <summary>AR 195-5 para 1-7c(3) - the supervisor informed immediately (AUD-005).</summary>
+        /// <summary>
+        /// AR 195-5 para 1-7c(3) - the supervisor informed immediately (AUD-005). Either an EMC
+        /// user, or - because the responsible CI supervisor frequently holds no EMC account - a
+        /// printed name with grade and organization, as the MFR names them (AUD-018).
+        /// </summary>
         public int? SupervisorNotifiedUserId { get; set; }
+
+        [StringLength(256)]
+        public string? SupervisorNotifiedName { get; set; }
+
+        [StringLength(64)]
+        public string? SupervisorNotifiedGradeOrTitle { get; set; }
+
+        [StringLength(256)]
+        public string? SupervisorNotifiedOrganization { get; set; }
 
         /// <summary>
         /// The replacement storage location, for a correction to a field that names one. The

@@ -50,8 +50,9 @@ public class EffectiveProjectionTests
             target, existing ?? [], field, value, reason,
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local.AddMinutes(sequence), Local.ToUniversalTime().AddMinutes(sequence), 17,
-            mfrReference: "MFR-2026-014", supervisorNotifiedUserId: 4,
-            supervisorNotifiedAtUtc: Local.ToUniversalTime().AddMinutes(sequence));
+            mfrReference: "MFR-2026-014",
+            supervisorNotification: SupervisorNotification.OfPerson(
+                "RIVERA, LUIS M.", "CW3", "902d MI Group", Local.ToUniversalTime().AddMinutes(sequence)));
 
         correction.AssignSequence(100, sequence);
         return correction;
@@ -74,8 +75,9 @@ public class EffectiveProjectionTests
             target, existing ?? [], field, toReferenceId, toDisplayText, reason,
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local.AddMinutes(sequence), Local.ToUniversalTime().AddMinutes(sequence), 17,
-            mfrReference: "MFR-2026-014", supervisorNotifiedUserId: 4,
-            supervisorNotifiedAtUtc: Local.ToUniversalTime().AddMinutes(sequence));
+            mfrReference: "MFR-2026-014",
+            supervisorNotification: SupervisorNotification.OfPerson(
+                "RIVERA, LUIS M.", "CW3", "902d MI Group", Local.ToUniversalTime().AddMinutes(sequence)));
 
         correction.AssignSequence(100, sequence);
         return correction;
@@ -405,13 +407,17 @@ public class EffectiveProjectionTests
         var appendedFirst = CorrectionFactory.CreateReferenceCorrection(
             location, [], nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19",
             "first entered", CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            Local.AddMinutes(30), Local.ToUniversalTime().AddMinutes(30), 1);
+            Local.AddMinutes(30), Local.ToUniversalTime().AddMinutes(30), 1,
+            mfrReference: "MFR-1",
+            supervisorNotification: SupervisorNotification.OfPerson("RIVERA, LUIS M.", "CW3", null, Local.ToUniversalTime()));
         appendedFirst.AssignSequence(100, 2);
 
         var appendedSecondButBackDated = CorrectionFactory.CreateReferenceCorrection(
             location, [appendedFirst], nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21",
             "entered later, dated earlier", CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            Local.AddMinutes(5), Local.ToUniversalTime().AddMinutes(5), 1);
+            Local.AddMinutes(5), Local.ToUniversalTime().AddMinutes(5), 1,
+            mfrReference: "MFR-2",
+            supervisorNotification: SupervisorNotification.OfPerson("RIVERA, LUIS M.", "CW3", null, Local.ToUniversalTime()));
         appendedSecondButBackDated.AssignSequence(100, 3);
 
         // Presented in a deliberately misleading order; the projection must not care.

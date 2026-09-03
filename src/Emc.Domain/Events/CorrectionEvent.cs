@@ -55,8 +55,7 @@ public class CorrectionEvent : ItemEvent
         DateTimeOffset recordedAtUtc,
         int correctedByUserId,
         string? mfrReference,
-        int? supervisorNotifiedUserId,
-        DateTimeOffset? supervisorNotifiedAtUtc,
+        SupervisorNotification? supervisorNotification,
         CorrectableFieldReference referenceKind,
         int? originalReferenceId,
         int? correctedReferenceId,
@@ -112,8 +111,42 @@ public class CorrectionEvent : ItemEvent
         CorrectedValue = correctedValue;
         Category = category;
         MfrReference = Guard.TrimToNull(mfrReference);
-        SupervisorNotifiedUserId = supervisorNotifiedUserId;
-        SupervisorNotifiedAtUtc = supervisorNotifiedAtUtc;
+        SupervisorNotifiedUserId = supervisorNotification?.UserId;
+        SupervisorNotifiedName = supervisorNotification?.PrintedName;
+        SupervisorNotifiedGradeOrTitle = supervisorNotification?.GradeOrTitle;
+        SupervisorNotifiedOrganization = supervisorNotification?.Organization;
+        SupervisorNotifiedAtUtc = supervisorNotification?.NotifiedAtUtc;
+
+        // AUD-005, enforced rather than flagged. AR 195-5 1-7c(3) makes the supervisor
+        // notification and the MFR part of correcting an incorrect entry in the accountability
+        // record, not an optional follow-up: the custodian "will immediately inform" the
+        // supervisor and "will prepare" the MFR. An earlier version recorded the correction
+        // anyway and showed a warning, which let the accountability record be changed before the
+        // documentation the regulation attaches to that change existed. The checks above run
+        // first so a caller learns about a no-op or a mis-typed field before being asked for an
+        // MFR it does not yet have.
+        if (category == CorrectionCategory.PostAcceptanceAccountabilityRecord)
+        {
+            if (MfrReference is null)
+            {
+                throw new DomainRuleViolationException(
+                    "AUD-005",
+                    "AR 195-5 para 1-7c(3): a correction to an accepted accountability record "
+                    + "requires an MFR outlining the error and the corrective action taken, filed "
+                    + "with the DA Form 4137 with a copy in the case file. Record the MFR "
+                    + "reference.");
+            }
+
+            if (supervisorNotification is null)
+            {
+                throw new DomainRuleViolationException(
+                    "AUD-005",
+                    "AR 195-5 para 1-7c(3): the custodian who finds an incorrect entry will "
+                    + "immediately inform the responsible CI supervisor. Record who was informed "
+                    + "and when. The supervisor need not hold an EMC account.");
+            }
+        }
+
         ReferenceKind = referenceKind;
         OriginalReferenceId = originalReferenceId;
         CorrectedReferenceId = correctedReferenceId;
@@ -174,16 +207,37 @@ public class CorrectionEvent : ItemEvent
     /// <summary>AR 195-5 1-7c(3) - the MFR filed with the DA Form 4137, copy in the case file.</summary>
     public string? MfrReference { get; private set; }
 
-    /// <summary>AR 195-5 1-7c(3) - the supervisor informed immediately.</summary>
+    /// <summary>
+    /// AR 195-5 1-7c(3) - the supervisor informed immediately. Stored flat; see
+    /// <see cref="SupervisorNotification"/> for why the user link is optional and the printed
+    /// particulars are not.
+    /// </summary>
     public int? SupervisorNotifiedUserId { get; private set; }
 
+    public string? SupervisorNotifiedName { get; private set; }
+
+    public string? SupervisorNotifiedGradeOrTitle { get; private set; }
+
+    public string? SupervisorNotifiedOrganization { get; private set; }
+
     public DateTimeOffset? SupervisorNotifiedAtUtc { get; private set; }
+
+    /// <summary>The notification as a whole, or null when none was recorded.</summary>
+    public SupervisorNotification? SupervisorNotification
+        => Events.SupervisorNotification.FromStored(
+            SupervisorNotifiedUserId,
+            SupervisorNotifiedName,
+            SupervisorNotifiedGradeOrTitle,
+            SupervisorNotifiedOrganization,
+            SupervisorNotifiedAtUtc);
 
     /// <summary>
     /// AR 195-5 1-7c(3) requires supervisor notification and an MFR when a CUSTODIAN finds an
     /// incorrect entry in the accountability record. It does NOT govern a submitting agent
-    /// correcting a draft under 2-3g, nor verification of an OCR transcription - so the check
-    /// applies only to <see cref="CorrectionCategory.PostAcceptanceAccountabilityRecord"/>.
+    /// correcting a draft under 2-3g, nor verification of an OCR transcription - so the
+    /// requirement applies only to <see cref="CorrectionCategory.PostAcceptanceAccountabilityRecord"/>,
+    /// where the constructor enforces it. A stored correction of that category always carries
+    /// both.
     /// </summary>
     public bool RequiresParagraph1_7c3Documentation
         => Category == CorrectionCategory.PostAcceptanceAccountabilityRecord;
@@ -210,10 +264,6 @@ public class CorrectionEvent : ItemEvent
     /// <summary>True when this correction replaces a row rather than free text.</summary>
     public bool IsReferenceCorrection => ReferenceKind != CorrectableFieldReference.None;
 
-    public bool SatisfiesParagraph1_7c3
-        => !RequiresParagraph1_7c3Documentation
-           || (MfrReference is not null && SupervisorNotifiedUserId is not null);
-
     public override IReadOnlyDictionary<string, string?> CorrectableFields
         => new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -236,6 +286,9 @@ public class CorrectionEvent : ItemEvent
         yield return new("Category", Category.ToString());
         yield return new("MfrReference", MfrReference);
         yield return new("SupervisorNotifiedUserId", SupervisorNotifiedUserId?.ToString("D", null));
+        yield return new("SupervisorNotifiedName", SupervisorNotifiedName);
+        yield return new("SupervisorNotifiedGradeOrTitle", SupervisorNotifiedGradeOrTitle);
+        yield return new("SupervisorNotifiedOrganization", SupervisorNotifiedOrganization);
         yield return new(
             "SupervisorNotifiedAtUtc",
             SupervisorNotifiedAtUtc?.UtcDateTime.ToString("O", null));
@@ -288,8 +341,7 @@ public static class CorrectionFactory
         DateTimeOffset recordedAtUtc,
         int correctedByUserId,
         string? mfrReference = null,
-        int? supervisorNotifiedUserId = null,
-        DateTimeOffset? supervisorNotifiedAtUtc = null,
+        SupervisorNotification? supervisorNotification = null,
         string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(correctedEvent);
@@ -324,8 +376,7 @@ public static class CorrectionFactory
             recordedAtUtc,
             correctedByUserId,
             mfrReference,
-            supervisorNotifiedUserId,
-            supervisorNotifiedAtUtc,
+            supervisorNotification,
             CorrectableFieldReference.None,
             originalReferenceId: null,
             correctedReferenceId: null,
@@ -360,8 +411,7 @@ public static class CorrectionFactory
         DateTimeOffset recordedAtUtc,
         int correctedByUserId,
         string? mfrReference = null,
-        int? supervisorNotifiedUserId = null,
-        DateTimeOffset? supervisorNotifiedAtUtc = null,
+        SupervisorNotification? supervisorNotification = null,
         string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(correctedEvent);
@@ -393,8 +443,7 @@ public static class CorrectionFactory
             recordedAtUtc,
             correctedByUserId,
             mfrReference,
-            supervisorNotifiedUserId,
-            supervisorNotifiedAtUtc,
+            supervisorNotification,
             referenceKind,
             correctedEvent.OriginalReferenceIdOf(fieldName),
             correctedReferenceId,

@@ -304,9 +304,12 @@ CorrectionEvent #402
     Reason               = "Transcription error; DA Form 4137 shows Jones"
     CorrectedByUserId    = 17
     OccurredAtUtc        = 2026-09-03T14:22:11Z
-    MfrReference         = "MFR-2026-014"         ← 1-7c(3)
-    SupervisorNotifiedUserId = 4                  ← 1-7c(3)
-    SupervisorNotifiedAtUtc  = 2026-09-03T14:31:02Z
+    MfrReference         = "MFR-2026-014"         ← 1-7c(3), REQUIRED for this category
+    SupervisorNotifiedUserId     = null           ← 1-7c(3); the supervisor has no EMC account
+    SupervisorNotifiedName       = "RIVERA, LUIS M."
+    SupervisorNotifiedGradeOrTitle = "CW3"
+    SupervisorNotifiedOrganization = "902d MI Group"
+    SupervisorNotifiedAtUtc      = 2026-09-03T14:31:02Z   ← REQUIRED for this category
 ```
 
 **Fields that name a row carry the identifier, not just the text.** An item's storage location
@@ -434,7 +437,7 @@ alone.
 | I-30 | A correction to a field that names a row carries the replacement identifier, and its display text is read from that row | **[DESIGN]** |
 | I-31 | A corrected storage location resolves within the item's own evidence room, on the same terms as an assigned one | 2-4c, 2-4e **[DESIGN]** |
 | I-32 | A correction records the value it changed as well as the original; which correction to a field is current is decided by server-assigned append order, never by a user-supplied occurrence time | 1-7c(3), 2-5b(5) **[CONTROL]** |
-| I-15 | A `CorrectionEvent` must carry a reason, and an MFR reference where 1-7c(3) applies | 1-7c(3) **[REG]** |
+| I-15 | A `CorrectionEvent` must carry a reason; a post-acceptance correction must also carry the MFR reference and the supervisor notification, and is refused without them | 1-7c(3) **[REG]** |
 | I-16 | Voucher status is always computed; there is no settable status column | 2-4h **[REG]** |
 | I-17 | Terminal-state items accept no further custody or location events except corrections | **[DESIGN]** |
 | I-18 | A disposition action requires a recorded approving authority | 2-8e(5), 1-4h(5) **[REG]** |

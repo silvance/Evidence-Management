@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903134242_InitialEvidenceModel")]
+    [Migration("20260903135141_InitialEvidenceModel")]
     partial class InitialEvidenceModel
     {
         /// <inheritdoc />
@@ -976,6 +976,18 @@ namespace Emc.Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("SupervisorNotifiedAtUtc")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("SupervisorNotifiedGradeOrTitle")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SupervisorNotifiedName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SupervisorNotifiedOrganization")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<int?>("SupervisorNotifiedUserId")
                         .HasColumnType("int");

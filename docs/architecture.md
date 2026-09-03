@@ -196,8 +196,26 @@ A correction is a **new event** of type `CorrectionEvent` that:
 - references the corrected event (`CorrectsEventId`) — a **backward** reference only;
 - names **exactly one field**, and records its **original value** and its **corrected value**;
 - records **reason**, **correcting user**, **occurrence time** and **system entry time**;
-- carries the **MFR reference** required by 1-7c(3), and the **supervisor notified** and
-  **notified-at** fields.
+- carries the **MFR reference** required by 1-7c(3), and the **supervisor notified** — printed
+  name, grade or title, organization, and when — with an EMC user link only when the supervisor
+  has one.
+
+**For a correction to an accepted accountability record, the MFR reference and the supervisor
+notification are required, and the correction is refused without them.** 1-7c(3)'s verbs are
+"will immediately inform" and "will prepare"; they describe part of correcting the entry, not a
+follow-up to it. An earlier version recorded the correction and displayed a warning, which
+changed the accountability record before the documentation the regulation attaches to that change
+existed. The requirement is scoped to the category 1-7c(3) actually governs: a submitting agent
+correcting a draft under 2-3g, or a verifier fixing an OCR transcription, is not a custodian
+finding an incorrect entry, and demanding a custodian-error MFR there would misstate the
+regulation.
+
+The supervisor is modelled as the MFR names them, not as an application account. The responsible
+CI supervisor of 1-7c(3) frequently holds no EMC login — EMC is used by an evidence room's agents
+and custodians, while the supervisor informed may sit in the operations section or a higher
+headquarters — and a model that required a user id would have forced the custodian to either
+leave the notification unrecorded or misattribute it to whoever did have an account. When a user
+*is* linked, the recorded particulars are read from the user record, not the form.
 
 **The corrected event is not touched.** There is no forward pointer, no status flag and no
 "superseded" column, which is why the append-only triggers (§4.2) can reject every `UPDATE`

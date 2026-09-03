@@ -132,6 +132,6 @@ public class RazorPageSmokeTests : IDisposable
         // And the correction row carries what the page shows beside it.
         var correction = after.History.Single(r => r.Kind == Domain.Common.ItemEventKind.Correction);
         Assert.Equal("MFR-2026-020", correction.CorrectionMfrReference);
-        Assert.True(correction.CorrectionSatisfies1_7c3);
+        Assert.Equal(_harness.CommanderPrintedNameAndGrade, correction.CorrectionSupervisorNotified);
     }
 }

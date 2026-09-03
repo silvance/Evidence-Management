@@ -163,6 +163,13 @@ public sealed class CorrectionEventConfiguration : IEntityTypeConfiguration<Corr
         // AR 195-5 1-7c(3) - the MFR outlining the error and corrective action.
         builder.Property(e => e.MfrReference).HasMaxLength(256);
 
+        // AR 195-5 1-7c(3) - the supervisor informed, by printed particulars; the user link is
+        // optional because the responsible supervisor need not hold an EMC account (AUD-018).
+        builder.Property(e => e.SupervisorNotifiedName).HasMaxLength(256);
+        builder.Property(e => e.SupervisorNotifiedGradeOrTitle).HasMaxLength(64);
+        builder.Property(e => e.SupervisorNotifiedOrganization).HasMaxLength(256);
+        builder.Ignore(e => e.SupervisorNotification);
+
         builder.HasOne(e => e.CorrectedEvent)
             .WithMany()
             .HasForeignKey(e => e.CorrectsEventId)
@@ -180,7 +187,6 @@ public sealed class CorrectionEventConfiguration : IEntityTypeConfiguration<Corr
             .HasDatabaseName("IX_ItemEvents_CorrectionReference")
             .HasFilter("[CorrectedReferenceId] IS NOT NULL");
 
-        builder.Ignore(e => e.SatisfiesParagraph1_7c3);
         builder.Ignore(e => e.RequiresParagraph1_7c3Documentation);
         builder.Ignore(e => e.IsReferenceCorrection);
         builder.Ignore(e => e.CorrectsTheOriginalEntry);

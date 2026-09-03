@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Emc.Application.Abstractions;
 using Emc.Application.Audit;
+using Emc.Domain.Common;
 using Emc.Domain.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -20,13 +21,15 @@ public sealed class HttpCurrentUser : ICurrentUser
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly EmcDbContext _db;
+    private readonly IClock _clock;
     private UserProfile? _resolved;
     private bool _resolutionAttempted;
 
-    public HttpCurrentUser(IHttpContextAccessor httpContextAccessor, EmcDbContext db)
+    public HttpCurrentUser(IHttpContextAccessor httpContextAccessor, EmcDbContext db, IClock clock)
     {
         _httpContextAccessor = httpContextAccessor;
         _db = db;
+        _clock = clock;
     }
 
     /// <summary>
@@ -78,7 +81,9 @@ public sealed class HttpCurrentUser : ICurrentUser
             return null;
         }
 
-        var now = DateTimeOffset.UtcNow;
+        // The application clock, so "is this grant in effect" is answered on the same clock as
+        // every accountability timestamp and can be driven in tests.
+        var now = _clock.UtcNow;
 
         // IAM-002: grants come from the database, per request, and carry the evidence room they
         // apply to. Nothing role-related is read from the client.

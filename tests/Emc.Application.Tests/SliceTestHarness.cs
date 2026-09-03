@@ -72,6 +72,9 @@ public sealed class SliceTestHarness : IDisposable
     public int AdministratorUserId { get; private set; }
     public int CommanderUserId { get; private set; }
 
+    /// <summary>The commander's printed name and grade, as the seeded user record has them.</summary>
+    public string CommanderPrintedNameAndGrade { get; private set; } = string.Empty;
+
     public IEvidenceAuthorizationService Authorization
         => new EvidenceAuthorizationService(Db, CurrentUser, Clock);
 
@@ -147,6 +150,7 @@ public sealed class SliceTestHarness : IDisposable
         AlternateCustodianUserId = alternate.Id;
         AdministratorUserId = administrator.Id;
         CommanderUserId = commander.Id;
+        CommanderPrintedNameAndGrade = commander.PrintedNameAndGrade;
 
         GrantRoleInRoom(agent.Id, EmcRoles.Agent, room.Id);
         GrantRoleInRoom(custodian.Id, EmcRoles.PrimaryEvidenceCustodian, room.Id);

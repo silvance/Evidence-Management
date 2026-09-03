@@ -166,7 +166,7 @@ public class AppendOnlyAndCorrectionTests : IDisposable
         Assert.Equal("Shelf B / Bin 14", correction.CorrectionOriginalValue);
         Assert.Equal("Shelf B / Bin 19", correction.CorrectionNewValue);
         Assert.Equal("MFR-2026-014", correction.CorrectionMfrReference);
-        Assert.True(correction.CorrectionSatisfies1_7c3);
+        Assert.Equal(_harness.CommanderPrintedNameAndGrade, correction.CorrectionSupervisorNotified);
 
         // AUD-016. The identifier moved with the text, so anything that resolves the item by
         // location - the monthly 100 percent inventory (AR 195-5 3-1b(2)) among them - now finds
@@ -453,6 +453,124 @@ public class AppendOnlyAndCorrectionTests : IDisposable
 
         Assert.False(again.Succeeded);
         Assert.Equal("AUD-004", again.RequirementId);
+    }
+
+    [Fact]
+    public async Task APostAcceptanceCorrectionWithoutAnMfrIsRefusedAndNothingIsRecorded()
+    {
+        // AUD-005, enforced end to end. The earlier behaviour recorded it and returned a warning.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "Initial placement", null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
+            "Wrong reason recorded", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            MfrReference: null, SupervisorNotifiedUserId: _harness.CommanderUserId,
+            SupervisorNotifiedAtUtc: _harness.Clock.UtcNow));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("AUD-005", result.RequirementId);
+        Assert.Contains("1-7c(3)", result.Error!, StringComparison.Ordinal);
+
+        var history = await _harness.History.GetAsync(itemId);
+        Assert.DoesNotContain(history!.History, r => r.Kind == ItemEventKind.Correction);
+        Assert.Equal("Initial placement", history.History.Single(r => r.EventId == locationEvent.Id)
+            .EffectiveFields[nameof(LocationEvent.Reason)]);
+    }
+
+    [Fact]
+    public async Task ASupervisorWithoutAnEmcAccountCanBeRecorded()
+    {
+        // AUD-018. The responsible CI supervisor (1-7c(3)) is named as the MFR names them.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "Initial placement", null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
+            "Wrong reason recorded", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-2026-050", SupervisorNotifiedUserId: null, SupervisorNotifiedAtUtc: null,
+            SupervisorNotifiedName: "OKAFOR, ADAEZE N.",
+            SupervisorNotifiedGradeOrTitle: "MAJ",
+            SupervisorNotifiedOrganization: "902d MI Group S3"));
+
+        Assert.True(result.Succeeded, result.Error);
+
+        var stored = await _harness.Db.ItemEvents.OfType<CorrectionEvent>()
+            .SingleAsync(c => c.CorrectsEventId == locationEvent.Id);
+
+        Assert.Null(stored.SupervisorNotifiedUserId);
+        Assert.Equal("OKAFOR, ADAEZE N.", stored.SupervisorNotifiedName);
+        Assert.Equal("MAJ", stored.SupervisorNotifiedGradeOrTitle);
+        Assert.Equal("902d MI Group S3", stored.SupervisorNotifiedOrganization);
+
+        // No time was supplied, so the notification is recorded as contemporaneous.
+        Assert.Equal(_harness.Clock.UtcNow, stored.SupervisorNotifiedAtUtc);
+
+        var history = await _harness.History.GetAsync(itemId);
+        var row = history!.History.Single(r => r.Kind == ItemEventKind.Correction);
+        Assert.Equal("MAJ OKAFOR, ADAEZE N.", row.CorrectionSupervisorNotified);
+    }
+
+    [Fact]
+    public async Task ASupervisorWithAnAccountIsRecordedFromTheUserRecord()
+    {
+        // A name posted alongside a user id is not trusted over the user record.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "Initial placement", null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
+            "Wrong reason recorded", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-2026-051", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            SupervisorNotifiedName: "SOMEBODY ELSE"));
+
+        Assert.True(result.Succeeded, result.Error);
+
+        var stored = await _harness.Db.ItemEvents.OfType<CorrectionEvent>()
+            .SingleAsync(c => c.CorrectsEventId == locationEvent.Id);
+
+        Assert.Equal(_harness.CommanderUserId, stored.SupervisorNotifiedUserId);
+        Assert.NotEqual("SOMEBODY ELSE", stored.SupervisorNotifiedName);
+        Assert.Equal(_harness.CommanderPrintedNameAndGrade, stored.SupervisorNotification!.PrintedNameAndGrade);
+    }
+
+    [Fact]
+    public async Task AnInactiveOrUnknownSupervisorUserIsRefused()
+    {
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "Initial placement", null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
+            "Wrong reason recorded", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-2026-052", 999_999, _harness.Clock.UtcNow));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("AUD-018", result.RequirementId);
     }
 
     [Fact]

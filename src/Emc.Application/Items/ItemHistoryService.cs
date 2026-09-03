@@ -39,7 +39,9 @@ public sealed record ItemHistoryRow(
     string? CorrectionReason,
     string? CorrectionMfrReference,
     CorrectionCategory? CorrectionCategory,
-    bool CorrectionSatisfies1_7c3,
+
+    /// <summary>The supervisor informed under 1-7c(3), printed name and grade. Null when none applies.</summary>
+    string? CorrectionSupervisorNotified,
 
     /// <summary>Set on a correction row that replaced a ROW rather than free text (AUD-016).</summary>
     CorrectableFieldReference CorrectionReferenceKind = CorrectableFieldReference.None,
@@ -105,7 +107,16 @@ public sealed record RecordCorrectionRequest(
     string? MfrReference,
     int? SupervisorNotifiedUserId,
     DateTimeOffset? SupervisorNotifiedAtUtc,
-    int? CorrectedReferenceId = null);
+    int? CorrectedReferenceId = null,
+
+    /// <summary>
+    /// The supervisor informed, when they hold no EMC account (AUD-018). Ignored when
+    /// <paramref name="SupervisorNotifiedUserId"/> is given: the particulars then come from the
+    /// user record, and a name posted alongside a user id is not trusted over it.
+    /// </summary>
+    string? SupervisorNotifiedName = null,
+    string? SupervisorNotifiedGradeOrTitle = null,
+    string? SupervisorNotifiedOrganization = null);
 
 public interface IItemHistoryService
 {
@@ -216,7 +227,7 @@ public sealed class ItemHistoryService : IItemHistoryService
                     CorrectionReason: correction?.Reason,
                     CorrectionMfrReference: correction?.MfrReference,
                     CorrectionCategory: correction?.Category,
-                    CorrectionSatisfies1_7c3: correction?.SatisfiesParagraph1_7c3 ?? true,
+                    CorrectionSupervisorNotified: correction?.SupervisorNotification?.PrintedNameAndGrade,
                     CorrectionReferenceKind:
                         correction?.ReferenceKind ?? CorrectableFieldReference.None,
                     CorrectionOriginalReferenceId: correction?.OriginalReferenceId,
@@ -349,6 +360,18 @@ public sealed class ItemHistoryService : IItemHistoryService
             .ToListAsync(ct);
 
         var now = _clock.UtcNow;
+
+        // AUD-018. Who was informed under 1-7c(3). An EMC user is resolved server-side so the
+        // recorded particulars are the user's own; a supervisor without an account is recorded
+        // by printed name, grade and organization, as the MFR names them. Whether one is
+        // REQUIRED is the domain's decision, by category.
+        var supervisor = await ResolveSupervisorAsync(request, now, ct);
+
+        if (supervisor.Failure is not null)
+        {
+            return supervisor.Failure;
+        }
+
         CorrectionEvent correction;
 
         try
@@ -367,8 +390,7 @@ public sealed class ItemHistoryService : IItemHistoryService
                     recordedAtUtc: now,
                     correctedByUserId: _currentUser.UserId,
                     mfrReference: request.MfrReference,
-                    supervisorNotifiedUserId: request.SupervisorNotifiedUserId,
-                    supervisorNotifiedAtUtc: request.SupervisorNotifiedAtUtc)
+                    supervisorNotification: supervisor.Notification)
                 : CorrectionFactory.CreateReferenceCorrection(
                     correctedEvent: correctedEvent,
                     existingCorrections: existingCorrections,
@@ -381,8 +403,7 @@ public sealed class ItemHistoryService : IItemHistoryService
                     recordedAtUtc: now,
                     correctedByUserId: _currentUser.UserId,
                     mfrReference: request.MfrReference,
-                    supervisorNotifiedUserId: request.SupervisorNotifiedUserId,
-                    supervisorNotifiedAtUtc: request.SupervisorNotifiedAtUtc);
+                    supervisorNotification: supervisor.Notification);
         }
         catch (DomainRuleViolationException ex)
         {
@@ -403,30 +424,39 @@ public sealed class ItemHistoryService : IItemHistoryService
         // supersession pointer (AUD-002).
         await _db.SaveChangesAsync(ct);
 
-        var warnings = new List<string>();
+        // AUD-005. Nothing to warn about: a post-acceptance correction without its 1-7c(3)
+        // documentation is refused by the domain and never reaches this point.
+        return OperationResult.Success();
+    }
 
-        if (!correction.SatisfiesParagraph1_7c3)
+    private async Task<(OperationResult? Failure, SupervisorNotification? Notification)> ResolveSupervisorAsync(
+        RecordCorrectionRequest request, DateTimeOffset now, CancellationToken ct)
+    {
+        // "Immediately" (1-7c(3)) is the regulation's word; EMC records when. If the caller does
+        // not say, the notification is taken to be contemporaneous with recording it.
+        var notifiedAt = request.SupervisorNotifiedAtUtc ?? now;
+
+        if (request.SupervisorNotifiedUserId is int userId)
         {
-            // Surfaced rather than blocked: whether a given field-level correction rises to the
-            // 1-7c(3) threshold is a matter of local policy, and an incomplete correction is
-            // visible in the item history and to an inspector either way.
-            // Only PostAcceptanceAccountabilityRecord corrections are subject to 1-7c(3). A
-            // submitting agent correcting a draft under 2-3g, or a verifier fixing an OCR
-            // transcription, is not a custodian finding an incorrect entry in the accountability
-            // record, and demanding a custodian-error MFR for those would misstate the regulation.
-            warnings.Add(
-                "AR 195-5 para 1-7c(3): when a primary or alternate evidence custodian finds an "
-                + "incorrect entry they will immediately inform the responsible CI supervisor and "
-                + "prepare an MFR outlining the error and the corrective action taken, filed with "
-                + "the proper DA Form 4137 with a copy in the case file. This correction records "
-                + (correction.MfrReference is null ? "no MFR reference" : "an MFR reference")
-                + " and "
-                + (request.SupervisorNotifiedUserId is null
-                    ? "no supervisor notification."
-                    : "a supervisor notification."));
+            var user = await _db.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive, ct);
+
+            return user is null
+                ? (OperationResult.Failure("The supervisor named is not an active user.", "AUD-018"), null)
+                : (null, SupervisorNotification.OfUser(user, notifiedAt));
         }
 
-        return OperationResult.Success([.. warnings]);
+        if (!string.IsNullOrWhiteSpace(request.SupervisorNotifiedName))
+        {
+            return (null, SupervisorNotification.OfPerson(
+                request.SupervisorNotifiedName,
+                request.SupervisorNotifiedGradeOrTitle,
+                request.SupervisorNotifiedOrganization,
+                notifiedAt));
+        }
+
+        return (null, null);
     }
 
     /// <summary>

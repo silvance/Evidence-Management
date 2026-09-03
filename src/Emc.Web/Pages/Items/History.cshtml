@@ -119,12 +119,18 @@ else
                             {
                                 <text>MFR @row.CorrectionMfrReference (AR 195-5 para 1-7c(3)).</text>
                             }
-                            else
+                            @if (!string.IsNullOrWhiteSpace(row.CorrectionSupervisorNotified))
                             {
+                                <text>Supervisor informed: @row.CorrectionSupervisorNotified.</text>
+                            }
+                            @if (row.CorrectionCategory != CorrectionCategory.PostAcceptanceAccountabilityRecord)
+                            {
+                                @* A submitting agent correcting a draft (2-3g) or a transcription
+                                   verification is not a custodian finding an incorrect entry, so
+                                   1-7c(3)'s MFR and notification do not apply and their absence
+                                   is not a defect. *@
                                 <text>
-                                    No MFR reference recorded — AR 195-5 para 1-7c(3) requires an
-                                    MFR outlining the error and the corrective action, filed with
-                                    the DA Form 4137.
+                                    @row.CorrectionCategory — AR 195-5 para 1-7c(3) does not apply.
                                 </text>
                             }
                         </div>
@@ -288,10 +294,26 @@ else
                 </select>
                 <span class="hint">
                     AR 195-5 para 1-7c(3) requires the responsible CI supervisor to be informed
-                    immediately. A correction without an MFR reference and a supervisor
-                    notification is still recorded, but is flagged for review.
+                    immediately. Select the supervisor here if they hold an EMC account;
+                    otherwise leave this blank and name them below.
                 </span>
             </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.SupervisorNotifiedName">Supervisor informed (no EMC account)</label>
+                <input asp-for="Correction.SupervisorNotifiedName" autocomplete="off" placeholder="Printed name" />
+                <input asp-for="Correction.SupervisorNotifiedGradeOrTitle" autocomplete="off" placeholder="Grade or title" />
+                <input asp-for="Correction.SupervisorNotifiedOrganization" autocomplete="off" placeholder="Organization" />
+                <span class="hint">
+                    As the MFR names them. Ignored if a supervisor is selected above.
+                </span>
+            </div>
+
+            <p class="regulatory-note">
+                A correction to an accepted accountability record is <strong>not recorded</strong>
+                without an MFR reference and a supervisor notification. AR 195-5 para 1-7c(3)
+                makes both part of correcting the entry, not a follow-up to it.
+            </p>
 
             <button type="submit">Record correction</button>
         </form>
