@@ -615,6 +615,9 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("EvidenceRoomId")
                         .HasColumnType("int");
 
+                    b.Property<DateTimeOffset?>("ExpectedAbsenceEnd")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset>("PrimaryAbsenceStart")
                         .HasColumnType("datetimeoffset");
 
@@ -658,6 +661,68 @@ namespace Emc.Infrastructure.Migrations
                     b.HasIndex("AlternateUserId", "EvidenceRoomId");
 
                     b.ToTable("CustodianDutyAssumptions", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Identity.PrimaryCustodianTransition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("DiscrepanciesResolved")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IncomingPrimaryAppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("JointInventoryCompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("JointInventoryReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("LedgerAttestation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("OutgoingPrimaryAppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IncomingPrimaryAppointmentId");
+
+                    b.HasIndex("OutgoingPrimaryAppointmentId");
+
+                    b.HasIndex("EvidenceRoomId", "EffectiveFrom");
+
+                    b.ToTable("PrimaryCustodianTransitions", (string)null);
                 });
 
             modelBuilder.Entity("Emc.Domain.Identity.Role", b =>
@@ -1177,6 +1242,26 @@ namespace Emc.Infrastructure.Migrations
                         .HasForeignKey("PrimaryAppointmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Emc.Domain.Identity.PrimaryCustodianTransition", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.CustodianAppointment", null)
+                        .WithMany()
+                        .HasForeignKey("IncomingPrimaryAppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.CustodianAppointment", null)
+                        .WithMany()
+                        .HasForeignKey("OutgoingPrimaryAppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Emc.Domain.Identity.RoleAssignment", b =>

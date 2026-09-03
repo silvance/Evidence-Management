@@ -21,8 +21,19 @@ namespace Emc.Domain.Events;
 /// items never contends. Any altered, inserted or removed row breaks the chain from that point
 /// forward, and verification is a read-only pass requiring no privileged access.
 ///
-/// This does not make tampering impossible. It makes it DETECTABLE BY ANY READER, which is the
-/// achievable and honest goal — say it that way in an inspection, not more.
+/// STATE ITS STRENGTH ACCURATELY. This chain is UNKEYED: it is computed from the data and stored
+/// beside it. A privileged actor able to modify the database AND RECOMPUTE THE CHAIN from the
+/// altered row forward would not be detected by it.
+///
+/// What it does detect: modification, deletion and insertion of events where the chain was not
+/// also deliberately recomputed - accidental corruption, application bugs, out-of-band edits that
+/// do not know about the chain, and casual database manipulation. That covers the realistic
+/// cases, and verification needs no privileged access.
+///
+/// What it is NOT: a digital signature, an external immutable ledger, or a keyed MAC whose key
+/// lives outside the database. Do not describe it as proof against a malicious privileged DBA.
+/// Closing that gap needs signed periodic checkpoints with a key held outside SQL Server, which
+/// is deliberately not built in this pass.
 /// </summary>
 public static class EventHashChain
 {

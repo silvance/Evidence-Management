@@ -163,27 +163,36 @@ public class CustodianAppointmentTests
 }
 
 /// <summary>
-/// AR 195-5 paras 1-4i, 1-7c(1) and 1-7c(2) - the alternate assuming the primary's duties.
-/// Requirements: IAM-006, IAM-019, IAM-020.
+/// AR 195-5 paras 1-4i, 1-7c(1), 1-7c(2) and 3-2d - the alternate assuming the primary's duties,
+/// and the 30-day limit on a temporary absence.
+/// Requirements: IAM-006, IAM-019, IAM-020, IAM-021.
 /// </summary>
 public class CustodianDutyAssumptionTests
 {
-    private static readonly DateTimeOffset Absence = new(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset AbsenceStart = new(2026, 9, 1, 8, 0, 0, TimeSpan.Zero);
 
-    private static CustodianDutyAssumption New(DateTimeOffset? assumedAt = null)
-        => new(
+    private static CustodianDutyAssumption New(
+        DateTimeOffset? assumedAt = null,
+        DateTimeOffset? absenceStart = null,
+        DateTimeOffset? expectedAbsenceEnd = null)
+    {
+        var start = absenceStart ?? AbsenceStart;
+
+        return new CustodianDutyAssumption(
             evidenceRoomId: 1,
             primaryAppointmentId: 10,
             alternateAppointmentId: 11,
             alternateUserId: 7,
-            primaryAbsenceStart: Absence,
-            alternateAssumedDutiesAt: assumedAt ?? Absence,
+            primaryAbsenceStart: start,
+            alternateAssumedDutiesAt: assumedAt ?? start,
             assumptionLedgerAttestation:
                 "I CHEN, DAVID L., on 01 SEP 26, assume all duties of the primary evidence "
                 + "custodian during the temporary absence of the regularly appointed custodian.",
             recordedByUserId: 4,
-            recordedAtUtc: Absence,
-            reasonForAbsence: "Temporary duty");
+            recordedAtUtc: start,
+            reasonForAbsence: "Temporary duty",
+            expectedAbsenceEnd: expectedAbsenceEnd);
+    }
 
     [Fact]
     public void TheAssumptionRequiresTheLedgerAttestation()
@@ -191,7 +200,7 @@ public class CustodianDutyAssumptionTests
         // AR 195-5 1-7c(1) requires the alternate to ENTER AND SIGN the prescribed statement in
         // the evidence ledger. EMC records that the paper entry was made.
         var ex = Assert.Throws<DomainRuleViolationException>(() => new CustodianDutyAssumption(
-            1, 10, 11, 7, Absence, Absence, "   ", 4, Absence));
+            1, 10, 11, 7, AbsenceStart, AbsenceStart, "   ", 4, AbsenceStart));
 
         Assert.Equal("IAM-019", ex.RequirementId);
     }
@@ -200,7 +209,7 @@ public class CustodianDutyAssumptionTests
     public void DutiesCannotBeAssumedBeforeTheAbsenceBegins()
     {
         var ex = Assert.Throws<DomainRuleViolationException>(() => new CustodianDutyAssumption(
-            1, 10, 11, 7, Absence, Absence.AddDays(-1), "statement", 4, Absence));
+            1, 10, 11, 7, AbsenceStart, AbsenceStart.AddDays(-1), "statement", 4, AbsenceStart));
 
         Assert.Equal("IAM-019", ex.RequirementId);
     }
@@ -210,39 +219,99 @@ public class CustodianDutyAssumptionTests
     {
         var assumption = New();
 
-        Assert.True(assumption.IsActiveAt(Absence.AddDays(3)));
+        Assert.True(assumption.IsActiveAt(AbsenceStart.AddDays(3)));
 
         assumption.RecordPrimaryResumption(
-            Absence.AddDays(5),
+            AbsenceStart.AddDays(5),
             "I BAKER, ALICE C., on 06 SEP 26, resume my position as primary evidence custodian.",
             4,
-            Absence.AddDays(5));
+            AbsenceStart.AddDays(5));
 
-        Assert.True(assumption.IsActiveAt(Absence.AddDays(4)));
-        Assert.False(assumption.IsActiveAt(Absence.AddDays(6)));
+        Assert.True(assumption.IsActiveAt(AbsenceStart.AddDays(4)));
+        Assert.False(assumption.IsActiveAt(AbsenceStart.AddDays(6)));
     }
 
     [Fact]
-    public void TheThirtyDayLimitRunsFromTheDateDutiesWereAssumed()
+    public void TheRegulatoryLimitMeasuresThePrimarysAbsence_NotTheActingPeriod()
     {
-        // The correction. AR 195-5 1-4i measures the temporary absence, not the appointment.
-        // Duties are assumed 100 days after the alternate was appointed; day 30 of ACTING is
-        // still within the limit.
-        var assumption = New(assumedAt: Absence.AddDays(100));
+        // THE correction. AR 195-5 1-4i: "A temporary absence is more than 1 working day and not
+        // more than 30 consecutive days." That bounds the ABSENCE.
+        //
+        // An earlier version measured from the date the alternate assumed duties, so a primary
+        // absent 100 days could have an alternate begin a FRESH 30-day window - nearly five months
+        // covered by a provision the regulation caps at 30 days.
+        var assumption = New(
+            absenceStart: AbsenceStart,
+            assumedAt: AbsenceStart.AddDays(20));
 
-        Assert.False(assumption.ExceedsTemporaryAbsenceLimitAt(Absence.AddDays(130)));
-        Assert.True(assumption.ExceedsTemporaryAbsenceLimitAt(Absence.AddDays(131)));
-        Assert.Equal(30, assumption.ConsecutiveDaysAt(Absence.AddDays(130)));
+        // 25 days into the ABSENCE, but only 5 days of acting: still within the limit.
+        Assert.False(assumption.ExceedsTemporaryAbsenceLimitAt(AbsenceStart.AddDays(25)));
+
+        // 31 days into the ABSENCE, though the alternate has acted only 11 days: over the limit.
+        Assert.True(assumption.ExceedsTemporaryAbsenceLimitAt(AbsenceStart.AddDays(31)));
+
+        Assert.Equal(TimeSpan.FromDays(31), assumption.AbsenceDurationAt(AbsenceStart.AddDays(31)));
+        Assert.Equal(TimeSpan.FromDays(11), assumption.ActingDurationAt(AbsenceStart.AddDays(31)));
+    }
+
+    [Fact]
+    public void TheBoundaryIsExact_NotTruncatedToWholeDays()
+    {
+        // Truncating to whole days would have allowed very nearly 31.
+        var assumption = New();
+
+        Assert.False(assumption.ExceedsTemporaryAbsenceLimitAt(
+            AbsenceStart.AddDays(30).AddSeconds(-1)));
+
+        Assert.False(assumption.ExceedsTemporaryAbsenceLimitAt(AbsenceStart.AddDays(30)));
+
+        Assert.True(assumption.ExceedsTemporaryAbsenceLimitAt(
+            AbsenceStart.AddDays(30).AddMilliseconds(1)));
+    }
+
+    [Fact]
+    public void AnAbsenceKnownAtTheOutsetToExceedThirtyDaysIsNotATemporaryAssumption()
+    {
+        // AR 195-5 3-2d: "if it is known that the primary custodian will be gone for more than 30
+        // consecutive calendar days, the alternate will be appointed on orders as the primary
+        // custodian, and a joint inventory will be conducted." It is not an ordinary temporary
+        // assumption, and recording it as one would misrepresent the regulation.
+        var ex = Assert.Throws<DomainRuleViolationException>(
+            () => New(expectedAbsenceEnd: AbsenceStart.AddDays(45)));
+
+        Assert.Equal("IAM-021", ex.RequirementId);
+        Assert.Contains("3-2d", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAbsenceKnownToBeWithinThirtyDaysIsAnOrdinaryAssumption()
+    {
+        var assumption = New(expectedAbsenceEnd: AbsenceStart.AddDays(14));
+
+        Assert.Equal(AbsenceStart.AddDays(14), assumption.ExpectedAbsenceEnd);
+        Assert.False(assumption.ExceedsTemporaryAbsenceLimitAt(AbsenceStart.AddDays(14)));
+    }
+
+    [Fact]
+    public void DutiesCannotBeAssumedAfterTheAbsenceHasAlreadyExceededTheLimit()
+    {
+        // There is no temporary-absence authority left to assume.
+        var ex = Assert.Throws<DomainRuleViolationException>(
+            () => New(assumedAt: AbsenceStart.AddDays(35)));
+
+        Assert.Equal("IAM-021", ex.RequirementId);
     }
 
     [Fact]
     public void ThePrimaryCannotResumeTwice()
     {
         var assumption = New();
-        assumption.RecordPrimaryResumption(Absence.AddDays(5), "statement", 4, Absence.AddDays(5));
+        assumption.RecordPrimaryResumption(
+            AbsenceStart.AddDays(5), "statement", 4, AbsenceStart.AddDays(5));
 
         var ex = Assert.Throws<DomainRuleViolationException>(
-            () => assumption.RecordPrimaryResumption(Absence.AddDays(6), "again", 4, Absence.AddDays(6)));
+            () => assumption.RecordPrimaryResumption(
+                AbsenceStart.AddDays(6), "again", 4, AbsenceStart.AddDays(6)));
 
         Assert.Equal("IAM-019", ex.RequirementId);
     }
@@ -251,13 +320,122 @@ public class CustodianDutyAssumptionTests
     public void AnAbsenceOfThirtyDaysOrLessNeedsNoHundredPercentInventory()
     {
         // AR 195-5 1-7c(2): "If the absence is 30 calendar days or less, there is no requirement
-        // to conduct a 100 percent inventory." Beyond that, 3-2d requires a joint inventory.
+        // to conduct a 100 percent inventory." Measured on the ABSENCE, consistently with 1-4i.
         var shortAbsence = New();
-        shortAbsence.RecordPrimaryResumption(Absence.AddDays(30), "statement", 4, Absence.AddDays(30));
+        shortAbsence.RecordPrimaryResumption(
+            AbsenceStart.AddDays(30), "statement", 4, AbsenceStart.AddDays(30));
+
         Assert.False(shortAbsence.RequiresHundredPercentInventoryOnResumption);
 
         var longAbsence = New();
-        longAbsence.RecordPrimaryResumption(Absence.AddDays(45), "statement", 4, Absence.AddDays(45));
+        longAbsence.RecordPrimaryResumption(
+            AbsenceStart.AddDays(45), "statement", 4, AbsenceStart.AddDays(45));
+
         Assert.True(longAbsence.RequiresHundredPercentInventoryOnResumption);
+    }
+
+    [Fact]
+    public void RemainingWindowCountsDownFromTheAbsenceStart()
+    {
+        var assumption = New();
+
+        Assert.Equal(
+            TimeSpan.FromDays(5),
+            assumption.RemainingTemporaryAbsenceAt(AbsenceStart.AddDays(25)));
+
+        Assert.True(assumption.RemainingTemporaryAbsenceAt(AbsenceStart.AddDays(35)) < TimeSpan.Zero);
+    }
+}
+
+/// <summary>
+/// AR 195-5 paras 3-2d and 3-2g(3) - the change of primary custodian and its joint inventory.
+/// Requirements: IAM-021, IAM-022.
+/// </summary>
+public class PrimaryCustodianTransitionTests
+{
+    private static readonly DateTimeOffset Effective = new(2026, 10, 1, 8, 0, 0, TimeSpan.Zero);
+
+    private static PrimaryCustodianTransition New()
+        => new(
+            evidenceRoomId: 1,
+            incomingPrimaryAppointmentId: 12,
+            outgoingPrimaryAppointmentId: 10,
+            reason: PrimaryCustodianTransitionReason.KnownLongAbsence,
+            effectiveFrom: Effective,
+            recordedByUserId: 4,
+            recordedAtUtc: Effective);
+
+    [Fact]
+    public void ATransitionIsIncompleteUntilTheJointInventoryIsRecorded()
+    {
+        // AR 195-5 3-2d requires a joint physical inventory of all evidence on a change of
+        // primary custodian. EMC does not implement the inventory subsystem yet, but a
+        // half-finished handover must be visible rather than assumed complete.
+        var transition = New();
+
+        Assert.False(transition.IsComplete);
+
+        transition.RecordJointInventory(
+            completedAt: Effective.AddDays(1),
+            jointInventoryReference: "INV-2026-014",
+            discrepanciesResolved: true,
+            ledgerAttestation:
+                "I CHEN, DAVID L. assume the position of primary custodian and accept "
+                + "responsibility for all evidence shown on evidence custody documents in the "
+                + "evidence document files. A joint inventory was conducted on 02 OCT 26.");
+
+        Assert.True(transition.IsComplete);
+    }
+
+    [Fact]
+    public void UnresolvedDiscrepanciesBlockCompletion()
+    {
+        // AR 195-5 3-2d: "The outgoing custodian will resolve all discrepancies, before transfer
+        // of accountability."
+        var transition = New();
+
+        var ex = Assert.Throws<DomainRuleViolationException>(() => transition.RecordJointInventory(
+            Effective.AddDays(1), "INV-2026-014", discrepanciesResolved: false, "statement"));
+
+        Assert.Equal("IAM-022", ex.RequirementId);
+        Assert.Contains("3-2d", ex.Message, StringComparison.Ordinal);
+        Assert.False(transition.IsComplete);
+    }
+
+    [Fact]
+    public void TheJointInventoryCannotPredateTheTransition()
+    {
+        var transition = New();
+
+        Assert.Throws<DomainRuleViolationException>(() => transition.RecordJointInventory(
+            Effective.AddDays(-1), "INV-2026-014", true, "statement"));
+    }
+
+    [Fact]
+    public void TheJointInventoryIsRecordedOnlyOnce()
+    {
+        var transition = New();
+        transition.RecordJointInventory(Effective.AddDays(1), "INV-1", true, "statement");
+
+        Assert.Throws<DomainRuleViolationException>(() => transition.RecordJointInventory(
+            Effective.AddDays(2), "INV-2", true, "statement"));
+    }
+
+    [Fact]
+    public void AnOutgoingCustodianIsOptional()
+    {
+        // AR 195-5 3-2g(5) - death or incapacity, where the Released By block reads
+        // "N/A Custodian Unable to Sign".
+        var transition = new PrimaryCustodianTransition(
+            evidenceRoomId: 1,
+            incomingPrimaryAppointmentId: 12,
+            outgoingPrimaryAppointmentId: null,
+            reason: PrimaryCustodianTransitionReason.IncapacityOrEmergency,
+            effectiveFrom: Effective,
+            recordedByUserId: 4,
+            recordedAtUtc: Effective);
+
+        Assert.Null(transition.OutgoingPrimaryAppointmentId);
+        Assert.False(transition.IsComplete);
     }
 }

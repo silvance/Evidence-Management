@@ -5,13 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Emc.Infrastructure.Migrations;
 
 /// <summary>
-/// Layer 3 of the append-only enforcement (docs/architecture.md §4.2).
-///
-/// INSERT ONLY: every trigger rejects unconditionally. There is no permitted UPDATE to carve out,
-/// because corrections use backward references and never touch the corrected row.
-///
-/// SQL Server only. SQLite test runs exercise layers 1 and 2; the trigger layer is covered by the
-/// SQL Server integration suite.
+/// Layer 3 of the append-only enforcement (docs/architecture.md §4.2). SQL Server only.
+/// INSERT ONLY: every trigger rejects unconditionally.
 /// </summary>
 public partial class AppendOnlyTriggers : Migration
 {

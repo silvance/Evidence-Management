@@ -36,10 +36,14 @@ namespace Emc.Domain.Identity;
 public class CustodianDutyAssumption : Entity, IConcurrencyStamped
 {
     /// <summary>
-    /// AR 195-5 1-4i - "not more than 30 consecutive days". Beyond this, 3-2d requires the
-    /// alternate to be appointed primary on orders and a joint inventory conducted.
+    /// AR 195-5 1-4i - "A temporary absence is more than 1 working day and not more than 30
+    /// consecutive days."
+    ///
+    /// This bounds the PRIMARY CUSTODIAN'S ABSENCE, not the period the alternate happened to be
+    /// acting. An exact <see cref="TimeSpan"/> rather than a day count, so that 30 days and one
+    /// second is over the limit - truncating to whole days would have allowed very nearly 31.
     /// </summary>
-    public const int MaximumConsecutiveDays = 30;
+    public static readonly TimeSpan MaximumTemporaryAbsence = TimeSpan.FromDays(30);
 
     private CustodianDutyAssumption() { }
 
@@ -53,13 +57,44 @@ public class CustodianDutyAssumption : Entity, IConcurrencyStamped
         string assumptionLedgerAttestation,
         int recordedByUserId,
         DateTimeOffset recordedAtUtc,
-        string? reasonForAbsence = null)
+        string? reasonForAbsence = null,
+        DateTimeOffset? expectedAbsenceEnd = null)
     {
         if (alternateAssumedDutiesAt < primaryAbsenceStart)
         {
             throw new DomainRuleViolationException(
                 "IAM-019",
                 "The alternate cannot assume duties before the primary custodian's absence begins.");
+        }
+
+        // IAM-021. AR 195-5 3-2d: "if it is known that the primary custodian will be gone for more
+        // than 30 consecutive calendar days, the alternate will be appointed on orders as the
+        // primary custodian, and a joint inventory will be conducted."
+        //
+        // An absence already known to exceed the limit is therefore NOT an ordinary temporary
+        // assumption, and recording it as one would misrepresent the regulation. It takes the
+        // PrimaryCustodianTransition path instead.
+        if (expectedAbsenceEnd is not null
+            && expectedAbsenceEnd.Value - primaryAbsenceStart > MaximumTemporaryAbsence)
+        {
+            throw new DomainRuleViolationException(
+                "IAM-021",
+                "AR 195-5 para 3-2d: this absence is already known to exceed 30 consecutive days, "
+                + "so it cannot be recorded as a temporary assumption of duties by the alternate. "
+                + "The alternate is appointed on orders as the primary custodian and a joint "
+                + "inventory is conducted.");
+        }
+
+        // The alternate cannot begin acting after the absence has already outrun the limit - there
+        // would be no temporary-absence authority left to assume.
+        if (alternateAssumedDutiesAt - primaryAbsenceStart > MaximumTemporaryAbsence)
+        {
+            throw new DomainRuleViolationException(
+                "IAM-021",
+                "AR 195-5 paras 1-4i and 3-2d: the primary custodian's absence has already "
+                + "exceeded 30 consecutive days, so there is no temporary-absence authority for "
+                + "the alternate to assume. A primary appointment on orders and a joint inventory "
+                + "are required.");
         }
 
         EvidenceRoomId = evidenceRoomId;
@@ -75,6 +110,7 @@ public class CustodianDutyAssumption : Entity, IConcurrencyStamped
             assumptionLedgerAttestation, "IAM-019", "Ledger assumption attestation");
 
         ReasonForAbsence = Guard.TrimToNull(reasonForAbsence);
+        ExpectedAbsenceEnd = expectedAbsenceEnd;
         RecordedByUserId = recordedByUserId;
         RecordedAtUtc = recordedAtUtc;
         ConcurrencyStamp = Guid.NewGuid();
@@ -88,12 +124,28 @@ public class CustodianDutyAssumption : Entity, IConcurrencyStamped
     /// <summary>Denormalized so authorization can filter without joining the appointment.</summary>
     public int AlternateUserId { get; private set; }
 
-    /// <summary>AR 195-5 1-4i - when the primary's temporary absence began.</summary>
+    /// <summary>
+    /// AR 195-5 1-4i - when the primary's temporary absence began.
+    ///
+    /// THIS is what the 30-day limit measures. An earlier version measured from
+    /// <see cref="AlternateAssumedDutiesAt"/>, which meant a primary could be absent for 100 days
+    /// and the alternate could then start a fresh 30-day window - a period of nearly five months
+    /// covered by a provision the regulation caps at 30 days.
+    /// </summary>
     public DateTimeOffset PrimaryAbsenceStart { get; private set; }
 
     /// <summary>
-    /// AR 195-5 1-7c(1) - when the alternate assumed duties. THIS is the date the 30-consecutive-day
-    /// limit runs from, not the appointment date.
+    /// When the absence is expected to end, where known at the outset. AR 195-5 3-2d routes a
+    /// known long absence to a primary appointment plus joint inventory instead.
+    /// </summary>
+    public DateTimeOffset? ExpectedAbsenceEnd { get; private set; }
+
+    /// <summary>
+    /// AR 195-5 1-7c(1) - when the alternate actually assumed duties and signed the ledger.
+    ///
+    /// This gates ACTING AUTHORITY: the alternate has none before it. It does NOT start the
+    /// regulatory clock - see <see cref="PrimaryAbsenceStart"/>. The two are separate concepts:
+    /// how long the primary has been absent, and how long the alternate has been acting.
     /// </summary>
     public DateTimeOffset AlternateAssumedDutiesAt { get; private set; }
 
@@ -120,19 +172,33 @@ public class CustodianDutyAssumption : Entity, IConcurrencyStamped
         => AlternateAssumedDutiesAt <= at && (PrimaryResumedAt is null || PrimaryResumedAt > at);
 
     /// <summary>
-    /// Consecutive days since the alternate ASSUMED DUTIES (AR 195-5 1-4i). The earlier model
-    /// measured this from the appointment date, which was wrong.
+    /// How long the PRIMARY has been absent (AR 195-5 1-4i). Exact, not truncated to whole days.
     /// </summary>
-    public int ConsecutiveDaysAt(DateTimeOffset at)
-        => at < AlternateAssumedDutiesAt ? 0 : (int)(at - AlternateAssumedDutiesAt).TotalDays;
+    public TimeSpan AbsenceDurationAt(DateTimeOffset at)
+        => at < PrimaryAbsenceStart ? TimeSpan.Zero : at - PrimaryAbsenceStart;
 
     /// <summary>
-    /// True once the assumption has run beyond the 30 consecutive days AR 195-5 1-4i permits for
-    /// a temporary absence. Para 3-2d then requires the alternate to be appointed primary on
-    /// orders and a joint inventory conducted.
+    /// How long the ALTERNATE has actually been acting. Informational: useful on screen and at
+    /// inspection, but not what AR 195-5 1-4i bounds.
+    /// </summary>
+    public TimeSpan ActingDurationAt(DateTimeOffset at)
+        => at < AlternateAssumedDutiesAt ? TimeSpan.Zero : at - AlternateAssumedDutiesAt;
+
+    /// <summary>
+    /// True once the primary's absence has run beyond the 30 consecutive days AR 195-5 1-4i
+    /// permits. Para 3-2d then requires the alternate to be appointed primary ON ORDERS and a
+    /// joint inventory conducted - so past this point the alternate has no temporary-absence
+    /// authority left, and EMC denies rather than warns (IAM-020).
     /// </summary>
     public bool ExceedsTemporaryAbsenceLimitAt(DateTimeOffset at)
-        => IsActiveAt(at) && ConsecutiveDaysAt(at) > MaximumConsecutiveDays;
+        => IsActiveAt(at) && AbsenceDurationAt(at) > MaximumTemporaryAbsence;
+
+    /// <summary>
+    /// How long remains of the regulatory window. Negative once exceeded. Drives the advance
+    /// advisory, whose threshold is LOCAL/DESIGN - AR 195-5 states no warning point.
+    /// </summary>
+    public TimeSpan RemainingTemporaryAbsenceAt(DateTimeOffset at)
+        => MaximumTemporaryAbsence - AbsenceDurationAt(at);
 
     /// <summary>
     /// AR 195-5 1-7c(2) - the primary resumes and signs the prescribed ledger statement. The
@@ -170,5 +236,5 @@ public class CustodianDutyAssumption : Entity, IConcurrencyStamped
     /// </summary>
     public bool RequiresHundredPercentInventoryOnResumption
         => PrimaryResumedAt is not null
-           && (PrimaryResumedAt.Value - AlternateAssumedDutiesAt).TotalDays > MaximumConsecutiveDays;
+           && PrimaryResumedAt.Value - PrimaryAbsenceStart > MaximumTemporaryAbsence;
 }

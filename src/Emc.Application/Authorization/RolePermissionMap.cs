@@ -65,8 +65,10 @@ public static class RolePermissionMap
         },
 
         // AR 195-5 1-4i — the alternate assumes the primary's duties during a temporary absence.
-        // Same permission set; the difference is enforced by the appointment window, not here
-        // (IAM-006, DEC-05).
+        // Same permission set: the difference is not what the role may do but WHEN it may do it,
+        // and that is enforced in EvidenceAuthorizationService, not here. The alternate needs an
+        // open recorded assumption of duties (IAM-006), and the authority ends once the primary's
+        // absence passes 30 consecutive days (IAM-020, DEC-05).
         [EmcRoles.AlternateEvidenceCustodian] = new(StringComparer.Ordinal)
         {
             EmcPermissions.ViewCase,

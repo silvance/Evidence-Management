@@ -58,8 +58,11 @@ public class DetailsModel : PageModel
     public bool CanRecordDocumentNumber { get; private set; }
 
     /// <summary>
-    /// IAM-006 - an alternate custodian past the AR 195-5 para 1-4i window is warned, not blocked
-    /// (open decision DEC-05). The warning must reach the screen, not only the log.
+    /// Advisories attached to an ALLOWED decision - most importantly the LOCAL notice that an
+    /// alternate custodian is within a few days of the end of the AR 195-5 para 1-4i
+    /// temporary-absence window, so the para 3-2d transition can be started before authority
+    /// lapses. Past the window the alternate is DENIED, not warned (IAM-020, DEC-05); these are
+    /// advance notice only. They must reach the screen, not only the log.
     /// </summary>
     public IReadOnlyList<string> AuthorizationWarnings { get; private set; } = [];
 

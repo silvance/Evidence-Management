@@ -210,20 +210,23 @@ public sealed class SliceTestHarness : IDisposable
 
     /// <summary>AR 195-5 1-4i / 1-7c(1) - the alternate actually assumes the primary's duties.</summary>
     public CustodianDutyAssumption AssumeDuties(
-        CustodianAppointment alternateAppointment, DateTimeOffset? assumedAt = null)
+        CustodianAppointment alternateAppointment,
+        DateTimeOffset? assumedAt = null,
+        DateTimeOffset? absenceStart = null)
     {
         var primary = Db.CustodianAppointments.First(
             a => a.EvidenceRoomId == EvidenceRoomId
                  && a.AppointmentType == CustodianAppointmentType.Primary);
 
         var at = assumedAt ?? Clock.UtcNow;
+        var start = absenceStart ?? at;
 
         var assumption = new CustodianDutyAssumption(
             evidenceRoomId: EvidenceRoomId,
             primaryAppointmentId: primary.Id,
             alternateAppointmentId: alternateAppointment.Id,
             alternateUserId: alternateAppointment.UserId,
-            primaryAbsenceStart: at,
+            primaryAbsenceStart: start,
             alternateAssumedDutiesAt: at,
             assumptionLedgerAttestation:
                 "I CHEN, DAVID L., assume all duties of the primary evidence custodian during the "
@@ -234,6 +237,38 @@ public sealed class SliceTestHarness : IDisposable
         Db.CustodianDutyAssumptions.Add(assumption);
         Db.SaveChanges();
         return assumption;
+    }
+
+    /// <summary>
+    /// AR 195-5 3-2d - appoints a user primary evidence custodian on orders, ending the existing
+    /// primary appointment. Used to test the transition after a long absence.
+    /// </summary>
+    public CustodianAppointment AppointAsPrimary(int userId, DateTimeOffset? from = null)
+    {
+        var at = from ?? Clock.UtcNow;
+
+        var existing = Db.CustodianAppointments.FirstOrDefault(
+            a => a.EvidenceRoomId == EvidenceRoomId
+                 && a.AppointmentType == CustodianAppointmentType.Primary
+                 && a.EffectiveTo == null);
+
+        existing?.End(at);
+
+        var appointment = new CustodianAppointment(
+            evidenceRoomId: EvidenceRoomId,
+            userId: userId,
+            appointmentType: CustodianAppointmentType.Primary,
+            personnelCategory: PersonnelCategory.MilitaryCi,
+            effectiveFrom: at,
+            appointmentOrderReference: "ORDERS 2026-201, 902d MI Group",
+            appointingAuthority: "Commander, 902d MI Group",
+            eligibilityAttested: true,
+            recordedByUserId: CommanderUserId,
+            recordedAtUtc: at);
+
+        Db.CustodianAppointments.Add(appointment);
+        Db.SaveChanges();
+        return appointment;
     }
 
     public void GrantRoleInRoom(int userId, string roleName, int evidenceRoomId)

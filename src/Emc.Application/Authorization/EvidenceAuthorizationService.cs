@@ -42,6 +42,12 @@ public interface IEvidenceAuthorizationService
 /// </summary>
 public sealed class EvidenceAuthorizationService : IEvidenceAuthorizationService
 {
+    /// <summary>
+    /// How long before the AR 195-5 1-4i limit an advance advisory appears. LOCAL/DESIGN: the
+    /// regulation states the 30-day limit but no warning point.
+    /// </summary>
+    private static readonly TimeSpan LocalTemporaryAbsenceAdvisoryThreshold = TimeSpan.FromDays(5);
+
     private readonly IEmcDbContext _db;
     private readonly ICurrentUser _currentUser;
     private readonly IClock _clock;
@@ -173,27 +179,42 @@ public sealed class EvidenceAuthorizationService : IEvidenceAuthorizationService
                 "IAM-006");
         }
 
-        // AR 195-5 1-4i - a temporary absence is "not more than 30 consecutive days", measured
-        // from the date duties were ASSUMED (not from the appointment date, which the earlier
-        // model incorrectly used). Para 3-2d then requires the alternate to be appointed primary
-        // on orders and a joint inventory conducted.
+        // IAM-020. AR 195-5 1-4i caps a temporary absence at "not more than 30 consecutive days",
+        // measured from when the PRIMARY'S ABSENCE began. Para 3-2d then requires the alternate to
+        // be appointed primary ON ORDERS with a joint inventory conducted.
         //
-        // EMC warns rather than blocking here, so that late orders cannot halt evidence intake,
-        // and the warning is visible at the next inspection. Open decision DEC-05 governs whether
-        // this becomes a hard block. Note the contrast with the missing-assumption case above,
-        // which IS a block: recording an assumption is a one-form fix, whereas new appointment
-        // orders take time.
+        // Past that point there is no temporary-absence authority left to exercise, so this is a
+        // DENIAL, not a warning. An earlier version allowed the alternate to continue indefinitely
+        // on a warning, which let the software extend a window the regulation closes.
+        //
+        // There is deliberately no commander override. A commander already holds the authority the
+        // regulation grants - appointing the person primary on orders and conducting the required
+        // inventory - and software must not invent a way around that process.
         if (assumption.ExceedsTemporaryAbsenceLimitAt(now))
         {
-            var days = assumption.ConsecutiveDaysAt(now);
+            var days = (int)assumption.AbsenceDurationAt(now).TotalDays;
 
+            return AuthorizationDecision.Deny(
+                $"The primary evidence custodian has been absent for {days} consecutive days. "
+                + "AR 195-5 para 1-4i limits a temporary absence to not more than 30 consecutive "
+                + "days, so acting-custodian authority under that paragraph has ended. Para 3-2d "
+                + "requires the alternate to be appointed primary evidence custodian on orders and "
+                + "a joint inventory of all evidence in the evidence room to be conducted.",
+                "IAM-020");
+        }
+
+        // An advance advisory before the window closes. The threshold is LOCAL/DESIGN - AR 195-5
+        // states no warning point - so it is described as a local notice, not a regulatory one.
+        var remaining = assumption.RemainingTemporaryAbsenceAt(now);
+
+        if (remaining <= LocalTemporaryAbsenceAdvisoryThreshold)
+        {
             return AuthorizationDecision.Allow(
-                $"You have been acting as the evidence custodian for {days} consecutive days. "
-                + "AR 195-5 para 1-4i defines a temporary absence as not more than 30 consecutive "
-                + "days, and para 3-2d requires that if the primary custodian's absence is known "
-                + "to exceed 30 days the alternate be appointed primary on orders and a joint "
-                + "inventory conducted. Open decision DEC-05 governs whether this becomes a hard "
-                + "block.");
+                $"The primary evidence custodian's absence reaches the AR 195-5 para 1-4i limit of "
+                + $"30 consecutive days in {Math.Max(0, (int)remaining.TotalDays)} day(s). Para 3-2d "
+                + "requires the alternate to be appointed primary on orders, with a joint "
+                + "inventory, if the absence will exceed it. This advance notice is a local "
+                + "convenience; the regulation states no warning point, only the limit.");
         }
 
         return AuthorizationDecision.Allow();

@@ -174,3 +174,41 @@ public sealed class CustodianDutyAssumptionConfiguration
         builder.Ignore(d => d.RequiresHundredPercentInventoryOnResumption);
     }
 }
+
+public sealed class PrimaryCustodianTransitionConfiguration
+    : IEntityTypeConfiguration<PrimaryCustodianTransition>
+{
+    public void Configure(EntityTypeBuilder<PrimaryCustodianTransition> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("PrimaryCustodianTransitions");
+        builder.HasKey(t => t.Id);
+
+        builder.Property(t => t.Reason).HasConversion<int>().IsRequired();
+        builder.Property(t => t.JointInventoryReference).HasMaxLength(256);
+
+        // AR 195-5 3-2g(3) - the handwritten statement signed by both custodians in the ledger.
+        builder.Property(t => t.LedgerAttestation).HasMaxLength(2000);
+        builder.Property(t => t.Notes).HasMaxLength(2000);
+        builder.Property(t => t.ConcurrencyStamp).IsConcurrencyToken();
+
+        builder.HasOne<CustodianAppointment>()
+            .WithMany()
+            .HasForeignKey(t => t.IncomingPrimaryAppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<CustodianAppointment>()
+            .WithMany()
+            .HasForeignKey(t => t.OutgoingPrimaryAppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Domain.Storage.EvidenceRoom>()
+            .WithMany()
+            .HasForeignKey(t => t.EvidenceRoomId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(t => new { t.EvidenceRoomId, t.EffectiveFrom });
+        builder.Ignore(t => t.IsComplete);
+    }
+}

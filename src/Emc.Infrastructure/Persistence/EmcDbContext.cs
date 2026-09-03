@@ -20,6 +20,7 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     public DbSet<RoleAssignment> RoleAssignments => Set<RoleAssignment>();
     public DbSet<CustodianAppointment> CustodianAppointments => Set<CustodianAppointment>();
     public DbSet<CustodianDutyAssumption> CustodianDutyAssumptions => Set<CustodianDutyAssumption>();
+    public DbSet<PrimaryCustodianTransition> PrimaryCustodianTransitions => Set<PrimaryCustodianTransition>();
     public DbSet<EvidenceRoom> EvidenceRooms => Set<EvidenceRoom>();
     public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
     public DbSet<Case> Cases => Set<Case>();

@@ -252,42 +252,123 @@ public class AuthorizationTests : IDisposable
     }
 
     [Fact]
-    public async Task TheThirtyDayLimitRunsFromAssumptionOfDutiesNotAppointment()
+    public async Task TheRegulatoryLimitRunsFromThePrimarysAbsence_NotTheAppointmentOrAssumption()
     {
-        // IAM-019. Appointed 180 days ago, assumed duties 40 days ago: warned because the
-        // ACTING period exceeded 30 days, not because the appointment is old.
+        // IAM-020. AR 195-5 1-4i bounds the PRIMARY'S ABSENCE at 30 consecutive days. Appointed
+        // 180 days ago, absent 40 days, acting 10 days: denied, because the absence - not the
+        // acting period - is what the regulation caps.
         var appointment = _harness.AppointAlternate(
             _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
 
-        _harness.AssumeDuties(appointment, _harness.Clock.UtcNow.AddDays(-40));
+        _harness.AssumeDuties(
+            appointment,
+            assumedAt: _harness.Clock.UtcNow.AddDays(-10),
+            absenceStart: _harness.Clock.UtcNow.AddDays(-40));
+
         _harness.SignInAsUnappointedCustodian();
 
         var decision = await _harness.Authorization.AuthorizeAsync(
             EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
 
-        // Warned, not blocked: late orders must not halt evidence intake, and the warning is
-        // visible at the next inspection (DEC-05).
-        Assert.True(decision.IsAllowed);
-        Assert.NotNull(decision.Warnings);
-        Assert.Contains(decision.Warnings!, w => w.Contains("1-4i", StringComparison.Ordinal));
-        Assert.Contains(decision.Warnings!, w => w.Contains("3-2d", StringComparison.Ordinal));
-        Assert.Contains(decision.Warnings!, w => w.Contains("40 consecutive days", StringComparison.Ordinal));
+        Assert.False(decision.IsAllowed);
+        Assert.Equal("IAM-020", decision.RequirementId);
+        Assert.Contains("1-4i", decision.Reason!, StringComparison.Ordinal);
+        Assert.Contains("3-2d", decision.Reason!, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task AnAlternateWithinThirtyDaysIsNotWarned()
+    public async Task PastTheRegulatoryWindowTheAlternateIsDeniedNotWarned()
+    {
+        // IAM-020. An earlier version allowed the alternate to keep acting indefinitely on a
+        // warning, which let the software extend a window the regulation closes. There is also
+        // deliberately no commander override: a commander already holds the authority AR 195-5
+        // grants - appointing the person primary on orders with a joint inventory - and software
+        // must not invent a way around that.
+        var appointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        // The assumption was created validly: the alternate stepped in the day the absence began,
+        // well inside the window. Thirty-one days later that authority has lapsed on its own.
+        var absenceStart = _harness.Clock.UtcNow.AddDays(-31);
+        _harness.AssumeDuties(appointment, assumedAt: absenceStart, absenceStart: absenceStart);
+        _harness.SignInAsUnappointedCustodian();
+
+        foreach (var permission in new[]
+        {
+            EmcPermissions.AcceptEvidenceIntake,
+            EmcPermissions.RecordOfficialDocumentNumber,
+            EmcPermissions.AssignStorageLocation
+        })
+        {
+            var decision = await _harness.Authorization.AuthorizeAsync(
+                permission, _harness.EvidenceRoomId);
+
+            Assert.False(decision.IsAllowed, $"Expired alternate was allowed '{permission}'.");
+            Assert.Equal("IAM-020", decision.RequirementId);
+        }
+    }
+
+    [Fact]
+    public async Task ExactlyThirtyDaysOfAbsenceIsStillAuthorized()
     {
         var appointment = _harness.AppointAlternate(
             _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
 
-        _harness.AssumeDuties(appointment, _harness.Clock.UtcNow.AddDays(-10));
+        var absenceStart = _harness.Clock.UtcNow.AddDays(-30);
+        _harness.AssumeDuties(appointment, assumedAt: absenceStart, absenceStart: absenceStart);
         _harness.SignInAsUnappointedCustodian();
 
         var decision = await _harness.Authorization.AuthorizeAsync(
             EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
 
         Assert.True(decision.IsAllowed, decision.Reason);
-        Assert.Empty(decision.Warnings ?? []);
+    }
+
+    [Fact]
+    public async Task AnAdvanceAdvisoryAppearsBeforeTheWindowCloses()
+    {
+        // The advisory threshold is LOCAL/DESIGN - AR 195-5 states the limit but no warning point,
+        // and the message says so rather than implying the regulation requires a notice.
+        var appointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        _harness.AssumeDuties(appointment, absenceStart: _harness.Clock.UtcNow.AddDays(-27));
+        _harness.SignInAsUnappointedCustodian();
+
+        var decision = await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
+
+        Assert.True(decision.IsAllowed);
+        Assert.NotNull(decision.Warnings);
+        Assert.Contains(decision.Warnings!, w => w.Contains("local convenience", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ANewlyAppointedPrimaryIsAuthorizedAfterTheProperTransition()
+    {
+        // AR 195-5 3-2d - the alternate is appointed primary ON ORDERS. Authority then comes from
+        // the primary appointment, not from the expired temporary-absence provision.
+        var alternateAppointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        var absenceStart = _harness.Clock.UtcNow.AddDays(-31);
+        _harness.AssumeDuties(
+            alternateAppointment, assumedAt: absenceStart, absenceStart: absenceStart);
+        _harness.SignInAsUnappointedCustodian();
+
+        Assert.False((await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId)).IsAllowed);
+
+        // The commander appoints them primary on orders.
+        _harness.AppointAsPrimary(_harness.AlternateCustodianUserId);
+        _harness.CurrentUser.SignIn(
+            _harness.AlternateCustodianUserId, "SA CHEN, DAVID L.", _harness.EvidenceRoomId,
+            EmcRoles.PrimaryEvidenceCustodian);
+
+        var decision = await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
+
+        Assert.True(decision.IsAllowed, decision.Reason);
     }
 
     [Fact]

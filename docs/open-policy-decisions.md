@@ -133,7 +133,10 @@ denominations for currency), and inventory counts **numbered lines**, stating so
 
 ---
 
-## DEC-05 — Block or warn when the alternate custodian's window expires?
+## DEC-05 — What happens when the alternate custodian's temporary-absence window expires?
+
+**Status: DECIDED IN V1 — hard denial.** This entry is kept because the earlier recommendation was
+wrong and the reasoning matters; a future reviewer should not re-open it without reading why.
 
 **Ambiguity (AMB-05).** The regulation uses two different units:
 
@@ -143,24 +146,53 @@ denominations for currency), and inventory counts **numbered lines**, stating so
   that if it is known the absence will exceed 30 days, **the alternate is appointed primary on
   orders and a joint inventory is conducted**.
 
-**Why EMC cannot decide.** Hard-blocking an alternate on day 31 could halt evidence intake in a
-real unit whose orders are late. Not blocking risks accountability being held by someone whose
-authority has lapsed.
+That ambiguity is about *counting* (working days vs. calendar days, see AMB-05), not about
+*whether the window closes*. It does not create discretion to act past it.
 
-**Options**
+**Decision.** Once the primary's absence exceeds 30 days, an alternate whose only authority is
+`AlternateEvidenceCustodian` + an open duty assumption is **denied** every accountability
+permission (**IAM-020**). The denial names AR 195-5 3-2d and states the remedy: appoint the
+alternate primary on orders and conduct the joint inventory. Authority then flows from the primary
+appointment, not from a lapsed temporary-absence provision.
 
-| | Behaviour on day 31 |
-|---|---|
-| A | Hard block; the alternate cannot act until new orders are recorded |
-| B | Warn prominently, allow the action, notify the commander, and flag it for the monthly inspection |
-| C | Warn from day 25; block at day 31 with a commander override that is itself audited |
+**There is no override — not even an audited one.** An earlier draft of this document recommended
+"warn from day 25, block at day 31, with a commander override that is itself audited," and the
+code implemented warn-and-continue. Both were wrong, for the same reason:
 
-**Recommendation: C.** It respects 3-2d's requirement without creating an operational cliff, and
-the override is attributable. **Note:** 1-7c(2) states that for an absence of 30 calendar days or
-less **there is no requirement for a 100 percent inventory** — so crossing 30 days changes the
-inventory obligation too, not just the authority.
+- AR 195-5 grants no such override. 1-4i bounds the absence at 30 consecutive days and 3-2d states
+  what to do when it will be exceeded. Neither paragraph contains a provision to extend it.
+- A commander already holds the authority the regulation gives — appointing the person primary on
+  orders with a joint inventory. An in-application override would not add authority; it would
+  substitute a software affordance for the act the regulation actually requires, and it would
+  create a record showing evidence accepted under an authority nobody in fact held.
+- "Orders are late" is an administrative problem in the unit, not a grant of custodial authority.
+  Software must not resolve it by manufacturing one. **[REG]**
 
-**Blocks:** enforcement half of IAM-006.
+**What the software may do instead (all [LOCAL]/[DESIGN], none regulatory):**
+
+- Surface an **advisory** during the last 5 days of the window so the transition can be started
+  before authority lapses. Five days is a local convenience figure chosen to give a unit time to
+  cut orders; AR 195-5 states no such threshold.
+- Model the transition itself — `PrimaryCustodianTransition` records the incoming and outgoing
+  appointments, the joint inventory and its discrepancy resolution, and the 3-2g(3) ledger
+  statement — so the regulatory path is at least as easy to follow as the blocked one was.
+
+**Also settled by the same reasoning:** the 30-day clock runs from the **primary's absence start**
+(1-4i bounds the *absence*), not from the date the alternate assumed duties. An earlier
+implementation measured from the assumption date, which silently extended the window whenever the
+alternate stepped in late.
+
+**Still open (narrow):** whether the count is working days or calendar days (AMB-05). V1 uses
+**consecutive calendar days**, the stricter reading, because it can never authorize action the
+other reading would forbid. A unit whose local interpretation differs should raise it through the
+proponent rather than change the code.
+
+**Requirements:** IAM-006 (assumption), IAM-019, IAM-020 (expiry denial), IAM-021 (no assumption
+created past the window), IAM-022 (transition joint inventory).
+
+**Note:** 1-7c(2) states that for an absence of 30 calendar days or less **there is no requirement
+for a 100 percent inventory** — so crossing 30 days changes the inventory obligation too, not just
+the authority. `CustodianDutyAssumption.RequiresHundredPercentInventoryOnResumption` records that.
 
 ---
 
@@ -277,7 +309,7 @@ default.
 | DEC-02 | "Working day" definition | LOSS-002, VCH-016, IAM-006 | Maintained `DutyCalendar`; always show the calendar used |
 | DEC-03 | One evidence room or several | VCH-005 scope | Multi-room, strict scoping, deny-by-default |
 | DEC-04 | What is one item | ITEM-010 | The numbered line; quantity may exceed one |
-| DEC-05 | Alternate window expiry | IAM-006 | Warn from 25, block at 31, audited override |
+| DEC-05 | Alternate window expiry | IAM-006, IAM-020 | **Decided:** hard denial past 30 days, no override; 5-day advisory is [LOCAL] |
 | DEC-06 | Accredited classification | SEC-005 | UNCLASSIFIED + prohibition; **decide before real data** |
 | DEC-07 | ARIMS/RRS-A status of EMC data | RET-008 | Retain all pending determination |
 | DEC-08 | Restricted-reporting data | — | Prohibit in V1 |

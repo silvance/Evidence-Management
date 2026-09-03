@@ -317,6 +317,7 @@ namespace Emc.Infrastructure.Migrations
                     AlternateAppointmentId = table.Column<int>(type: "int", nullable: false),
                     AlternateUserId = table.Column<int>(type: "int", nullable: false),
                     PrimaryAbsenceStart = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ExpectedAbsenceEnd = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     AlternateAssumedDutiesAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     AssumptionLedgerAttestation = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
                     PrimaryResumedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -345,6 +346,49 @@ namespace Emc.Infrastructure.Migrations
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_CustodianDutyAssumptions_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PrimaryCustodianTransitions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    IncomingPrimaryAppointmentId = table.Column<int>(type: "int", nullable: false),
+                    OutgoingPrimaryAppointmentId = table.Column<int>(type: "int", nullable: true),
+                    Reason = table.Column<int>(type: "int", nullable: false),
+                    EffectiveFrom = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    JointInventoryCompletedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    JointInventoryReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    DiscrepanciesResolved = table.Column<bool>(type: "bit", nullable: false),
+                    LedgerAttestation = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
+                    RecordedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Notes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PrimaryCustodianTransitions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PrimaryCustodianTransitions_CustodianAppointments_IncomingPrimaryAppointmentId",
+                        column: x => x.IncomingPrimaryAppointmentId,
+                        principalTable: "CustodianAppointments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PrimaryCustodianTransitions_CustodianAppointments_OutgoingPrimaryAppointmentId",
+                        column: x => x.OutgoingPrimaryAppointmentId,
+                        principalTable: "CustodianAppointments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PrimaryCustodianTransitions_EvidenceRooms_EvidenceRoomId",
                         column: x => x.EvidenceRoomId,
                         principalTable: "EvidenceRooms",
                         principalColumn: "Id",
@@ -646,6 +690,21 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PrimaryCustodianTransitions_EvidenceRoomId_EffectiveFrom",
+                table: "PrimaryCustodianTransitions",
+                columns: new[] { "EvidenceRoomId", "EffectiveFrom" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PrimaryCustodianTransitions_IncomingPrimaryAppointmentId",
+                table: "PrimaryCustodianTransitions",
+                column: "IncomingPrimaryAppointmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PrimaryCustodianTransitions_OutgoingPrimaryAppointmentId",
+                table: "PrimaryCustodianTransitions",
+                column: "OutgoingPrimaryAppointmentId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_RoleAssignments_EvidenceRoomId",
                 table: "RoleAssignments",
                 column: "EvidenceRoomId");
@@ -714,6 +773,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "OfficialDocumentNumberAssignments");
 
             migrationBuilder.DropTable(
+                name: "PrimaryCustodianTransitions");
+
+            migrationBuilder.DropTable(
                 name: "RoleAssignments");
 
             migrationBuilder.DropTable(
@@ -723,22 +785,22 @@ namespace Emc.Infrastructure.Migrations
                 name: "SystemConfigurations");
 
             migrationBuilder.DropTable(
-                name: "CustodianAppointments");
-
-            migrationBuilder.DropTable(
                 name: "CustodyParties");
 
             migrationBuilder.DropTable(
                 name: "EvidenceItems");
 
             migrationBuilder.DropTable(
+                name: "CustodianAppointments");
+
+            migrationBuilder.DropTable(
                 name: "Roles");
 
             migrationBuilder.DropTable(
-                name: "Users");
+                name: "EvidenceVouchers");
 
             migrationBuilder.DropTable(
-                name: "EvidenceVouchers");
+                name: "Users");
 
             migrationBuilder.DropTable(
                 name: "Cases");
