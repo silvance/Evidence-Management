@@ -56,7 +56,16 @@ public sealed class SliceTestHarness : IDisposable
 
     public int EvidenceRoomId { get; private set; }
     public int ShelfBBin14Id { get; private set; }
+    public int ShelfBBin19Id { get; private set; }
     public int HighValueSafeId { get; private set; }
+
+    /// <summary>
+    /// A second evidence room with a location of its own, so that cross-room checks assert
+    /// something real rather than a missing row (invariant I-08, LOC-004).
+    /// </summary>
+    public int OtherEvidenceRoomId { get; private set; }
+
+    public int OtherRoomLocationId { get; private set; }
     public int AgentUserId { get; private set; }
     public int CustodianUserId { get; private set; }
     public int AlternateCustodianUserId { get; private set; }
@@ -168,14 +177,31 @@ public sealed class SliceTestHarness : IDisposable
         Db.SaveChanges();
 
         var bin14 = new StorageLocation(room.Id, "Bin 14", StorageLocationKind.Bin, shelfB);
+        var bin19 = new StorageLocation(room.Id, "Bin 19", StorageLocationKind.Bin, shelfB);
         var safe = new StorageLocation(
             room.Id, "High-Value Safe / Drawer 2", StorageLocationKind.HighValueContainer);
 
-        Db.StorageLocations.AddRange(bin14, safe);
+        Db.StorageLocations.AddRange(bin14, bin19, safe);
         Db.SaveChanges();
 
         ShelfBBin14Id = bin14.Id;
+        ShelfBBin19Id = bin19.Id;
         HighValueSafeId = safe.Id;
+
+        // A different evidence room, with its own storage. Nothing in the seeded user set holds
+        // any role in it.
+        var otherRoom = new EvidenceRoom(
+            "310th MI Bn Evidence Room", "310th MI Bn", "America/New_York");
+
+        Db.EvidenceRooms.Add(otherRoom);
+        Db.SaveChanges();
+
+        var otherBin = new StorageLocation(otherRoom.Id, "Bin 1", StorageLocationKind.Bin);
+        Db.StorageLocations.Add(otherBin);
+        Db.SaveChanges();
+
+        OtherEvidenceRoomId = otherRoom.Id;
+        OtherRoomLocationId = otherBin.Id;
     }
 
     private static User NewUser(string name, string grade)

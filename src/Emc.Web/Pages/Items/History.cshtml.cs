@@ -5,6 +5,7 @@ using Emc.Application.Cases;
 using Emc.Application.Items;
 using Emc.Application.Reads;
 using Emc.Domain.Common;
+using Emc.Domain.Events;
 using Emc.Web.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -52,6 +53,13 @@ public class HistoryModel : PageModel
     /// </summary>
     public IReadOnlyDictionary<int, IReadOnlyCollection<string>> CorrectableFieldsByEvent
     { get; private set; } = new Dictionary<int, IReadOnlyCollection<string>>();
+
+    /// <summary>
+    /// Correctable fields that name a STORAGE LOCATION rather than holding text. A correction to
+    /// one of these selects the replacement location; typing a new path is rejected, because the
+    /// record's own projections resolve the location by identifier (AUD-016).
+    /// </summary>
+    public IReadOnlyCollection<string> LocationReferenceFieldNames { get; private set; } = [];
     public bool CanAssignLocation { get; private set; }
     public bool CanRecordCorrection { get; private set; }
     public PageMessages Messages { get; } = new();
@@ -120,6 +128,7 @@ public class HistoryModel : PageModel
             Category: CorrectionCategory.PostAcceptanceAccountabilityRecord,
             MfrReference: Correction.MfrReference,
             SupervisorNotifiedUserId: Correction.SupervisorNotifiedUserId,
+            CorrectedReferenceId: Correction.CorrectedStorageLocationId,
             SupervisorNotifiedAtUtc: Correction.SupervisorNotifiedUserId is null
                 ? null
                 : DateTimeOffset.UtcNow));
@@ -216,6 +225,14 @@ public class HistoryModel : PageModel
             .Where(r => r.Kind != ItemEventKind.Correction)
             .ToDictionary(r => r.EventId, r => (IReadOnlyCollection<string>)r.EffectiveFields.Keys.ToList());
 
+        LocationReferenceFieldNames = View.History
+            .Where(r => r.ReferenceFieldKinds is not null)
+            .SelectMany(r => r.ReferenceFieldKinds!)
+            .Where(f => f.Value == CorrectableFieldReference.StorageLocation)
+            .Select(f => f.Key)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
         if (Location.OccurredAtLocal == default)
         {
             Location.OccurredAtLocal = DateTime.Now;
@@ -276,5 +293,12 @@ public class HistoryModel : PageModel
 
         /// <summary>AR 195-5 para 1-7c(3) - the supervisor informed immediately (AUD-005).</summary>
         public int? SupervisorNotifiedUserId { get; set; }
+
+        /// <summary>
+        /// The replacement storage location, for a correction to a field that names one. The
+        /// display text is then read from that row by the server, so what the record says and
+        /// what it points at cannot disagree (AUD-016).
+        /// </summary>
+        public int? CorrectedStorageLocationId { get; set; }
     }
 }

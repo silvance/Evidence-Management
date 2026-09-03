@@ -499,6 +499,9 @@ namespace Emc.Infrastructure.Migrations
                     MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     SupervisorNotifiedUserId = table.Column<int>(type: "int", nullable: true),
                     SupervisorNotifiedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    ReferenceKind = table.Column<int>(type: "int", nullable: true),
+                    OriginalReferenceId = table.Column<int>(type: "int", nullable: true),
+                    CorrectedReferenceId = table.Column<int>(type: "int", nullable: true),
                     ReleasedByPartyId = table.Column<int>(type: "int", nullable: true),
                     ReceivedByPartyId = table.Column<int>(type: "int", nullable: true),
                     PurposeOfChangeOfCustody = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
@@ -646,6 +649,12 @@ namespace Emc.Infrastructure.Migrations
                 table: "EvidenceVouchers",
                 columns: new[] { "EvidenceRoomId", "TemporaryIdentifier" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ItemEvents_CorrectionReference",
+                table: "ItemEvents",
+                columns: new[] { "ReferenceKind", "CorrectedReferenceId" },
+                filter: "[CorrectedReferenceId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ItemEvents_CorrectsEventId",

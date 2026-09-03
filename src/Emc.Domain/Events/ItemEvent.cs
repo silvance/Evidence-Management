@@ -14,8 +14,12 @@ namespace Emc.Domain.Events;
 /// APPEND-ONLY (AUD-001). Modelled on AR 195-5 2-5b(5) — an erroneous ledger entry is struck
 /// through with one line "so it may still be read" and initialed; correction fluid, tape,
 /// labels and erasures are prohibited — and 1-7c(3), which requires the discovering custodian to
-/// inform the supervisor immediately and prepare an MFR. The single permitted mutation is
-/// <see cref="SupersededByEventId"/>: null -> value, exactly once.
+/// inform the supervisor immediately and prepare an MFR.
+///
+/// There is NO permitted mutation. An accountability event is inserted and never updated, which
+/// is why the database triggers can reject every UPDATE unconditionally rather than having to
+/// decide which column change is legitimate. Corrections are separate rows that point BACKWARD at
+/// what they correct (<see cref="CorrectionEvent"/>).
 /// </summary>
 public abstract class ItemEvent : Entity, IAppendOnly
 {
@@ -31,6 +35,23 @@ public abstract class ItemEvent : Entity, IAppendOnly
     /// surface of each event type is explicit rather than open-ended.
     /// </summary>
     public abstract IReadOnlyDictionary<string, string?> CorrectableFields { get; }
+
+    /// <summary>
+    /// Identifiers behind those correctable fields that name a row rather than hold free text -
+    /// an item's storage location and a change of custody's parties.
+    ///
+    /// A correction to one of these fields must carry the NEW identifier, not just new display
+    /// text. Without it a corrected location would read "Shelf B / Bin 19" while every projection
+    /// built on StorageLocationId still pointed at Bin 14, and an inventory of Bin 19 would not
+    /// list the item that is actually in it.
+    ///
+    /// Fields absent from this dictionary are free text. Empty for most event types.
+    /// </summary>
+    public virtual IReadOnlyDictionary<string, EventFieldReference> ReferenceFields
+        => NoReferences;
+
+    protected static readonly IReadOnlyDictionary<string, EventFieldReference> NoReferences
+        = new Dictionary<string, EventFieldReference>(StringComparer.Ordinal);
 
     /// <summary>Version of the canonical serialization used for <see cref="EventHash"/>.</summary>
     public const int CurrentHashSchemaVersion = 1;
@@ -166,6 +187,29 @@ public abstract class ItemEvent : Entity, IAppendOnly
                 "AUD-014",
                 $"'{fieldName}' is not a correctable field on a {Kind} event. Correctable fields "
                 + $"are: {string.Join(", ", CorrectableFields.Keys)}.");
+
+    /// <summary>
+    /// What kind of row a correctable field names, or <see cref="CorrectableFieldReference.None"/>
+    /// for free text. Throws for a field that is not correctable at all.
+    /// </summary>
+    public CorrectableFieldReference ReferenceKindOf(string fieldName)
+    {
+        if (!IsCorrectableField(fieldName))
+        {
+            throw new DomainRuleViolationException(
+                "AUD-014",
+                $"'{fieldName}' is not a correctable field on a {Kind} event. Correctable fields "
+                + $"are: {string.Join(", ", CorrectableFields.Keys)}.");
+        }
+
+        return ReferenceFields.TryGetValue(fieldName, out var reference)
+            ? reference.Kind
+            : CorrectableFieldReference.None;
+    }
+
+    /// <summary>The identifier as originally recorded for a reference field (AUD-014).</summary>
+    public int? OriginalReferenceIdOf(string fieldName)
+        => ReferenceFields.TryGetValue(fieldName, out var reference) ? reference.Id : null;
 
     /// <summary>One-line summary for the item history view.</summary>
     public abstract string Summarize();

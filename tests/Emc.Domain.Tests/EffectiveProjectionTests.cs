@@ -19,10 +19,14 @@ public class EffectiveProjectionTests
     private static readonly DateTimeOffset Local =
         new(2026, 9, 3, 9, 15, 0, TimeSpan.FromHours(-4));
 
-    private static LocationEvent NewLocationEvent(int sequence, string path)
+    /// <summary>
+    /// Bin 14 is storage location 14, Bin 19 is 19, and so on, so that a projection asserting an
+    /// identifier is asserting something distinguishable rather than a constant.
+    /// </summary>
+    private static LocationEvent NewLocationEvent(int sequence, string path, int locationId = 14)
     {
         var locationEvent = new LocationEvent(
-            storageLocationId: 1,
+            storageLocationId: locationId,
             storageLocationPath: path,
             occurredAtLocal: Local.AddMinutes(sequence),
             recordedAtUtc: Local.ToUniversalTime().AddMinutes(sequence),
@@ -48,12 +52,35 @@ public class EffectiveProjectionTests
         return correction;
     }
 
+    /// <summary>
+    /// Corrects a field that names a ROW. The display text stands in for what the application
+    /// service reads from the replacement row; it is never taken from a form (AUD-016).
+    /// </summary>
+    private static CorrectionEvent CorrectTo(
+        ItemEvent target,
+        string field,
+        int toReferenceId,
+        string toDisplayText,
+        int sequence,
+        string reason = "Recorded in error")
+    {
+        var correction = CorrectionFactory.CreateReferenceCorrection(
+            target, field, toReferenceId, toDisplayText, reason,
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local.AddMinutes(sequence), Local.ToUniversalTime().AddMinutes(sequence), 17,
+            mfrReference: "MFR-2026-014", supervisorNotifiedUserId: 4,
+            supervisorNotifiedAtUtc: Local.ToUniversalTime().AddMinutes(sequence));
+
+        correction.AssignSequence(100, sequence);
+        return correction;
+    }
+
     [Fact]
     public void CorrectingALocationProducesTheCorrectedCurrentLocation()
     {
         // The headline regression. Expected: Bin 19. Previously: null.
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
-        var correction = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 2);
+        var correction = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
 
         var current = EffectiveHistory.LatestOf<LocationEvent>([location, correction]);
 
@@ -68,9 +95,9 @@ public class EffectiveProjectionTests
     {
         // The other failure mode the old design could produce: excluding the corrected event made
         // the projection silently report a stale, earlier location.
-        var first = NewLocationEvent(1, "Intake");
-        var second = NewLocationEvent(2, "Shelf B / Bin 14");
-        var correction = Correct(second, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 3);
+        var first = NewLocationEvent(1, "Intake", 3);
+        var second = NewLocationEvent(2, "Shelf B / Bin 14", 14);
+        var correction = CorrectTo(second, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 3);
 
         var current = EffectiveHistory.LatestOf<LocationEvent>([first, second, correction]);
 
@@ -89,7 +116,7 @@ public class EffectiveProjectionTests
         // AUD-015. Field-level, not event-level: correcting the path must not disturb the reason
         // or the notes recorded alongside it.
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
-        var correction = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 2);
+        var correction = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
 
         var effective = new EffectiveItemEvent(location, [correction]);
 
@@ -107,7 +134,7 @@ public class EffectiveProjectionTests
     {
         // The old "one correction per event, ever" rule made a second error uncorrectable.
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
-        var pathFix = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 2);
+        var pathFix = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
         var reasonFix = Correct(location, nameof(LocationEvent.Reason), "Moved to high-value storage", 3);
 
         var effective = new EffectiveItemEvent(location, [pathFix, reasonFix]);
@@ -121,8 +148,8 @@ public class EffectiveProjectionTests
     public void AFieldCorrectedTwiceTakesTheMostRecentCorrection()
     {
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
-        var first = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 2);
-        var second = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 21", 3);
+        var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3);
 
         var effective = new EffectiveItemEvent(location, [first, second]);
 
@@ -138,7 +165,7 @@ public class EffectiveProjectionTests
     {
         // AR 195-5 2-5b(5) — the struck-through entry must still be readable.
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
-        var correction = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 2);
+        var correction = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
 
         var effective = new EffectiveItemEvent(location, [correction]);
 
@@ -163,7 +190,7 @@ public class EffectiveProjectionTests
 
         custody.AssignSequence(100, 1);
 
-        var correction = Correct(custody, nameof(CustodyEvent.ReceivedBy), "JONES, MARY B.", 2);
+        var correction = CorrectTo(custody, nameof(CustodyEvent.ReceivedBy), 55, "JONES, MARY B.", 2);
         var current = EffectiveHistory.LatestOf<CustodyEvent>([custody, correction]);
 
         Assert.Equal("JONES, MARY B.", current!.EffectiveValueOf(nameof(CustodyEvent.ReceivedBy)));
@@ -178,7 +205,7 @@ public class EffectiveProjectionTests
         // A correction is not a custody transfer or a location change. It appears in the raw
         // history for display, but never as an event of the type it corrects.
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
-        var correction = Correct(location, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19", 2);
+        var correction = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
 
         var projected = EffectiveHistory.Project([location, correction]);
 
@@ -196,6 +223,93 @@ public class EffectiveProjectionTests
         Assert.False(effective.HasCorrections);
         Assert.Empty(effective.CorrectedFieldNames);
         Assert.Equal("Shelf B / Bin 14", effective.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath)));
+    }
+
+    [Fact]
+    public void CorrectingALocationMovesTheIdentifier_NotOnlyTheDisplayedPath()
+    {
+        // AUD-016. The half the earlier text-only model lost. Everything that answers "which
+        // items are in this container" - the monthly 100 percent inventory (AR 195-5 3-1b(2)),
+        // inventory reconstruction (3-2), discrepancy work (3-3a) - resolves the location by
+        // identifier. A correction that changed only the displayed path left those pointing at
+        // the bin the record had just said was wrong.
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var correction = CorrectTo(
+            location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+
+        var current = EffectiveHistory.LatestOf<LocationEvent>([location, correction]);
+
+        Assert.Equal("Shelf B / Bin 19", current!.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath)));
+        Assert.Equal(19, current.EffectiveStorageLocationId);
+
+        // And the event as recorded still names Bin 14 - AR 195-5 2-5b(5).
+        Assert.Equal(14, location.StorageLocationId);
+        Assert.Equal(14, correction.OriginalReferenceId);
+    }
+
+    [Fact]
+    public void ALocationCorrectedTwiceEndsAtTheLastIdentifier()
+    {
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3);
+
+        var effective = new EffectiveItemEvent(location, [first, second]);
+
+        Assert.Equal(21, effective.EffectiveStorageLocationId);
+        Assert.Equal("Shelf B / Bin 21", effective.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath)));
+    }
+
+    [Fact]
+    public void CorrectingACustodyRecipientMovesTheParty_NotOnlyTheName()
+    {
+        // COC-004. A custody counterparty is a row precisely because the regulation's own
+        // examples - an accountable mail number (2-7e), "N/A Custodian Unable to Sign" (3-2g(5)),
+        // an organization (2-7c) - are not free text about a person. Correcting the recipient
+        // must land on another such row.
+        var custody = new CustodyEvent(
+            releasedBy: CustodyParty.ForOrganization("902d MI Group"),
+            receivedBy: CustodyParty.ForExternalPerson("SMITH, JOHN A.", "SA", "902d MI Group", true),
+            purposeOfChangeOfCustody: "Received into evidence room",
+            occurredAtLocal: Local,
+            recordedAtUtc: Local.ToUniversalTime(),
+            recordedByUserId: 1,
+            isScrcni: false);
+
+        custody.AssignSequence(100, 1);
+
+        var correction = CorrectTo(custody, nameof(CustodyEvent.ReceivedBy), 55, "JONES, MARY B.", 2);
+        var current = EffectiveHistory.LatestOf<CustodyEvent>([custody, correction]);
+
+        Assert.Equal(55, current!.EffectiveReceivedByPartyId);
+
+        // The releasing party was not corrected, so it keeps the row it always named.
+        Assert.Equal(custody.ReleasedByPartyId, current.EffectiveReleasedByPartyId);
+    }
+
+    [Fact]
+    public void CorrectingAFreeTextFieldLeavesTheIdentifierAlone()
+    {
+        // Correcting the reason a thing was moved does not move it.
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var reasonFix = Correct(location, nameof(LocationEvent.Reason), "Moved to high-value storage", 2);
+
+        var effective = new EffectiveItemEvent(location, [reasonFix]);
+
+        Assert.Equal(14, effective.EffectiveStorageLocationId);
+        Assert.Equal(
+            "Shelf B / Bin 14", effective.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath)));
+    }
+
+    [Fact]
+    public void ReferenceProjectionsAreNullOnEventTypesThatHaveNone()
+    {
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var effective = new EffectiveItemEvent(location, []);
+
+        Assert.Null(effective.EffectiveReceivedByPartyId);
+        Assert.Null(effective.EffectiveReleasedByPartyId);
+        Assert.Null(effective.EffectiveReferenceIdOf(nameof(LocationEvent.Reason)));
     }
 
     // Note: "corrections belonging to another event are ignored" cannot be asserted here.

@@ -104,16 +104,10 @@ public class AuthorizationTests : IDisposable
     {
         // AR 195-5 1-4g(1) appoints a custodian for an evidence room, and 2-4c runs the
         // document-number series per room. Authority does not travel between rooms (DEC-03).
-        var otherRoom = new Domain.Storage.EvidenceRoom(
-            "310th MI Bn Evidence Room", "310th MI Bn", "America/New_York");
-
-        _harness.Db.EvidenceRooms.Add(otherRoom);
-        await _harness.Db.SaveChangesAsync();
-
         _harness.SignInAsCustodian();
 
         var decision = await _harness.Authorization.AuthorizeAsync(
-            EmcPermissions.AcceptEvidenceIntake, otherRoom.Id);
+            EmcPermissions.AcceptEvidenceIntake, _harness.OtherEvidenceRoomId);
 
         Assert.False(decision.IsAllowed);
 

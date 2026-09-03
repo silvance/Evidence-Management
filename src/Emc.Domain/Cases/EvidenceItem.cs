@@ -266,6 +266,13 @@ public class EvidenceItem : Entity, IConcurrencyStamped
         => CurrentCustody?.EffectiveValueOf(nameof(CustodyEvent.ReceivedBy));
 
     /// <summary>
+    /// The current custody recipient as a RESOLVABLE ROW, not as text. A correction to the
+    /// recipient moves this too, so "who holds this item" never degrades into a name that matches
+    /// no party record (COC-004, AUD-016).
+    /// </summary>
+    public int? CurrentCustodyHolderPartyId => CurrentCustody?.EffectiveReceivedByPartyId;
+
+    /// <summary>
     /// Current physical location, derived from event history with corrections applied
     /// (LOC-001). Correcting a location updates it; it does not fall back to an earlier location
     /// or to nothing.
@@ -275,6 +282,14 @@ public class EvidenceItem : Entity, IConcurrencyStamped
     /// <summary>The current storage location path as the record now reads.</summary>
     public string? CurrentLocationPath
         => CurrentLocation?.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath));
+
+    /// <summary>
+    /// The current storage location as a RESOLVABLE ROW. Inventory and discrepancy work
+    /// (AR 195-5 3-2, 3-3a) ask which items a given container holds; that question is answered
+    /// through this identifier, so a correction must move it and not only the displayed path
+    /// (AUD-016).
+    /// </summary>
+    public int? CurrentLocationId => CurrentLocation?.EffectiveStorageLocationId;
 
     /// <summary>
     /// Complete chronological history: every event kind in one ordered sequence, corrections

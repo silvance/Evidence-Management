@@ -135,15 +135,18 @@ public class AppendOnlyAndCorrectionTests : IDisposable
             .OfType<LocationEvent>()
             .FirstAsync(e => e.EvidenceItemId == itemId);
 
+        // AUD-016. The request names the replacement LOCATION, not replacement text. The path
+        // recorded on the correction is read from that row by the server.
         var correctionResult = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
             CorrectedEventId: locationEvent.Id,
             FieldName: nameof(LocationEvent.StorageLocationPath),
-            CorrectedValue: "Shelf B / Bin 19",
+            CorrectedValue: null,
             Reason: "Transcription error; the item was placed in Bin 19.",
             Category: CorrectionCategory.PostAcceptanceAccountabilityRecord,
             MfrReference: "MFR-2026-014",
             SupervisorNotifiedUserId: _harness.CommanderUserId,
-            SupervisorNotifiedAtUtc: _harness.Clock.UtcNow));
+            SupervisorNotifiedAtUtc: _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.ShelfBBin19Id));
 
         Assert.True(correctionResult.Succeeded, correctionResult.Error);
         Assert.Empty(correctionResult.Warnings);
@@ -165,6 +168,14 @@ public class AppendOnlyAndCorrectionTests : IDisposable
         Assert.Equal("MFR-2026-014", correction.CorrectionMfrReference);
         Assert.True(correction.CorrectionSatisfies1_7c3);
 
+        // AUD-016. The identifier moved with the text, so anything that resolves the item by
+        // location - the monthly 100 percent inventory (AR 195-5 3-1b(2)) among them - now finds
+        // it in Bin 19 rather than in the bin the record says was wrong.
+        Assert.Equal(CorrectableFieldReference.StorageLocation, correction.CorrectionReferenceKind);
+        Assert.Equal(_harness.ShelfBBin14Id, correction.CorrectionOriginalReferenceId);
+        Assert.Equal(_harness.ShelfBBin19Id, correction.CorrectionNewReferenceId);
+        Assert.Equal(_harness.ShelfBBin19Id, after.CurrentLocationId);
+
         Assert.True(after.ChainVerification.IsIntact);
     }
 
@@ -182,16 +193,22 @@ public class AppendOnlyAndCorrectionTests : IDisposable
             .OfType<LocationEvent>()
             .FirstAsync(e => e.EvidenceItemId == itemId);
 
+        // The corrected text supplied here is deliberately a lie about the replacement bin. It
+        // is ignored: for a field that names a row the server reads the text FROM THAT ROW.
         await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19",
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), "Anywhere I say",
             "Wrong bin", CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow));
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.ShelfBBin19Id));
 
         var history = await _harness.History.GetAsync(itemId);
         var correction = history!.History.Single(r => r.Kind == ItemEventKind.Correction);
 
         // The stored original is what the event actually recorded.
         Assert.Equal("Shelf B / Bin 14", correction.CorrectionOriginalValue);
+
+        // And the stored replacement is what the replacement row says, not what was posted.
+        Assert.Equal("Shelf B / Bin 19", correction.CorrectionNewValue);
     }
 
     [Fact]
@@ -212,6 +229,139 @@ public class AppendOnlyAndCorrectionTests : IDisposable
     }
 
     [Fact]
+    public async Task ALocationCorrectionCannotNameAnotherEvidenceRoomsLocation()
+    {
+        // AUD-016 with invariant I-08. THE check a reference correction makes necessary. AR 195-5
+        // runs the document-number series (2-4c), inspections (3-1) and inventories (3-2) per
+        // evidence room; a container in another room is not somewhere this item can be. Assigning
+        // a location already enforced this, and a correction must not be a way around a check the
+        // original action applied.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), null,
+            "Moving it to the other battalion's bin",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.OtherRoomLocationId));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("LOC-004", result.RequirementId);
+
+        // Nothing was recorded, so the item is still where it was.
+        var history = await _harness.History.GetAsync(itemId);
+        Assert.Equal(_harness.ShelfBBin14Id, history!.CurrentLocationId);
+        Assert.DoesNotContain(history.History, r => r.Kind == ItemEventKind.Correction);
+    }
+
+    [Fact]
+    public async Task ALocationCorrectionCannotNameALocationThatDoesNotExist()
+    {
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), null, "Wrong bin",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            null, null, null,
+            CorrectedReferenceId: 999_999));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("LOC-004", result.RequirementId);
+    }
+
+    [Fact]
+    public async Task ALocationCorrectionMustNameAReplacementLocation()
+    {
+        // Text alone is refused, and the message says what to do instead rather than leaving the
+        // custodian to guess why a plausible correction was rejected.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19",
+            "Wrong bin", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            null, null, null));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("AUD-016", result.RequirementId);
+        Assert.Contains("Select the replacement", result.Error!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AFreeTextCorrectionCannotCarryAnIdentifier()
+    {
+        // The converse. A reason names nothing, so an identifier attached to it would be recorded
+        // and projected as though it meant something.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, "Initial placement", null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        var result = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
+            "Wrong reason", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            null, null, null,
+            CorrectedReferenceId: _harness.ShelfBBin19Id));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("AUD-016", result.RequirementId);
+    }
+
+    [Fact]
+    public async Task ACorrectedLocationIsFoundByItsNewIdentifier()
+    {
+        // AUD-016, stated the way an inventory would ask it: after correcting the record, does a
+        // search of Bin 19 find this item, and does a search of Bin 14 no longer find it?
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), null,
+            "Recorded against the wrong bin during intake.",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-2026-030", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.ShelfBBin19Id));
+
+        var item = await _harness.Db.EvidenceItems
+            .Include(i => i.Events)
+            .FirstAsync(i => i.Id == itemId);
+
+        Assert.Equal(_harness.ShelfBBin19Id, item.CurrentLocationId);
+        Assert.NotEqual(_harness.ShelfBBin14Id, item.CurrentLocationId);
+        Assert.Equal("Shelf B / Bin 19", item.CurrentLocationPath);
+    }
+
+    [Fact]
     public async Task SeveralFieldsOfOneEventCanBeCorrectedIndependently()
     {
         // AUD-015. The old "one correction per event, ever" rule made a second error
@@ -226,9 +376,10 @@ public class AppendOnlyAndCorrectionTests : IDisposable
             .FirstAsync(e => e.EvidenceItemId == itemId);
 
         var first = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), "Shelf B / Bin 19",
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), null,
             "Wrong bin", CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow));
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.ShelfBBin19Id));
 
         var second = await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
             locationEvent.Id, nameof(LocationEvent.Reason), "Moved to high-value storage",
@@ -269,9 +420,10 @@ public class AppendOnlyAndCorrectionTests : IDisposable
 
         // Correct the FIRST location event only.
         await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
-            events[0].Id, nameof(LocationEvent.StorageLocationPath), "Intake bench",
+            events[0].Id, nameof(LocationEvent.StorageLocationPath), null,
             "Wrong initial location", CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow));
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.ShelfBBin19Id));
 
         var history = await _harness.History.GetAsync(itemId);
 

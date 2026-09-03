@@ -13,6 +13,14 @@ public class EventAndCorrectionTests
     private static readonly DateTimeOffset Local =
         new(2026, 9, 3, 9, 15, 0, TimeSpan.FromHours(-4));
 
+    private static LocationEvent NewLocationEvent(int storageLocationId = 14)
+        => new(
+            storageLocationId: storageLocationId,
+            storageLocationPath: "902d MI Group Evidence Room / Shelf B / Bin 14",
+            occurredAtLocal: Local,
+            recordedAtUtc: Local.ToUniversalTime(),
+            recordedByUserId: 1);
+
     private static CustodyEvent NewCustodyEvent(string receivedByName = "JONES, MARY B.")
         => new(
             releasedBy: CustodyParty.ForExternalPerson("SMITH, JOHN A.", "SA", "902d MI Group", true),
@@ -116,14 +124,37 @@ public class EventAndCorrectionTests
         var corrected = NewCustodyEvent("SMITH, JOHN A.");
 
         Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.ReceivedBy), "JONES, MARY B.", "   ",
+            corrected, nameof(CustodyEvent.PurposeOfChangeOfCustody), "Released to owner", "   ",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1));
 
         Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.ReceivedBy), "SMITH, JOHN A.", "No change",
+            corrected, nameof(CustodyEvent.PurposeOfChangeOfCustody),
+            "Received into evidence room", "No change",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1));
+    }
+
+    [Fact]
+    public void AReferenceCorrectionThatNamesTheSameRowChangesNothing()
+    {
+        // AUD-004 for a field that names a row. The test is on the IDENTIFIER, not the text: two
+        // storage locations can display the same path, and a rename would otherwise make a
+        // genuine move look like a no-op - or a no-op look like a move.
+        var located = NewLocationEvent();
+
+        var ex = Assert.Throws<DomainRuleViolationException>(
+            () => CorrectionFactory.CreateReferenceCorrection(
+                located, nameof(LocationEvent.StorageLocationPath),
+                correctedReferenceId: located.StorageLocationId,
+                correctedDisplayText: "Shelf B / Bin 19",
+                reason: "Renamed",
+                category: CorrectionCategory.PostAcceptanceAccountabilityRecord,
+                occurredAtLocal: Local,
+                recordedAtUtc: Local.ToUniversalTime(),
+                correctedByUserId: 1));
+
+        Assert.Equal("AUD-004", ex.RequirementId);
     }
 
     [Fact]
@@ -137,8 +168,9 @@ public class EventAndCorrectionTests
         var corrected = NewCustodyEvent("SMITH, JOHN A.");
 
         var correction = CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.ReceivedBy), "JONES, MARY B.",
-            "Transcription error; the DA Form 4137 shows JONES, MARY B.",
+            corrected, nameof(CustodyEvent.PurposeOfChangeOfCustody),
+            "Released to trial counsel",
+            "Transcription error; the DA Form 4137 shows release to trial counsel.",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 17,
             mfrReference: "MFR-2026-014",
@@ -146,10 +178,99 @@ public class EventAndCorrectionTests
             supervisorNotifiedAtUtc: Local.ToUniversalTime().AddMinutes(9));
 
         // AR 195-5 2-5b(5) - the original stays readable.
-        Assert.Equal("SMITH, JOHN A.", correction.OriginalValue);
-        Assert.Equal("JONES, MARY B.", correction.CorrectedValue);
+        Assert.Equal("Received into evidence room", correction.OriginalValue);
+        Assert.Equal("Released to trial counsel", correction.CorrectedValue);
         Assert.Equal(17, correction.RecordedByUserId);
         Assert.True(correction.SatisfiesParagraph1_7c3);
+    }
+
+    [Fact]
+    public void AFieldThatNamesARowCannotBeCorrectedWithTextAlone()
+    {
+        // AUD-016. THE defect this closes. A text-only correction to a location changed what the
+        // history displayed while every projection built on StorageLocationId still pointed at the
+        // location that had been corrected away - so an inventory of the new bin (AR 195-5 3-2)
+        // would not have listed the item the record said was in it.
+        var located = NewLocationEvent();
+        var custody = NewCustodyEvent();
+
+        foreach (var (evt, field) in new (ItemEvent, string)[]
+        {
+            (located, nameof(LocationEvent.StorageLocationPath)),
+            (custody, nameof(CustodyEvent.ReceivedBy)),
+            (custody, nameof(CustodyEvent.ReleasedBy))
+        })
+        {
+            var ex = Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
+                evt, field, "some other text", "reason",
+                CorrectionCategory.PostAcceptanceAccountabilityRecord,
+                Local, Local.ToUniversalTime(), 1));
+
+            Assert.Equal("AUD-016", ex.RequirementId);
+        }
+    }
+
+    [Fact]
+    public void AFreeTextFieldCannotBeCorrectedByNamingARow()
+    {
+        // The converse. A reason or a note names nothing, so a correction to one must not carry
+        // an identifier that would then be projected as though it meant something.
+        var located = NewLocationEvent();
+
+        var ex = Assert.Throws<DomainRuleViolationException>(
+            () => CorrectionFactory.CreateReferenceCorrection(
+                located, nameof(LocationEvent.Reason), 99, "text", "reason",
+                CorrectionCategory.PostAcceptanceAccountabilityRecord,
+                Local, Local.ToUniversalTime(), 1));
+
+        Assert.Equal("AUD-016", ex.RequirementId);
+    }
+
+    [Fact]
+    public void AReferenceCorrectionCarriesBothTheIdentifierAndTheText()
+    {
+        // AUD-016. Both halves are server-derived: the original identifier and text come from the
+        // stored event, and the replacement text is read from the replacement row by the caller.
+        // They cannot disagree, so the record can never read "Bin 19" while pointing at Bin 21.
+        var located = NewLocationEvent();
+
+        var correction = CorrectionFactory.CreateReferenceCorrection(
+            located, nameof(LocationEvent.StorageLocationPath),
+            correctedReferenceId: 42,
+            correctedDisplayText: "902d MI Group Evidence Room / Shelf B / Bin 19",
+            reason: "Recorded against the wrong bin during intake.",
+            category: CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            occurredAtLocal: Local,
+            recordedAtUtc: Local.ToUniversalTime(),
+            correctedByUserId: 3,
+            mfrReference: "MFR-2026-021",
+            supervisorNotifiedUserId: 4);
+
+        Assert.True(correction.IsReferenceCorrection);
+        Assert.Equal(CorrectableFieldReference.StorageLocation, correction.ReferenceKind);
+        Assert.Equal(located.StorageLocationId, correction.OriginalReferenceId);
+        Assert.Equal(42, correction.CorrectedReferenceId);
+        Assert.Equal("902d MI Group Evidence Room / Shelf B / Bin 14", correction.OriginalValue);
+        Assert.Equal(
+            "902d MI Group Evidence Room / Shelf B / Bin 19", correction.CorrectedValue);
+    }
+
+    [Fact]
+    public void ReferenceIdentifiersAreHashed()
+    {
+        // AUD-008. The identifier is part of what the record says, so it must be part of what the
+        // chain protects. Otherwise a correction could be repointed at another row without
+        // breaking the chain.
+        var located = NewLocationEvent();
+
+        CorrectionEvent Correction(int toId) => CorrectionFactory.CreateReferenceCorrection(
+            located, nameof(LocationEvent.StorageLocationPath), toId, "Shelf B / Bin 19",
+            "reason", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local, Local.ToUniversalTime(), 1);
+
+        Assert.NotEqual(
+            EventHashChain.ComputeHash(Correction(42), null),
+            EventHashChain.ComputeHash(Correction(43), null));
     }
 
     [Fact]

@@ -70,6 +70,42 @@ public sealed class EffectiveItemEvent
     public IReadOnlyDictionary<string, string?> EffectiveFields
         => Original.CorrectableFields.Keys
             .ToDictionary(f => f, EffectiveValueOf, StringComparer.Ordinal);
+
+    /// <summary>
+    /// The IDENTIFIER a field now names, for fields that name a row: the most recent correction's
+    /// replacement row if there is one, otherwise the row recorded originally. Null for free text.
+    ///
+    /// This is the half that the earlier text-only correction model lost. Correcting a location
+    /// from Bin 14 to Bin 19 changed the displayed path while every projection built on
+    /// StorageLocationId still pointed at Bin 14, so an inventory of Bin 19 would not have listed
+    /// the item that the record said was in it (AUD-016).
+    /// </summary>
+    public int? EffectiveReferenceIdOf(string fieldName)
+        => _latestCorrectionByField.TryGetValue(fieldName, out var correction)
+           && correction.IsReferenceCorrection
+            ? correction.CorrectedReferenceId
+            : Original.OriginalReferenceIdOf(fieldName);
+
+    /// <summary>
+    /// The storage location this event now names, for a <see cref="LocationEvent"/>. Null for any
+    /// other event type.
+    /// </summary>
+    public int? EffectiveStorageLocationId
+        => Original is LocationEvent
+            ? EffectiveReferenceIdOf(nameof(LocationEvent.StorageLocationPath))
+            : null;
+
+    /// <summary>The receiving custody party this event now names, for a <see cref="CustodyEvent"/>.</summary>
+    public int? EffectiveReceivedByPartyId
+        => Original is CustodyEvent
+            ? EffectiveReferenceIdOf(nameof(CustodyEvent.ReceivedBy))
+            : null;
+
+    /// <summary>The releasing custody party this event now names, for a <see cref="CustodyEvent"/>.</summary>
+    public int? EffectiveReleasedByPartyId
+        => Original is CustodyEvent
+            ? EffectiveReferenceIdOf(nameof(CustodyEvent.ReleasedBy))
+            : null;
 }
 
 /// <summary>Builds effective views over an item's event history.</summary>

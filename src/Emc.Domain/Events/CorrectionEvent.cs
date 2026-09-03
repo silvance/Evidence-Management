@@ -57,6 +57,9 @@ public class CorrectionEvent : ItemEvent
         string? mfrReference,
         int? supervisorNotifiedUserId,
         DateTimeOffset? supervisorNotifiedAtUtc,
+        CorrectableFieldReference referenceKind,
+        int? originalReferenceId,
+        int? correctedReferenceId,
         string? notes = null)
         : base(occurredAtLocal, recordedAtUtc, correctedByUserId, notes)
     {
@@ -65,12 +68,38 @@ public class CorrectionEvent : ItemEvent
         Reason = Guard.NotBlank(reason, "AUD-004", "Reason for the correction");
         FieldName = Guard.NotBlank(fieldName, "AUD-004", "Corrected field name");
 
-        if (string.Equals(originalValue, correctedValue, StringComparison.Ordinal))
+        // A correction to a reference field is judged on the IDENTIFIER, not the text. Two
+        // storage locations in different rooms can display the same path, and renaming a location
+        // would otherwise make a genuine move look like a no-op.
+        var changesNothing = referenceKind == CorrectableFieldReference.None
+            ? string.Equals(originalValue, correctedValue, StringComparison.Ordinal)
+            : originalReferenceId == correctedReferenceId;
+
+        if (changesNothing)
         {
             throw new DomainRuleViolationException(
                 "AUD-004",
                 "A correction must change the recorded value. The original and corrected values "
                 + "are identical.");
+        }
+
+        if (referenceKind == CorrectableFieldReference.None)
+        {
+            if (correctedReferenceId is not null || originalReferenceId is not null)
+            {
+                throw new DomainRuleViolationException(
+                    "AUD-016",
+                    $"'{fieldName}' is free text on a {correctedEvent.Kind} event and carries no "
+                    + "identifier. A correction to it must not name a row.");
+            }
+        }
+        else if (correctedReferenceId is null)
+        {
+            throw new DomainRuleViolationException(
+                "AUD-016",
+                $"'{fieldName}' names a {referenceKind}. A correction to it must name the "
+                + "replacement row, not only new display text, or the record's own projections "
+                + "would continue to point at the row that was corrected away.");
         }
 
         CorrectsEventId = correctedEvent.Id;
@@ -81,6 +110,9 @@ public class CorrectionEvent : ItemEvent
         MfrReference = Guard.TrimToNull(mfrReference);
         SupervisorNotifiedUserId = supervisorNotifiedUserId;
         SupervisorNotifiedAtUtc = supervisorNotifiedAtUtc;
+        ReferenceKind = referenceKind;
+        OriginalReferenceId = originalReferenceId;
+        CorrectedReferenceId = correctedReferenceId;
     }
 
     public override ItemEventKind Kind => ItemEventKind.Correction;
@@ -124,6 +156,28 @@ public class CorrectionEvent : ItemEvent
     public bool RequiresParagraph1_7c3Documentation
         => Category == CorrectionCategory.PostAcceptanceAccountabilityRecord;
 
+    /// <summary>
+    /// What kind of row this field names, or <see cref="CorrectableFieldReference.None"/> for
+    /// free text.
+    /// </summary>
+    public CorrectableFieldReference ReferenceKind { get; private set; }
+
+    /// <summary>
+    /// The identifier as originally recorded, derived by the server from the corrected event.
+    /// Null for a free-text field.
+    /// </summary>
+    public int? OriginalReferenceId { get; private set; }
+
+    /// <summary>
+    /// The replacement identifier. Null for a free-text field; required otherwise. This is what
+    /// keeps a corrected location or custody party a resolvable row rather than a string
+    /// (AUD-016).
+    /// </summary>
+    public int? CorrectedReferenceId { get; private set; }
+
+    /// <summary>True when this correction replaces a row rather than free text.</summary>
+    public bool IsReferenceCorrection => ReferenceKind != CorrectableFieldReference.None;
+
     public bool SatisfiesParagraph1_7c3
         => !RequiresParagraph1_7c3Documentation
            || (MfrReference is not null && SupervisorNotifiedUserId is not null);
@@ -153,6 +207,9 @@ public class CorrectionEvent : ItemEvent
         yield return new(
             "SupervisorNotifiedAtUtc",
             SupervisorNotifiedAtUtc?.UtcDateTime.ToString("O", null));
+        yield return new("ReferenceKind", ReferenceKind.ToString());
+        yield return new("OriginalReferenceId", OriginalReferenceId?.ToString("D", null));
+        yield return new("CorrectedReferenceId", CorrectedReferenceId?.ToString("D", null));
     }
 
     public override string Summarize()
@@ -166,6 +223,11 @@ public class CorrectionEvent : ItemEvent
 /// </summary>
 public static class CorrectionFactory
 {
+    /// <summary>
+    /// Corrects a FREE-TEXT field. Rejects a field that names a row: correcting a location or a
+    /// custody party by typing new text would leave every projection pointing at the row that was
+    /// corrected away, so those go through <see cref="CreateReferenceCorrection"/> instead.
+    /// </summary>
     public static CorrectionEvent Create(
         ItemEvent correctedEvent,
         string fieldName,
@@ -185,6 +247,15 @@ public static class CorrectionFactory
         // AUD-014. The original comes from the stored event, not from the caller. Also validates
         // that the field is correctable on this event type at all.
         var originalValue = correctedEvent.OriginalValueOf(fieldName);
+        var referenceKind = correctedEvent.ReferenceKindOf(fieldName);
+
+        if (referenceKind != CorrectableFieldReference.None)
+        {
+            throw new DomainRuleViolationException(
+                "AUD-016",
+                $"'{fieldName}' names a {referenceKind} on a {correctedEvent.Kind} event. Correct "
+                + "it by naming the replacement row, not by supplying replacement text.");
+        }
 
         return new CorrectionEvent(
             correctedEvent,
@@ -199,6 +270,69 @@ public static class CorrectionFactory
             mfrReference,
             supervisorNotifiedUserId,
             supervisorNotifiedAtUtc,
+            CorrectableFieldReference.None,
+            originalReferenceId: null,
+            correctedReferenceId: null,
+            notes);
+    }
+
+    /// <summary>
+    /// Corrects a field that names a row - an item's storage location, or a party to a change of
+    /// custody.
+    ///
+    /// BOTH halves are server-derived, and that is the point. The original identifier and text
+    /// come from the stored event (AUD-014). <paramref name="correctedDisplayText"/> must be read
+    /// from the REPLACEMENT ROW by the caller, never from a form field, so the text and the
+    /// identifier cannot disagree: a correction reading "Shelf B / Bin 19" while pointing at
+    /// Bin 21 would be worse than no correction at all.
+    ///
+    /// The caller is also responsible for checking that the replacement row is a legitimate
+    /// target - for a storage location, that it exists and belongs to the same evidence room
+    /// (LOC-004). The domain cannot see the other rows.
+    /// </summary>
+    public static CorrectionEvent CreateReferenceCorrection(
+        ItemEvent correctedEvent,
+        string fieldName,
+        int correctedReferenceId,
+        string correctedDisplayText,
+        string reason,
+        CorrectionCategory category,
+        DateTimeOffset occurredAtLocal,
+        DateTimeOffset recordedAtUtc,
+        int correctedByUserId,
+        string? mfrReference = null,
+        int? supervisorNotifiedUserId = null,
+        DateTimeOffset? supervisorNotifiedAtUtc = null,
+        string? notes = null)
+    {
+        ArgumentNullException.ThrowIfNull(correctedEvent);
+
+        var originalValue = correctedEvent.OriginalValueOf(fieldName);
+        var referenceKind = correctedEvent.ReferenceKindOf(fieldName);
+
+        if (referenceKind == CorrectableFieldReference.None)
+        {
+            throw new DomainRuleViolationException(
+                "AUD-016",
+                $"'{fieldName}' is free text on a {correctedEvent.Kind} event and names no row.");
+        }
+
+        return new CorrectionEvent(
+            correctedEvent,
+            fieldName,
+            originalValue,
+            Guard.NotBlank(correctedDisplayText, "AUD-016", "Corrected display text"),
+            reason,
+            category,
+            occurredAtLocal,
+            recordedAtUtc,
+            correctedByUserId,
+            mfrReference,
+            supervisorNotifiedUserId,
+            supervisorNotifiedAtUtc,
+            referenceKind,
+            correctedEvent.OriginalReferenceIdOf(fieldName),
+            correctedReferenceId,
             notes);
     }
 }

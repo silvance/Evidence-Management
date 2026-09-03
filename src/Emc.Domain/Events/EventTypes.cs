@@ -85,6 +85,18 @@ public class CustodyEvent : ItemEvent
         [nameof(Notes)] = Notes
     };
 
+    /// <summary>
+    /// Both custody parties are ROWS, not text. A correction to either must name the replacement
+    /// party, so that "who holds this item" stays a resolvable identity rather than becoming a
+    /// name someone typed (COC-004).
+    /// </summary>
+    public override IReadOnlyDictionary<string, EventFieldReference> ReferenceFields
+        => new Dictionary<string, EventFieldReference>(StringComparer.Ordinal)
+        {
+            [nameof(ReleasedBy)] = new(CorrectableFieldReference.CustodyParty, ReleasedByPartyId),
+            [nameof(ReceivedBy)] = new(CorrectableFieldReference.CustodyParty, ReceivedByPartyId)
+        };
+
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {
         foreach (var field in base.CanonicalFields())
@@ -160,6 +172,19 @@ public class LocationEvent : ItemEvent
         [nameof(Reason)] = Reason,
         [nameof(Notes)] = Notes
     };
+
+    /// <summary>
+    /// The location is a ROW, not text. Correcting it must move the item to another
+    /// StorageLocation, not merely restate the path: AR 195-5 3-2 inventories and 3-3a
+    /// discrepancy work ask which items a given container holds, and that question is answered
+    /// through the identifier.
+    /// </summary>
+    public override IReadOnlyDictionary<string, EventFieldReference> ReferenceFields
+        => new Dictionary<string, EventFieldReference>(StringComparer.Ordinal)
+        {
+            [nameof(StorageLocationPath)] =
+                new(CorrectableFieldReference.StorageLocation, StorageLocationId)
+        };
 
     public override IEnumerable<KeyValuePair<string, string?>> CanonicalFields()
     {

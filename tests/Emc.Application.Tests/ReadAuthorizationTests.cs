@@ -96,17 +96,15 @@ public class ReadAuthorizationTests : IDisposable
         // IAM-016. Holding a role in room A must not expose room B.
         var seeded = await SeedAsync();
 
-        var otherRoom = new EvidenceRoom("310th MI Bn Evidence Room", "310th MI Bn", "America/New_York");
-        _harness.Db.EvidenceRooms.Add(otherRoom);
-        await _harness.Db.SaveChangesAsync();
+        var otherRoomId = _harness.OtherEvidenceRoomId;
 
         var outsider = new User("S-1-5-21-OUTSIDER", "outsider@army.mil", "FOX, JAMIE R.");
         outsider.UpdateProfile("FOX, JAMIE R.", "SA", "310th MI Bn");
         _harness.Db.Users.Add(outsider);
         await _harness.Db.SaveChangesAsync();
 
-        _harness.GrantRoleInRoom(outsider.Id, EmcRoles.Agent, otherRoom.Id);
-        _harness.CurrentUser.SignIn(outsider.Id, "SA FOX, JAMIE R.", otherRoom.Id, EmcRoles.Agent);
+        _harness.GrantRoleInRoom(outsider.Id, EmcRoles.Agent, otherRoomId);
+        _harness.CurrentUser.SignIn(outsider.Id, "SA FOX, JAMIE R.", otherRoomId, EmcRoles.Agent);
 
         // Sees their own room, but nothing from the 902d's room.
         Assert.Empty(await _harness.Reads.GetAccessibleCasesAsync());
@@ -115,7 +113,7 @@ public class ReadAuthorizationTests : IDisposable
         Assert.Null(await _harness.History.GetAsync(seeded.ItemId));
 
         var rooms = await _harness.Reads.GetAccessibleEvidenceRoomsAsync();
-        Assert.Equal(otherRoom.Id, Assert.Single(rooms).Id);
+        Assert.Equal(otherRoomId, Assert.Single(rooms).Id);
     }
 
     [Fact]

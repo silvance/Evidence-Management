@@ -129,13 +129,19 @@ Defence in depth, because a single guard is a single point of failure:
 1. **Domain.** Event types have no public setters. Once constructed, an event's accountability
    fields cannot change. There is no code path that mutates them.
 2. **Persistence.** `EmcDbContext.SaveChanges` rejects `EntityState.Modified` and
-   `EntityState.Deleted` for any entity implementing `IAppendOnly`, with one narrow allowance:
-   `SupersededByEventId` may transition **null → value exactly once**. Any other modified
-   property throws `AppendOnlyViolationException`. This catches mistakes made through EF
-   regardless of which service made them.
+   `EntityState.Deleted` for **any** entity implementing `IAppendOnly`, unconditionally. This
+   catches mistakes made through EF regardless of which service made them.
 3. **Database.** SQL Server `INSTEAD OF UPDATE, DELETE` triggers on `ItemEvents` and
-   `AuditEvents` raise an error, with the same single-column allowance. This catches
-   modifications made *outside* the application — including by a DBA using SSMS.
+   `AuditEvents` raise an error, also unconditionally. This catches modifications made *outside*
+   the application — including by a DBA using SSMS.
+
+Layers 2 and 3 each once carried a narrow allowance, permitting an `UPDATE` that set only a
+forward "superseded by" pointer. That allowance forced the trigger to *prove* every other column
+was unchanged, and it compared only the columns common to all event types — so a
+table-per-hierarchy subtype column (`StorageLocationPath`, `PurposeOfChangeOfCustody`, a seal
+field) could be rewritten alongside a legitimate supersession and pass. Corrections now reference
+backward (§4.4), which leaves no legitimate `UPDATE` to allow and no column comparison to get
+wrong.
 
 Layer 3 is shipped as a dedicated migration and is SQL Server-only; SQLite test runs exercise
 layers 1 and 2, and there are explicit tests for each.
@@ -187,12 +193,42 @@ the case file).
 
 A correction is a **new event** of type `CorrectionEvent` that:
 
-- references the corrected event (`CorrectsEventId`);
-- records **field name, original value, corrected value** — as text, exactly as displayed;
+- references the corrected event (`CorrectsEventId`) — a **backward** reference only;
+- names **exactly one field**, and records its **original value** and its **corrected value**;
 - records **reason**, **correcting user**, **occurrence time** and **system entry time**;
 - carries the **MFR reference** required by 1-7c(3), and the **supervisor notified** and
-  **notified-at** fields;
-- sets `SupersededByEventId` on the corrected event — the only mutation the system permits, once.
+  **notified-at** fields.
+
+**The corrected event is not touched.** There is no forward pointer, no status flag and no
+"superseded" column, which is why the append-only triggers (§4.2) can reject every `UPDATE`
+unconditionally instead of having to decide which column change is legitimate. Whether an event
+has been corrected is *derived* from the existence of these records.
+
+Three properties of this shape matter, and each replaces something that was wrong:
+
+**Field-level, not event-level.** Correcting one field leaves the rest of the event standing. An
+earlier design marked the whole event superseded and excluded superseded events from projections,
+so correcting an item's location from Bin 14 to Bin 19 left the item with **no recorded location
+at all**. `EffectiveItemEvent` now projects each event with its corrections applied field by
+field.
+
+**The original value is derived by the server** from the corrected event's own declared
+correctable fields. There is no parameter through which a caller could state it. An "original
+value" that arrived from a form post would be worth nothing as an audit record, since the party
+making the correction could claim the record had said anything they liked.
+
+**A field that names a row is corrected by naming the replacement row.** An item's storage
+location and a change of custody's parties are `StorageLocation` and `CustodyParty` rows, not
+text. A correction to one of them carries the replacement **identifier**, and its display text is
+read *from that row* by the server — so the text and the identifier can never disagree. Without
+this, correcting a location changed what the history displayed while every projection built on
+`StorageLocationId` still pointed at the location that had just been declared wrong: an inventory
+of Bin 19 would not have listed the item the record said was in it. The same evidence-room check
+that governs assigning a location governs correcting one, so a correction is not a way around a
+check the original action applied.
+
+A field may be corrected more than once, and a correction may itself be corrected; the effective
+value is simply the most recent correction for that field. Nothing is ever hidden.
 
 The read model shows the corrected value with a visible **"Corrected"** marker; the original is
 one click away and is never hidden from the item history. The regulation's own metaphor is a
@@ -436,7 +472,7 @@ matrix can be verified rather than asserted:
 - **Domain tests** (no database): item numbering within a voucher, state transition legality,
   document-number format, `LAST ITEM` and `POSSIBLE BIOHAZARD` validation, SCRCNI rules,
   appointment-window arithmetic, correction construction.
-- **Application tests** (SQLite in-memory): append-only enforcement, correction supersession,
+- **Application tests** (SQLite in-memory): append-only enforcement, field-level corrections,
   hash-chain continuity and break detection, authorization denials (**including the
   administrator-denial test for every accountability operation**), document-number uniqueness
   scoping, derived voucher status, audit-event emission.

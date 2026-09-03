@@ -72,9 +72,6 @@ public class AuditEvent : Entity, IAppendOnly
     /// <summary>Ties an audit entry to a request, and to the diagnostic log for the same request.</summary>
     public string? CorrelationId { get; private set; }
 
-    /// <summary>Never set. Audit entries are append-only; present to satisfy <see cref="IAppendOnly"/>.</summary>
-    public int? SupersededByEventId => null;
-
     public AuditEvent WithRequestContext(string? sourceAddress, string? correlationId)
     {
         SourceAddress = Guard.TrimToNull(sourceAddress);

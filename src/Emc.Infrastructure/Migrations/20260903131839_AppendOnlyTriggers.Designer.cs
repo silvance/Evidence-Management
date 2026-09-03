@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903130410_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260903131839_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -933,6 +933,9 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("Category")
                         .HasColumnType("int");
 
+                    b.Property<int?>("CorrectedReferenceId")
+                        .HasColumnType("int");
+
                     b.Property<string>("CorrectedValue")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
@@ -949,6 +952,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<int?>("OriginalReferenceId")
+                        .HasColumnType("int");
+
                     b.Property<string>("OriginalValue")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
@@ -958,6 +964,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<int>("ReferenceKind")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("SupervisorNotifiedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -965,6 +974,10 @@ namespace Emc.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasIndex("CorrectsEventId");
+
+                    b.HasIndex("ReferenceKind", "CorrectedReferenceId")
+                        .HasDatabaseName("IX_ItemEvents_CorrectionReference")
+                        .HasFilter("[CorrectedReferenceId] IS NOT NULL");
 
                     b.HasDiscriminator().HasValue("Correction");
                 });

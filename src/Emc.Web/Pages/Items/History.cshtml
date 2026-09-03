@@ -237,6 +237,32 @@ else
             <div class="form-row">
                 <label asp-for="Correction.CorrectedValue">Corrected value</label>
                 <input asp-for="Correction.CorrectedValue" autocomplete="off" />
+                <span class="hint">
+                    For a free-text field. Leave blank when correcting a storage location.
+                </span>
+            </div>
+
+            <div class="form-row">
+                <label asp-for="Correction.CorrectedStorageLocationId">
+                    Replacement storage location
+                </label>
+                <select asp-for="Correction.CorrectedStorageLocationId">
+                    <option value="">&mdash; not correcting a location &mdash;</option>
+                    @foreach (var location in Model.Locations)
+                    {
+                        <option value="@location.Id">@location.Path</option>
+                    }
+                </select>
+                <span class="hint">
+                    Required when correcting
+                    @string.Join(", ", Model.LocationReferenceFieldNames). An item's location is a
+                    place in this evidence room, not a line of text: the monthly 100 percent
+                    inventory (AR 195-5 para 3-1b(2)) and any discrepancy inquiry (para 3-3a) find
+                    the item through it. Correcting the text alone would leave those pointing at
+                    the container the record had just said was wrong, so the corrected path is
+                    read from the location selected here.
+                </span>
+                <span asp-validation-for="Correction.CorrectedStorageLocationId" class="field-validation-error"></span>
             </div>
 
             <div class="form-row">

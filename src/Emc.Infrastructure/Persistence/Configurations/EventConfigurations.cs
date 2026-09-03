@@ -48,6 +48,9 @@ public sealed class ItemEventConfiguration : IEntityTypeConfiguration<ItemEvent>
 
         // Correctable fields are computed from the event's own state, not stored.
         builder.Ignore(e => e.CorrectableFields);
+
+        // Derived from the event's own columns; there is nothing separate to persist.
+        builder.Ignore(e => e.ReferenceFields);
     }
 }
 
@@ -162,8 +165,20 @@ public sealed class CorrectionEventConfiguration : IEntityTypeConfiguration<Corr
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(e => e.Category).HasConversion<int>().IsRequired();
+
+        // AUD-016 - a correction to a field that names a row carries the identifier as well as
+        // the text, so projections built on the identifier move with the correction. Stored as
+        // int rather than by name so the persisted value does not depend on enum member ordering
+        // or spelling.
+        builder.Property(e => e.ReferenceKind).HasConversion<int>().IsRequired();
+
+        builder.HasIndex(e => new { e.ReferenceKind, e.CorrectedReferenceId })
+            .HasDatabaseName("IX_ItemEvents_CorrectionReference")
+            .HasFilter("[CorrectedReferenceId] IS NOT NULL");
+
         builder.Ignore(e => e.SatisfiesParagraph1_7c3);
         builder.Ignore(e => e.RequiresParagraph1_7c3Documentation);
+        builder.Ignore(e => e.IsReferenceCorrection);
     }
 }
 
@@ -215,7 +230,6 @@ public sealed class AuditEventConfiguration : IEntityTypeConfiguration<AuditEven
         builder.HasIndex(e => new { e.AffectedRecordType, e.AffectedRecordId });
         builder.HasIndex(e => new { e.ActingUserId, e.OccurredAtUtc });
 
-        builder.Ignore(e => e.SupersededByEventId);
     }
 }
 

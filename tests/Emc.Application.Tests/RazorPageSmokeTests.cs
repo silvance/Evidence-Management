@@ -112,9 +112,10 @@ public class RazorPageSmokeTests : IDisposable
 
         await _harness.History.RecordCorrectionAsync(new RecordCorrectionRequest(
             locationRow.EventId, nameof(Domain.Events.LocationEvent.StorageLocationPath),
-            "High-Value Safe / Drawer 2", "Recorded against the wrong location",
+            null, "Recorded against the wrong location",
             Domain.Common.CorrectionCategory.PostAcceptanceAccountabilityRecord,
-            "MFR-2026-020", _harness.CommanderUserId, _harness.Clock.UtcNow));
+            "MFR-2026-020", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: _harness.HighValueSafeId));
 
         var after = await _harness.History.GetAsync(itemResult.Value);
 

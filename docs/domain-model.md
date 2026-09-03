@@ -90,7 +90,7 @@ items ("a box containing tools") to be listed as one item with one DA Form 4002.
 
 | Entity | Notes |
 |---|---|
-| `ItemEvent` (abstract) | **▲ CHANGED — TPH base type.** Common: `Id`, `EvidenceItemId`, `SequenceNumber` (per-item monotonic), `OccurredAtUtc` + `OccurredAtLocal` + `OccurredAtOffset`, `RecordedAtUtc`, `RecordedByUserId`, `Notes`, `SourceDocumentId`, `SupersededByEventId`, `PreviousEventHash`, `EventHash`, `HashSchemaVersion`. Rationale in `docs/architecture.md` §4.1. |
+| `ItemEvent` (abstract) | **▲ CHANGED — TPH base type.** Common: `Id`, `EvidenceItemId`, `SequenceNumber` (per-item monotonic), `OccurredAtUtc` + `OccurredAtLocal` + `OccurredAtOffset`, `RecordedAtUtc`, `RecordedByUserId`, `Notes`, `SourceDocumentId`, `PreviousEventHash`, `EventHash`, `HashSchemaVersion`. Rationale in `docs/architecture.md` §4.1. |
 | `CustodyEvent` | **[REG] 2-3f, 2-7b, 2-7e.** Releasing party, receiving party, purpose of change of custody, destination, agency, `IsScrcni` (**2-3e/2-3f**), source document. |
 | `LocationEvent` | **[REG] 2-4e** for *current* location; **[DESIGN]+[CONTROL]** for retaining history — see §7. |
 | `SealEvent` | **[REG] 2-2a, 2-3e, 3-2f.** `SealAction` (Sealed / Breached / Resealed), who, time/date across seals, MFR reference (**2-3e** requires an MFR affixed to the original form as a permanent attachment on custodian breach; **3-2f** requires an MFR from the supervisor directing a breach during inventory), directing supervisor. |
@@ -277,8 +277,9 @@ inventory totals · suspense age
 
 ### The correction pattern
 
-Corrections are **field-level**, the original value is **derived by the server**, and the
-reference is **backward only** — so no accountability row is ever updated.
+Corrections are **field-level**, the original value is **derived by the server**, the reference
+is **backward only** — so no accountability row is ever updated — and a field that names a row is
+corrected by naming the **replacement row**, not by supplying replacement text.
 
 Prohibited:
 
@@ -289,19 +290,33 @@ UPDATE CustodyEvents SET ReceivedBy = 'Jones' WHERE Id = 219;   -- destroys the 
 Required:
 
 ```
-CustodyEvent #219   ReceivedBy = "Smith"        ← preserved, marked superseded, still readable
+CustodyEvent #219   ReceivedByPartyId = 88 ("Smith")   ← untouched, still readable
 CorrectionEvent #402
     CorrectsEventId      = 219
     FieldName            = "ReceivedBy"
-    OriginalValue        = "Smith"
-    CorrectedValue       = "Jones"
+    OriginalValue        = "Smith"                ← derived from #219, never posted
+    CorrectedValue       = "Jones"                ← read from CustodyParty 91, never posted
+    ReferenceKind        = CustodyParty
+    OriginalReferenceId  = 88
+    CorrectedReferenceId = 91                     ← the replacement ROW
     Reason               = "Transcription error; DA Form 4137 shows Jones"
     CorrectedByUserId    = 17
     OccurredAtUtc        = 2026-09-03T14:22:11Z
-    MfrReference         = "MFR-2026-014"        ← 1-7c(3)
-    SupervisorNotifiedUserId = 4                 ← 1-7c(3)
+    MfrReference         = "MFR-2026-014"         ← 1-7c(3)
+    SupervisorNotifiedUserId = 4                  ← 1-7c(3)
     SupervisorNotifiedAtUtc  = 2026-09-03T14:31:02Z
 ```
+
+**Fields that name a row carry the identifier, not just the text.** An item's storage location
+and a change of custody's parties are rows. A correction to one of them supplies the replacement
+identifier and the server reads the display text *from that row*, so the two can never disagree.
+A text-only correction to a location would change what the history displayed while every
+projection built on `StorageLocationId` still pointed at the location just declared wrong — an
+inventory of the new bin would not have listed the item the record said was in it. The
+evidence-room check that governs assigning a location (invariant I-08) governs correcting one
+identically. **[DESIGN]** — AR 195-5 knows nothing of identifiers; it is a form on which a
+location is written in pencil (2-4e). The requirement is EMC's own, because EMC's own projections
+depend on it.
 
 Modelled on **2-5b(5)** — an erroneous ledger entry is struck through with one line **so it may
 still be read** and initialled; correction fluid, tape, labels and erasures are prohibited — and
@@ -412,6 +427,10 @@ alone.
 | I-25 | A canonical `(EvidenceRoom, CalendarYear, Sequence)` is never reused, including by superseded assignments | 2-4c, 2-7g **[REG]** |
 | I-26 | Only the administrator role may be granted globally; operational roles name an evidence room | **[DESIGN]** |
 | I-27 | An alternate custodian acts only during an open duty-assumption period | 1-4i **[REG]** |
+| I-28 | An alternate custodian's authority ends when the primary's absence exceeds 30 consecutive days; there is no override | 1-4i, 3-2d **[REG]** |
+| I-29 | A change of primary custodian is incomplete until the joint inventory is recorded with discrepancies resolved and the ledger statement entered | 3-2d, 3-2g(3) **[REG]** |
+| I-30 | A correction to a field that names a row carries the replacement identifier, and its display text is read from that row | **[DESIGN]** |
+| I-31 | A corrected storage location resolves within the item's own evidence room, on the same terms as an assigned one | 2-4c, 2-4e **[DESIGN]** |
 | I-15 | A `CorrectionEvent` must carry a reason, and an MFR reference where 1-7c(3) applies | 1-7c(3) **[REG]** |
 | I-16 | Voucher status is always computed; there is no settable status column | 2-4h **[REG]** |
 | I-17 | Terminal-state items accept no further custody or location events except corrections | **[DESIGN]** |
