@@ -227,6 +227,7 @@ public class EmcWebFactory : WebApplicationFactory<Program>
         // AR 195-5 1-4g(1) - custodial authority requires a written appointment.
         db.CustodianAppointments.Add(new CustodianAppointment(
             room.Id, custodian.Id, CustodianAppointmentType.Primary,
+            PersonnelCategory.MilitaryCi,
             DateTimeOffset.UtcNow.AddDays(-10), "ORDERS 2026-114", "Commander, 902d MI Group",
             true, custodian.Id, DateTimeOffset.UtcNow.AddDays(-10)));
 

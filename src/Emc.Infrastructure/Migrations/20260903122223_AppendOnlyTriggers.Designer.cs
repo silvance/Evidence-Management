@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903121601_AppendOnlyTriggers")]
+    [Migration("20260903122223_AppendOnlyTriggers")]
     partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
@@ -567,6 +567,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<int>("PersonnelCategory")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset>("RecordedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -594,6 +597,80 @@ namespace Emc.Infrastructure.Migrations
                     b.HasIndex("EvidenceRoomId", "UserId", "EffectiveFrom");
 
                     b.ToTable("CustodianAppointments", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Identity.CustodianDutyAssumption", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AlternateAppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("AlternateAssumedDutiesAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("AlternateUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AssumptionLedgerAttestation")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("PrimaryAbsenceStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("PrimaryAppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("PrimaryResumedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ReasonForAbsence")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ResumptionLedgerAttestation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset?>("ResumptionRecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ResumptionRecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlternateAppointmentId");
+
+                    b.HasIndex("EvidenceRoomId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CustodianDutyAssumptions_OneOpenPerRoom")
+                        .HasFilter("PrimaryResumedAt IS NULL");
+
+                    b.HasIndex("PrimaryAppointmentId");
+
+                    b.HasIndex("AlternateUserId", "EvidenceRoomId");
+
+                    b.ToTable("CustodianDutyAssumptions", (string)null);
                 });
 
             modelBuilder.Entity("Emc.Domain.Identity.Role", b =>
@@ -1089,6 +1166,27 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Identity.CustodianDutyAssumption", b =>
+                {
+                    b.HasOne("Emc.Domain.Identity.CustodianAppointment", null)
+                        .WithMany()
+                        .HasForeignKey("AlternateAppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.CustodianAppointment", null)
+                        .WithMany()
+                        .HasForeignKey("PrimaryAppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Emc.Domain.Identity.RoleAssignment", b =>

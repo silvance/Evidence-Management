@@ -136,22 +136,34 @@ WHERE r.Name IN (N'Agent', N'PrimaryEvidenceCustodian')  -- <-- EDIT: roles for 
    custodian." The role alone confers NO evidence-room authority in EMC - an active appointment
    is required (IAM-005, invariant I-11).
 
-   EligibilityAttested records the attestation required by para 1-7a(1)(c): the appointee is a
-   credentialed CI agent and is not in a probationary program. EMC cannot verify this, so it is
-   attested and retained.
+   PersonnelCategory decides WHICH AR 195-5 para 1-7a rule the eligibility attestation is made
+   under, and the two CI rules genuinely differ:
+
+     1 = MilitaryCi  para 1-7a(1)(c) - must be a credentialed CI agent; CI agents in a
+                     probationary program will not be appointed.
+     2 = Civilian    para 1-7a(2)(c) - may be appointed depending on the needs and requirements
+                     of the unit and at the discretion of the commander.
+
+   Note what 1-7a(2)(c) does NOT say: unlike the USACIDC and Military Police civilian paragraphs,
+   it states no job-series list and no background-investigation requirement for CI units. Do not
+   import those restrictions.
+
+   EMC cannot verify either rule, so the applicable one is attested and retained with the
+   category that determined it.
 
    Only insert this row for a person who genuinely holds written appointment orders.
 --------------------------------------------------------------------------------------------- */
 IF NOT EXISTS (SELECT 1 FROM dbo.CustodianAppointments WHERE EvidenceRoomId = @RoomId)
 BEGIN
     INSERT INTO dbo.CustodianAppointments
-        (EvidenceRoomId, UserId, AppointmentType, EffectiveFrom, EffectiveTo,
+        (EvidenceRoomId, UserId, AppointmentType, PersonnelCategory, EffectiveFrom, EffectiveTo,
          AppointmentOrderReference, AppointingAuthority, EligibilityAttested,
          SupersedesAppointmentId, SupersededByAppointmentId,
          RecordedByUserId, RecordedAtUtc, Notes, ConcurrencyStamp)
     VALUES
         (@RoomId, @UserId,
-         1,                                  -- 1 = Primary, 2 = Alternate
+         1,                                  -- AppointmentType: 1 = Primary, 2 = Alternate
+         1,                                  -- <-- EDIT PersonnelCategory: 1 = MilitaryCi, 2 = Civilian
          SYSDATETIMEOFFSET(),
          NULL,                               -- open-ended; ended when the appointment ends
          N'ORDERS 2026-114, 902d MI Group',  -- <-- EDIT: the written appointment document

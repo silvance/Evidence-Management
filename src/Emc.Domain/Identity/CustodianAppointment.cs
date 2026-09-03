@@ -27,19 +27,13 @@ namespace Emc.Domain.Identity;
 /// </summary>
 public class CustodianAppointment : Entity, IConcurrencyStamped
 {
-    /// <summary>
-    /// AR 195-5 1-4i — a temporary absence is "not more than 30 consecutive days". Beyond this,
-    /// 3-2d requires the alternate to be appointed primary on orders and a joint inventory
-    /// conducted. Whether EMC blocks or warns at the boundary is open decision DEC-05.
-    /// </summary>
-    public const int MaximumAlternateAbsenceDays = 30;
-
     private CustodianAppointment() { }
 
     public CustodianAppointment(
         int evidenceRoomId,
         int userId,
         CustodianAppointmentType appointmentType,
+        PersonnelCategory personnelCategory,
         DateTimeOffset effectiveFrom,
         string appointmentOrderReference,
         string appointingAuthority,
@@ -47,17 +41,20 @@ public class CustodianAppointment : Entity, IConcurrencyStamped
         int recordedByUserId,
         DateTimeOffset recordedAtUtc)
     {
-        // AR 195-5 1-7a(1)(c). EMC cannot verify credentialing, so the recording user attests to
-        // it and the attestation is retained. See IAM-008.
+        // AR 195-5 1-7a. The applicable eligibility rule depends on the appointee's personnel
+        // category, and the two CI rules are genuinely different. EMC cannot verify either, so
+        // the recording user attests to the correct one and the attestation is retained with the
+        // category that determined it (IAM-008).
         if (!eligibilityAttested)
         {
             throw new DomainRuleViolationException(
                 "IAM-008",
-                "AR 195-5 1-7a(1)(c): the appointee's eligibility (credentialed CI agent, not in a "
-                + "probationary program) must be attested before the appointment is recorded.");
+                $"AR 195-5 {EligibilityBasisFor(personnelCategory)}: the appointee's eligibility "
+                + $"must be attested before the appointment is recorded. {EligibilityStatementFor(personnelCategory)}");
         }
 
         EvidenceRoomId = evidenceRoomId;
+        PersonnelCategory = personnelCategory;
         UserId = userId;
         AppointmentType = appointmentType;
         EffectiveFrom = effectiveFrom;
@@ -85,8 +82,47 @@ public class CustodianAppointment : Entity, IConcurrencyStamped
 
     public string AppointingAuthority { get; private set; } = string.Empty;
 
-    /// <summary>AR 195-5 1-7a(1)(c) — attested, because EMC cannot verify credentialing itself.</summary>
+    /// <summary>
+    /// Decides which AR 195-5 1-7a eligibility rule applies. Recorded so an inspector can see
+    /// which rule the attestation was made under (IAM-008).
+    /// </summary>
+    public PersonnelCategory PersonnelCategory { get; private set; }
+
+    /// <summary>Attested, because EMC cannot verify credentialing or a commander's discretion.</summary>
     public bool EligibilityAttested { get; private set; }
+
+    /// <summary>The AR 195-5 paragraph the eligibility attestation was made under.</summary>
+    public string EligibilityRegulatoryBasis => EligibilityBasisFor(PersonnelCategory);
+
+    /// <summary>The statement the attesting user affirmed.</summary>
+    public string EligibilityStatement => EligibilityStatementFor(PersonnelCategory);
+
+    /// <summary>
+    /// AR 195-5 1-7a(1)(c) applies to military CI custodians; 1-7a(2)(c) to civilians. Keeping
+    /// these separate matters: the civilian CI paragraph states no credentialing requirement, no
+    /// job-series list and no background-investigation requirement, and EMC must not import
+    /// restrictions the regulation does not state for CI units.
+    /// </summary>
+    public static string EligibilityBasisFor(PersonnelCategory category)
+        => category switch
+        {
+            PersonnelCategory.MilitaryCi => "para 1-7a(1)(c)",
+            PersonnelCategory.Civilian => "para 1-7a(2)(c)",
+            _ => throw new DomainRuleViolationException(
+                "IAM-008", $"Unknown personnel category {category}.")
+        };
+
+    public static string EligibilityStatementFor(PersonnelCategory category)
+        => category switch
+        {
+            PersonnelCategory.MilitaryCi =>
+                "The appointee is a credentialed CI agent and is not in a probationary program.",
+            PersonnelCategory.Civilian =>
+                "This civilian is appointed as primary or alternate evidence custodian depending "
+                + "on the needs and requirements of the unit and at the discretion of the commander.",
+            _ => throw new DomainRuleViolationException(
+                "IAM-008", $"Unknown personnel category {category}.")
+        };
 
     /// <summary>AR 195-5 1-4i — emergency alternate orders supersede the previous alternate's.</summary>
     public int? SupersedesAppointmentId { get; private set; }
@@ -105,18 +141,9 @@ public class CustodianAppointment : Entity, IConcurrencyStamped
            && (EffectiveTo is null || EffectiveTo > at)
            && SupersededByAppointmentId is null;
 
-    /// <summary>
-    /// AR 195-5 1-4i — days elapsed for an alternate acting in the primary's absence. Used to
-    /// warn or block at the 30-day boundary (DEC-05), and because 1-7c(2) ties the 100 percent
-    /// inventory requirement to the same threshold.
-    /// </summary>
-    public int ConsecutiveDaysActiveAt(DateTimeOffset at)
+    /// <summary>Days this appointment has been in force. Not the AR 195-5 1-4i window.</summary>
+    public int DaysAppointedAt(DateTimeOffset at)
         => at < EffectiveFrom ? 0 : (int)(at - EffectiveFrom).TotalDays;
-
-    public bool ExceedsAlternateWindowAt(DateTimeOffset at)
-        => AppointmentType == CustodianAppointmentType.Alternate
-           && IsActiveAt(at)
-           && ConsecutiveDaysActiveAt(at) > MaximumAlternateAbsenceDays;
 
     public void End(DateTimeOffset effectiveTo, string? notes = null)
     {

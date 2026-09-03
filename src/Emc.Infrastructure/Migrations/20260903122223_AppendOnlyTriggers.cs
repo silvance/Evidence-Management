@@ -5,15 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Emc.Infrastructure.Migrations;
 
 /// <summary>
-/// Layer 3 of the append-only enforcement (docs/architecture.md §4.2).
-///
-/// Installs INSTEAD OF UPDATE / DELETE triggers on the accountability tables. Layers 1 and 2
-/// (domain immutability and the SaveChanges guard) protect against mistakes made THROUGH the
-/// application; this layer protects against changes made OUTSIDE it, including by an
-/// administrator using SSMS.
-///
-/// SQL Server only. SQLite test runs exercise layers 1 and 2, which have their own tests; the
-/// trigger layer is covered by the SQL Server integration suite.
+/// Layer 3 of the append-only enforcement (docs/architecture.md §4.2). SQL Server only.
 /// </summary>
 public partial class AppendOnlyTriggers : Migration
 {

@@ -18,6 +18,7 @@ public interface IEmcDbContext
     DbSet<Role> Roles { get; }
     DbSet<RoleAssignment> RoleAssignments { get; }
     DbSet<CustodianAppointment> CustodianAppointments { get; }
+    DbSet<CustodianDutyAssumption> CustodianDutyAssumptions { get; }
     DbSet<EvidenceRoom> EvidenceRooms { get; }
     DbSet<StorageLocation> StorageLocations { get; }
     DbSet<Case> Cases { get; }

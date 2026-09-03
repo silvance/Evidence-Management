@@ -155,6 +155,7 @@ public sealed class SliceTestHarness : IDisposable
             evidenceRoomId: room.Id,
             userId: custodian.Id,
             appointmentType: CustodianAppointmentType.Primary,
+            personnelCategory: PersonnelCategory.MilitaryCi,
             effectiveFrom: Clock.UtcNow.AddDays(-30),
             appointmentOrderReference: "ORDERS 2026-114, 902d MI Group",
             appointingAuthority: "Commander, 902d MI Group",
@@ -182,6 +183,57 @@ public sealed class SliceTestHarness : IDisposable
         var user = new User($"S-1-5-21-{Guid.NewGuid():N}", $"{name.Replace(", ", ".", StringComparison.Ordinal)}@army.mil", name);
         user.UpdateProfile(name, grade, "902d MI Group");
         return user;
+    }
+
+    /// <summary>
+    /// AR 195-5 1-4g(1) - records a written alternate appointment. Note this does NOT authorize
+    /// acting as the evidence custodian; that needs a duty assumption (IAM-006, IAM-019).
+    /// </summary>
+    public CustodianAppointment AppointAlternate(int userId, DateTimeOffset? from = null)
+    {
+        var appointment = new CustodianAppointment(
+            evidenceRoomId: EvidenceRoomId,
+            userId: userId,
+            appointmentType: CustodianAppointmentType.Alternate,
+            personnelCategory: PersonnelCategory.MilitaryCi,
+            effectiveFrom: from ?? Clock.UtcNow.AddDays(-180),
+            appointmentOrderReference: "ORDERS 2026-118, 902d MI Group",
+            appointingAuthority: "Commander, 902d MI Group",
+            eligibilityAttested: true,
+            recordedByUserId: CommanderUserId,
+            recordedAtUtc: from ?? Clock.UtcNow.AddDays(-180));
+
+        Db.CustodianAppointments.Add(appointment);
+        Db.SaveChanges();
+        return appointment;
+    }
+
+    /// <summary>AR 195-5 1-4i / 1-7c(1) - the alternate actually assumes the primary's duties.</summary>
+    public CustodianDutyAssumption AssumeDuties(
+        CustodianAppointment alternateAppointment, DateTimeOffset? assumedAt = null)
+    {
+        var primary = Db.CustodianAppointments.First(
+            a => a.EvidenceRoomId == EvidenceRoomId
+                 && a.AppointmentType == CustodianAppointmentType.Primary);
+
+        var at = assumedAt ?? Clock.UtcNow;
+
+        var assumption = new CustodianDutyAssumption(
+            evidenceRoomId: EvidenceRoomId,
+            primaryAppointmentId: primary.Id,
+            alternateAppointmentId: alternateAppointment.Id,
+            alternateUserId: alternateAppointment.UserId,
+            primaryAbsenceStart: at,
+            alternateAssumedDutiesAt: at,
+            assumptionLedgerAttestation:
+                "I CHEN, DAVID L., assume all duties of the primary evidence custodian during the "
+                + "temporary absence of the regularly appointed custodian.",
+            recordedByUserId: CommanderUserId,
+            recordedAtUtc: at);
+
+        Db.CustodianDutyAssumptions.Add(assumption);
+        Db.SaveChanges();
+        return assumption;
     }
 
     public void GrantRoleInRoom(int userId, string roleName, int evidenceRoomId)

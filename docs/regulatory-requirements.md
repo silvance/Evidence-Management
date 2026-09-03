@@ -76,14 +76,37 @@ This single paragraph defines what V1 may and may not be.
 | **1-4g(2)** | Commander supervises the evidence custodian. | |
 | **1-4g(3)** | Commander ensures proper handling/processing and **inspects the evidence room or security container monthly**. Inspection conducted by the CI unit commander, or the acting commander when the commander is unavailable. | Inspection actor is constrained. |
 | **1-4h(1)-(5)** | Primary custodian: account for, preserve, safeguard and (when authorized) dispose of all evidence in a timely manner; maintain all evidence records and files; protect from loss, deterioration, contamination, needless damage; seek guidance on unusual circumstances and **document it in an MFR or email attached to the original evidence document and/or case file**; ensure the Final Disposal Action and Final Disposal Authority areas of DA Form 4137 are completed **before** the approval authority signs. | |
-| **1-4i** | The alternate assumes the primary's duties during temporary absence. **A temporary absence is more than 1 working day and not more than 30 consecutive days.** In an emergency another alternate may be appointed in writing; the new orders supersede the previous alternate's. | Appointment is a time-bounded, supersedable record — not a static role flag. |
-| **1-7a(1)(c)** | CI evidence custodian (primary and alternate) **must be a credentialed CI agent**. CI agents in a probationary program **will not** be appointed. | Eligibility precondition on appointment. |
-| **1-7a(2)(c)** | Civilians may be appointed primary or alternate at the commander's discretion (CI units). | |
+| **1-4i** | The alternate assumes the primary's duties **during the primary's temporary absence**. **A temporary absence is more than 1 working day and not more than 30 consecutive days.** In an emergency another alternate may be appointed in writing; the new orders supersede the previous alternate's. | **Appointment and assumption of duties are two different periods.** An alternate may hold the appointment for months without the primary ever being absent. The 30-day limit runs from the date duties were **assumed**, not from the appointment date. See §3.1. |
+| **1-7a(1)(c)** | **Military** CI evidence custodian (primary and alternate) **must be a credentialed CI agent**. CI agents in a probationary program **will not** be appointed. | Applies to the **military** category only. |
+| **1-7a(2)(c)** | **Civilians** may be appointed primary or alternate **"depending on the needs and requirements of the unit and at the discretion of the commander"** (CI units). | Applies to the **civilian** category. **Note what this paragraph does not say:** unlike the USACIDC (1-7a(2)(a)) and Military Police (1-7a(2)(b)) civilian paragraphs, it states **no job-series list and no background-investigation requirement**. EMC must not import those into the CI case. |
 | **1-7b** | A copy of the appointment documents is kept in the evidence room files per AR 25-400-2, maintained as long as the position is held. AR 195-5 is cited as the appointment authority. | **[REG-REF]** AR 25-400-2 governs filing. |
 | **1-7c(1)** | On assuming temporary duties, the alternate enters and signs a prescribed statement **in the evidence ledger** immediately below the last entry: *"I (Name), on (Date), assume all duties of the primary evidence custodian during the temporary absence of the regularly appointed custodian. I accept responsibility and accountability for all evidence in the evidence room."* | Ledger event EMC can prompt for and record as *having been made on paper*. |
 | **1-7c(2)** | On return, the primary verifies all entries and evidence are correct, then enters and signs a prescribed resumption statement in the ledger. **If the absence is 30 calendar days or less there is no requirement to conduct a 100 percent inventory.** | |
 | **1-7c(3)** | If a primary or alternate finds that an **incorrect entry** has been made, they will **immediately inform the responsible CI supervisor** and prepare an **MFR outlining the error and the corrective action taken**. The original MFR is filed with the proper DA Form 4137 (or in a file folder if the error was not on a DA Form 4137); a copy goes in the law enforcement case file. | **This is the regulatory anchor for EMC's correction model.** See §9. |
 | **4-1a** | Primary and alternate custodians are **required to have the necessary level of security clearance** for classified evidence stored. | |
+
+### 3.1 Appointment is not assumption of duties
+
+AR 195-5 describes two distinct things, and conflating them produces a wrong authorization model.
+
+| | Governing paragraphs | Duration |
+|---|---|---|
+| **Appointment** as primary or alternate custodian | 1-4g(1), 1-7b | Long-lived — held until the position changes; appointment documents are retained "as long as the primary and alternate custodians retain the position" |
+| **Assumption of the primary's duties** by the alternate | 1-4i, 1-7c(1), 1-7c(2) | Short — the primary's temporary absence, "more than 1 working day and not more than 30 consecutive days" |
+
+Consequences for EMC:
+
+1. **Holding the alternate appointment does not, by itself, authorize acting as the evidence
+   custodian.** 1-4i grants that authority "during his or her temporary absence." An alternate
+   appointed for a year has no custodial authority on a day the primary is present.
+2. **The 30-consecutive-day limit runs from the date duties were assumed**, not from the
+   appointment date. Measuring from the appointment produces a limit that expires while the
+   alternate has never acted at all.
+3. **1-7c(1) and 1-7c(2) require handwritten, signed ledger statements** at assumption and at
+   resumption. EMC records that the paper entries were made; it does not produce them.
+4. **1-7c(2)**: an absence of 30 calendar days or less carries **no** 100 percent inventory
+   requirement. Beyond that, 3-2d requires the alternate to be appointed primary on orders and a
+   joint inventory conducted.
 
 ---
 
@@ -416,7 +439,7 @@ product choices.
 | **AMB-02** | **"Working day" is undefined** for the 2-4a turn-in expectation and the 3-3a 5-working-day inquiry clock. Federal holidays, local training holidays, and deployed schedules all change the answer, and 3-3a is a real deadline with real consequences. |
 | **AMB-03** | **Scope of the document-number series.** 2-4c defines the series per calendar year; 2-7g shows it is per evidence room. Whether one EMC instance serves one CI evidence room or several determines uniqueness scoping, access control, and inventory population. |
 | **AMB-04** | **What counts as one item.** 2-1b permits grouped items ("a box containing tools") to be listed as one item with one DA Form 4002, while 2-2f requires separately-numbered items to be sealed separately. The item is therefore the numbered line on the form, whose quantity may be greater than one. Confirm this reading before it is baked into inventory counts. |
-| **AMB-05** | **Alternate-custodian authority window.** 1-4i defines temporary absence as more than 1 working day and not more than 30 consecutive days; 3-2d turns on 30 consecutive **calendar** days; 1-7c(2) speaks of 30 **calendar** days. Whether EMC should hard-block an alternate from acting on day 31, or warn, is a policy call. |
+| **AMB-05** | **Alternate-custodian authority window.** 1-4i defines temporary absence as more than 1 working day and not more than 30 consecutive days; 3-2d turns on 30 consecutive **calendar** days; 1-7c(2) speaks of 30 **calendar** days. Whether EMC should hard-block an alternate from acting on day 31, or warn, is a policy call. (The separate question of whether an alternate may act *at all* without an assumption of duties is **not** ambiguous — 1-4i answers it, and EMC blocks.) |
 | **AMB-06** | **Whether EMC records may hold restricted-reporting sexual assault data at all** (2-16), and if so under what access control. 2-5b(1)(c) requires the ledger description to read *"Restricted Sexual Assault"*. Unlikely in a CI context but must be answered, not assumed. |
 | **AMB-07** | **Records status of EMC's own data.** 1-5 places records management under ARIMS/RRS-A. If EMC's database is itself an Army record, its retention and disposition are governed by RRS-A — a determination only the organization's records manager can make. 2-4h (3 years after inactive) and 2-5a (3 years after last disposal) govern the *paper*. |
 

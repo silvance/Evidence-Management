@@ -126,6 +126,34 @@ public enum StorageLocationKind
     Bin = 8
 }
 
+/// <summary>
+/// The personnel category of an appointed custodian, which decides WHICH AR 195-5 para 1-7a
+/// eligibility rule applies.
+///
+/// The rules genuinely differ for CI units and must not be conflated:
+///
+///   1-7a(1)(c) Military CI - "the CI evidence custodian (primary and alternate) must be a
+///              credentialed CI agent. CI Agents in a probationary program will not be appointed
+///              as Primary or Alternate Custodian."
+///
+///   1-7a(2)(c) Civilian CI - "Civilians may be appointed as the primary or alternate evidence
+///              custodian, depending on the needs and requirements of the unit and at the
+///              discretion of the commander."
+///
+/// Note what 1-7a(2)(c) does NOT say. Unlike the USACIDC and Military Police civilian paragraphs
+/// (1-7a(2)(a) and 1-7a(2)(b)), the CI civilian paragraph states no job-series list and no
+/// background-investigation requirement. EMC must not import those restrictions into the CI case
+/// (IAM-008).
+/// </summary>
+public enum PersonnelCategory
+{
+    /// <summary>AR 195-5 1-7a(1)(c) - must be a credentialed CI agent, not in a probationary program.</summary>
+    MilitaryCi = 1,
+
+    /// <summary>AR 195-5 1-7a(2)(c) - appointed at the commander's discretion.</summary>
+    Civilian = 2
+}
+
 public enum CustodianAppointmentType
 {
     /// <summary>AR 195-5 1-4g(1), 1-4h.</summary>

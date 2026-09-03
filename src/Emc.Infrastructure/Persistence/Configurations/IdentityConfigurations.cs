@@ -123,5 +123,54 @@ public sealed class CustodianAppointmentConfiguration : IEntityTypeConfiguration
             .IsUnique();
 
         builder.HasIndex(a => new { a.EvidenceRoomId, a.UserId, a.EffectiveFrom });
+
+        builder.Property(a => a.PersonnelCategory).HasConversion<int>().IsRequired();
+        builder.Ignore(a => a.EligibilityRegulatoryBasis);
+        builder.Ignore(a => a.EligibilityStatement);
+    }
+}
+
+public sealed class CustodianDutyAssumptionConfiguration
+    : IEntityTypeConfiguration<CustodianDutyAssumption>
+{
+    public void Configure(EntityTypeBuilder<CustodianDutyAssumption> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("CustodianDutyAssumptions");
+        builder.HasKey(d => d.Id);
+
+        // AR 195-5 1-7c(1) and 1-7c(2) - the handwritten, signed ledger statements. EMC records
+        // that they were made on paper; it does not produce them (AUD-013).
+        builder.Property(d => d.AssumptionLedgerAttestation).HasMaxLength(2000).IsRequired();
+        builder.Property(d => d.ResumptionLedgerAttestation).HasMaxLength(2000);
+        builder.Property(d => d.ReasonForAbsence).HasMaxLength(1000);
+        builder.Property(d => d.ConcurrencyStamp).IsConcurrencyToken();
+
+        builder.HasOne<CustodianAppointment>()
+            .WithMany()
+            .HasForeignKey(d => d.PrimaryAppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<CustodianAppointment>()
+            .WithMany()
+            .HasForeignKey(d => d.AlternateAppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Domain.Storage.EvidenceRoom>()
+            .WithMany()
+            .HasForeignKey(d => d.EvidenceRoomId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // At most one open assumption per evidence room: only one person acts as the evidence
+        // custodian at a time (AR 195-5 1-4g(1), 1-4i).
+        builder.HasIndex(d => d.EvidenceRoomId)
+            .HasDatabaseName("UX_CustodianDutyAssumptions_OneOpenPerRoom")
+            .HasFilter("PrimaryResumedAt IS NULL")
+            .IsUnique();
+
+        builder.HasIndex(d => new { d.AlternateUserId, d.EvidenceRoomId });
+
+        builder.Ignore(d => d.RequiresHundredPercentInventoryOnResumption);
     }
 }

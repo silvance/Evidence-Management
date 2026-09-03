@@ -122,9 +122,9 @@ public sealed class EvidenceAuthorizationService : IEvidenceAuthorizationService
                         && (a.EffectiveTo == null || a.EffectiveTo > now))
             .ToListAsync(cancellationToken);
 
-        var active = appointments.FirstOrDefault(a => a.IsActiveAt(now));
+        var active = appointments.Where(a => a.IsActiveAt(now)).ToList();
 
-        if (active is null)
+        if (active.Count == 0)
         {
             // IAM-005, invariant I-11.
             return AuthorizationDecision.Deny(
@@ -134,17 +134,61 @@ public sealed class EvidenceAuthorizationService : IEvidenceAuthorizationService
                 "IAM-005");
         }
 
-        // AR 195-5 1-4i — an alternate acts during a temporary absence of "not more than 30
-        // consecutive days"; beyond that, 3-2d requires appointment as primary on orders and a
-        // joint inventory. Whether EMC blocks or warns at the boundary is open decision DEC-05.
-        // Until that decision is made EMC WARNS and permits the action, so that a late set of
-        // orders cannot halt evidence intake, and the warning is visible to the next inspection.
-        if (active.ExceedsAlternateWindowAt(now))
+        // A current PRIMARY appointment authorizes custodian actions outright.
+        if (active.Any(a => a.AppointmentType == CustodianAppointmentType.Primary))
         {
-            var days = active.ConsecutiveDaysActiveAt(now);
+            return AuthorizationDecision.Allow();
+        }
+
+        // IAM-006 / IAM-019. Holding the ALTERNATE appointment is not itself authority to act as
+        // the evidence custodian. AR 195-5 para 1-4i: the alternate "will assume the duties and
+        // responsibilities of the primary evidence custodian DURING HIS OR HER TEMPORARY
+        // ABSENCE". An alternate may hold that appointment for months without the primary ever
+        // being absent, so an open duty-assumption period is required.
+        var alternateAppointmentIds = active
+            .Where(a => a.AppointmentType == CustodianAppointmentType.Alternate)
+            .Select(a => a.Id)
+            .ToList();
+
+        var assumptions = await _db.CustodianDutyAssumptions
+            .AsNoTracking()
+            .Where(d => d.EvidenceRoomId == evidenceRoomId.Value
+                        && d.AlternateUserId == _currentUser.UserId
+                        && alternateAppointmentIds.Contains(d.AlternateAppointmentId)
+                        && d.AlternateAssumedDutiesAt <= now
+                        && d.PrimaryResumedAt == null)
+            .ToListAsync(cancellationToken);
+
+        var assumption = assumptions.FirstOrDefault(d => d.IsActiveAt(now));
+
+        if (assumption is null)
+        {
+            return AuthorizationDecision.Deny(
+                "AR 195-5 para 1-4i: the alternate evidence custodian assumes the primary "
+                + "custodian's duties during the primary's temporary absence. No such period is "
+                + "open for you in this evidence room, so you are not currently acting as the "
+                + "evidence custodian. Record the assumption of duties - para 1-7c(1) also "
+                + "requires the prescribed statement to be entered and signed in the evidence "
+                + "ledger - before performing custodian actions.",
+                "IAM-006");
+        }
+
+        // AR 195-5 1-4i - a temporary absence is "not more than 30 consecutive days", measured
+        // from the date duties were ASSUMED (not from the appointment date, which the earlier
+        // model incorrectly used). Para 3-2d then requires the alternate to be appointed primary
+        // on orders and a joint inventory conducted.
+        //
+        // EMC warns rather than blocking here, so that late orders cannot halt evidence intake,
+        // and the warning is visible at the next inspection. Open decision DEC-05 governs whether
+        // this becomes a hard block. Note the contrast with the missing-assumption case above,
+        // which IS a block: recording an assumption is a one-form fix, whereas new appointment
+        // orders take time.
+        if (assumption.ExceedsTemporaryAbsenceLimitAt(now))
+        {
+            var days = assumption.ConsecutiveDaysAt(now);
 
             return AuthorizationDecision.Allow(
-                $"This alternate evidence custodian appointment has been active for {days} days. "
+                $"You have been acting as the evidence custodian for {days} consecutive days. "
                 + "AR 195-5 para 1-4i defines a temporary absence as not more than 30 consecutive "
                 + "days, and para 3-2d requires that if the primary custodian's absence is known "
                 + "to exceed 30 days the alternate be appointed primary on orders and a joint "

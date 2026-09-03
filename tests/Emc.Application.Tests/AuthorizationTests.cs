@@ -189,25 +189,57 @@ public class AuthorizationTests : IDisposable
     }
 
     [Fact]
-    public async Task AnAlternateBeyondThirtyDaysIsWarnedNotSilentlyAllowed()
+    public async Task AnAppointedAlternateWithNoOpenAbsenceCannotActAsCustodian()
     {
-        // IAM-006, DEC-05. AR 195-5 1-4i defines a temporary absence as not more than 30
-        // consecutive days, and 3-2d requires appointment as primary on orders plus a joint
-        // inventory beyond that. Until DEC-05 is decided EMC warns rather than blocking, so that
-        // late orders cannot halt evidence intake - and the warning is visible at the next
-        // inspection.
-        var alternateAppointment = new CustodianAppointment(
-            evidenceRoomId: _harness.EvidenceRoomId,
-            userId: _harness.AlternateCustodianUserId,
-            appointmentType: CustodianAppointmentType.Alternate,
-            effectiveFrom: _harness.Clock.UtcNow.AddDays(-45),
-            appointmentOrderReference: "ORDERS 2026-118",
-            appointingAuthority: "Commander, 902d MI Group",
-            eligibilityAttested: true,
-            recordedByUserId: _harness.CommanderUserId,
-            recordedAtUtc: _harness.Clock.UtcNow.AddDays(-45));
+        // IAM-006 / IAM-019. THE regulatory correction: AR 195-5 para 1-4i has the alternate
+        // assume the primary's duties "during his or her temporary absence". An alternate can
+        // hold that appointment for months without the primary ever being absent, so the
+        // appointment alone confers no custodial authority.
+        //
+        // The earlier model allowed the appointed alternate to act as evidence custodian every
+        // day, which is not what the regulation says.
+        _harness.AppointAlternate(_harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
 
-        _harness.Db.CustodianAppointments.Add(alternateAppointment);
+        _harness.SignInAsUnappointedCustodian();
+
+        var decision = await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
+
+        Assert.False(decision.IsAllowed);
+        Assert.Equal("IAM-006", decision.RequirementId);
+        Assert.Contains("1-4i", decision.Reason!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnAlternateWhoHasAssumedDutiesIsAuthorized()
+    {
+        var appointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        _harness.AssumeDuties(appointment, _harness.Clock.UtcNow.AddDays(-2));
+        _harness.SignInAsUnappointedCustodian();
+
+        var decision = await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
+
+        Assert.True(decision.IsAllowed, decision.Reason);
+    }
+
+    [Fact]
+    public async Task AlternateAuthorityCeasesWhenThePrimaryResumes()
+    {
+        // AR 195-5 1-7c(2) - the primary resumes and signs the ledger statement.
+        var appointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        var assumption = _harness.AssumeDuties(appointment, _harness.Clock.UtcNow.AddDays(-5));
+
+        assumption.RecordPrimaryResumption(
+            _harness.Clock.UtcNow.AddDays(-1),
+            "I BAKER, ALICE C., resume my position as primary evidence custodian.",
+            _harness.CommanderUserId,
+            _harness.Clock.UtcNow.AddDays(-1));
+
         await _harness.Db.SaveChangesAsync();
 
         _harness.SignInAsUnappointedCustodian();
@@ -215,10 +247,47 @@ public class AuthorizationTests : IDisposable
         var decision = await _harness.Authorization.AuthorizeAsync(
             EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
 
+        Assert.False(decision.IsAllowed);
+        Assert.Equal("IAM-006", decision.RequirementId);
+    }
+
+    [Fact]
+    public async Task TheThirtyDayLimitRunsFromAssumptionOfDutiesNotAppointment()
+    {
+        // IAM-019. Appointed 180 days ago, assumed duties 40 days ago: warned because the
+        // ACTING period exceeded 30 days, not because the appointment is old.
+        var appointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        _harness.AssumeDuties(appointment, _harness.Clock.UtcNow.AddDays(-40));
+        _harness.SignInAsUnappointedCustodian();
+
+        var decision = await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
+
+        // Warned, not blocked: late orders must not halt evidence intake, and the warning is
+        // visible at the next inspection (DEC-05).
         Assert.True(decision.IsAllowed);
         Assert.NotNull(decision.Warnings);
         Assert.Contains(decision.Warnings!, w => w.Contains("1-4i", StringComparison.Ordinal));
         Assert.Contains(decision.Warnings!, w => w.Contains("3-2d", StringComparison.Ordinal));
+        Assert.Contains(decision.Warnings!, w => w.Contains("40 consecutive days", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnAlternateWithinThirtyDaysIsNotWarned()
+    {
+        var appointment = _harness.AppointAlternate(
+            _harness.AlternateCustodianUserId, _harness.Clock.UtcNow.AddDays(-180));
+
+        _harness.AssumeDuties(appointment, _harness.Clock.UtcNow.AddDays(-10));
+        _harness.SignInAsUnappointedCustodian();
+
+        var decision = await _harness.Authorization.AuthorizeAsync(
+            EmcPermissions.AcceptEvidenceIntake, _harness.EvidenceRoomId);
+
+        Assert.True(decision.IsAllowed, decision.Reason);
+        Assert.Empty(decision.Warnings ?? []);
     }
 
     [Fact]
