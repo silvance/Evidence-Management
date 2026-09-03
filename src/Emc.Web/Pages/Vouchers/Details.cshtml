@@ -400,6 +400,20 @@
     </div>
 }
 
+@if (Model.PaperAdvisories.Count > 0)
+{
+    <div class="panel">
+        <h2>Paper record and companion record — advisories</h2>
+        <p class="hint">Cross-checks between where the paper DA Form 4137 is recorded to be and what the companion record says. Advisory only: nothing here changes a state; a person looks.</p>
+        <ul>
+        @foreach (var a in Model.PaperAdvisories)
+        {
+            <li><strong>[@a.Code]</strong> <span class="hint">AR 195-5 @a.Regulation</span> — @a.Message</li>
+        }
+        </ul>
+    </div>
+}
+
 @if (Model.PhysicalDocument is { } paper && Model.HasOfficialDocumentNumber)
 {
     <div class="panel">
@@ -476,7 +490,7 @@
                             <option value="@c.Id">@c.Kind — @c.Label (@c.VouchersFiled filed)</option>
                         }
                     </select>
-                    <span class="hint">Containers are created on the <a asp-page="/Filing/Containers" asp-route-roomId="@Model.EvidenceRoomId">paper files page</a>.</span>
+                    <span class="hint">Containers are created on the <a asp-page="/Filing/Containers" asp-route-roomId="@Model.EvidenceRoomId">paper files page</a>; the room's files and retention clock are on the <a asp-page="/Filing/Retention" asp-route-roomId="@Model.EvidenceRoomId">paper dashboard</a>.</span>
                 </div>
                 <div class="form-row">
                     <label asp-for="Physical.OccurredAtLocal">Date and time (evidence-room local)</label>

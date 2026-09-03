@@ -30,6 +30,7 @@ public class DetailsModel : PageModel
 
     private readonly IEvidenceRoomTimeService _time;
     private readonly IPhysicalDocumentService _physical;
+    private readonly IPhysicalDigitalConsistencyService _consistency;
     private readonly Emc.Application.Documents.ISourceDocumentService _documents;
 
     public DetailsModel(
@@ -39,9 +40,11 @@ public class DetailsModel : PageModel
         IEmcPageAuthorization authorization,
         IEvidenceRoomTimeService time,
         IPhysicalDocumentService physical,
+        IPhysicalDigitalConsistencyService consistency,
         Emc.Application.Documents.ISourceDocumentService documents)
     {
         _physical = physical;
+        _consistency = consistency;
         _documents = documents;
         _reads = reads;
         _vouchers = vouchers;
@@ -116,6 +119,7 @@ public class DetailsModel : PageModel
 
     /// <summary>The PAPER DA Form 4137 record (AR 195-5 2-4d, 2-4f, 2-4h). Not the scan.</summary>
     public PhysicalDocumentView? PhysicalDocument { get; private set; }
+    public IReadOnlyList<PaperConsistencyAdvisory> PaperAdvisories { get; private set; } = [];
     public bool CanManagePhysicalFiles { get; private set; }
 
     /// <summary>Companion copies (scans) attached to this voucher. Never the original.</summary>
@@ -446,6 +450,7 @@ public class DetailsModel : PageModel
         CanManagePhysicalFiles =
             (await _authorization.CheckAsync(EmcPermissions.ManagePhysicalFiles, view.EvidenceRoomId)).IsAllowed;
         PhysicalDocument = await _physical.GetForVoucherAsync(id);
+        PaperAdvisories = await _consistency.GetAdvisoriesAsync(id);
         SourceDocuments = await _documents.ListForVoucherAsync(id);
         CanUploadSourceDocument = (await _authorization.CheckAsync(EmcPermissions.UploadSourceDocument, view.EvidenceRoomId)).IsAllowed;
 

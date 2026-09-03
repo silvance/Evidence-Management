@@ -46,6 +46,8 @@ public static class DependencyInjection
         services.AddScoped<IEvidenceIntakeService, EvidenceIntakeService>();
         services.AddScoped<IItemHistoryService, ItemHistoryService>();
         services.AddScoped<Emc.Application.Filing.IPhysicalDocumentService, Emc.Application.Filing.PhysicalDocumentService>();
+        services.AddScoped<Emc.Application.Filing.IPhysicalDigitalConsistencyService, Emc.Application.Filing.PhysicalDigitalConsistencyService>();
+        services.AddScoped<Emc.Application.Filing.IRetentionDashboardService, Emc.Application.Filing.RetentionDashboardService>();
 
         // Source documents: immutable filesystem store outside the web root, PDFium rendering, and
         // the ingestion/view/download service. Options come from the SourceDocuments section.

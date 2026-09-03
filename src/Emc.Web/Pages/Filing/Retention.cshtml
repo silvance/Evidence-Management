@@ -1,0 +1,78 @@
+@page "/Filing/Retention/{roomId:int}"
+@using Emc.Application.Filing
+@model Emc.Web.Pages.Filing.RetentionModel
+@{
+    ViewData["Title"] = "Paper files and retention";
+    var v = Model.View!;
+}
+
+<h1>Paper DA Form 4137 files — evidence room @v.EvidenceRoomId</h1>
+
+<p class="regulatory-note">The PHYSICAL original DA Form 4137 is the record. This page shows where each original (or the copy kept in its
+    place) is filed, and the retention clock: <strong>[REG] AR 195-5 2-4h</strong> — the inactive file is disposed of three years after the
+    document became inactive, by the month-and-year label; the case's status plays no part. Eligibility is computed from the inactive date; destruction
+    is confirmed by a person on the voucher page. <strong>[DESIGN] DEC-07:</strong> nothing digital is ever destroyed.
+    As of @v.AsOfUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z. <a asp-page="/Filing/Containers" asp-route-roomId="@v.EvidenceRoomId">Folders and binders</a>.</p>
+
+@{
+    async Task Table(string title, IReadOnlyList<RetentionRow> rows, bool showRetention)
+    {
+        <div class="panel">
+            <h2>@title (@rows.Count)</h2>
+            @if (rows.Count == 0) { <p class="hint">None.</p> }
+            else
+            {
+                <table>
+                    <thead><tr><th>Voucher</th><th>Voucher status</th><th>Original</th><th>Copy</th><th>Filed in</th>@if (showRetention) { <th>Inactive since</th><th>Eligible</th><th>Retention</th> }</tr></thead>
+                    <tbody>
+                    @foreach (var r in rows)
+                    {
+                        <tr>
+                            <td><a asp-page="/Vouchers/Details" asp-route-id="@r.VoucherId">@r.VoucherIdentifier</a></td>
+                            <td>@r.VoucherStatus</td>
+                            <td>@r.OriginalStatus</td>
+                            <td>@(r.HoldsCopyOnly ? $"copy only ({r.CopyReason})" : "—")</td>
+                            <td>@(r.ContainerLabel ?? "—")</td>
+                            @if (showRetention)
+                            {
+                                <td>@(r.InactiveSinceUtc?.ToString("dd MMM yy").ToUpperInvariant() ?? "—")</td>
+                                <td>@(r.DestructionEligibleAtUtc?.ToString("dd MMM yy").ToUpperInvariant() ?? "—")</td>
+                                <td>@r.RetentionStatus @(r.DestructionConfirmedAtUtc is { } c ? $"({c.ToString("dd MMM yy").ToUpperInvariant()})" : "")</td>
+                            }
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+}
+
+@if (v.Unfiled.Count > 0)
+{
+    <div class="message message--warning" role="alert"><strong>Review required.</strong> <span>@v.Unfiled.Count accepted voucher(s) have no paper-record filing recorded (AR 195-5 2-4d, 2-4f(1)).</span></div>
+}
+
+@{ await Table("Active file (AR 195-5 2-4f(1))", v.Active, false); }
+@{ await Table("Suspense folders (AR 195-5 2-4f(2), 2-4f(3))", v.Suspense, false); }
+@{ await Table("Inactive — retain (AR 195-5 2-4h)", v.InactiveRetain, true); }
+@{ await Table("Inactive — eligible for destruction (3 years from the inactive date)", v.InactiveEligibleForDestruction, true); }
+@{ await Table("Inactive — destruction confirmed", v.InactiveDestructionConfirmed, true); }
+@{ await Table("Accepted, no paper filing recorded", v.Unfiled, false); }
+
+<div class="panel">
+    <h2>Folders and binders</h2>
+    <table>
+        <thead><tr><th>Kind</th><th>Label</th><th>Range</th><th>Disposition month</th><th>Vouchers filed</th><th>Capacity</th></tr></thead>
+        <tbody>
+        @foreach (var c in v.Containers)
+        {
+            <tr class="@(c.OverCapacity ? "ocr-field--outstanding" : "")">
+                <td>@c.Container.Kind</td><td>@c.Container.Label</td><td>@(c.Container.RangeFrom is null ? "—" : $"{c.Container.RangeFrom} – {c.Container.RangeTo}")</td>
+                <td>@(c.Container.DispositionLabel ?? "—")</td><td>@c.Container.VouchersFiled</td>
+                <td>@(c.Capacity == 0 ? "—" : $"{c.Capacity} (AR 195-5 2-4f(1))")@(c.OverCapacity ? " — OVER" : "")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
