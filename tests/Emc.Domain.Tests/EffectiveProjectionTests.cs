@@ -39,10 +39,15 @@ public class EffectiveProjectionTests
     }
 
     private static CorrectionEvent Correct(
-        ItemEvent target, string field, string? value, int sequence, string reason = "Recorded in error")
+        ItemEvent target,
+        string field,
+        string? value,
+        int sequence,
+        string reason = "Recorded in error",
+        IEnumerable<CorrectionEvent>? existing = null)
     {
         var correction = CorrectionFactory.Create(
-            target, field, value, reason,
+            target, existing ?? [], field, value, reason,
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local.AddMinutes(sequence), Local.ToUniversalTime().AddMinutes(sequence), 17,
             mfrReference: "MFR-2026-014", supervisorNotifiedUserId: 4,
@@ -62,10 +67,11 @@ public class EffectiveProjectionTests
         int toReferenceId,
         string toDisplayText,
         int sequence,
-        string reason = "Recorded in error")
+        string reason = "Recorded in error",
+        IEnumerable<CorrectionEvent>? existing = null)
     {
         var correction = CorrectionFactory.CreateReferenceCorrection(
-            target, field, toReferenceId, toDisplayText, reason,
+            target, existing ?? [], field, toReferenceId, toDisplayText, reason,
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local.AddMinutes(sequence), Local.ToUniversalTime().AddMinutes(sequence), 17,
             mfrReference: "MFR-2026-014", supervisorNotifiedUserId: 4,
@@ -149,7 +155,7 @@ public class EffectiveProjectionTests
     {
         var location = NewLocationEvent(1, "Shelf B / Bin 14");
         var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
-        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3);
+        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3, existing: [first]);
 
         var effective = new EffectiveItemEvent(location, [first, second]);
 
@@ -252,7 +258,7 @@ public class EffectiveProjectionTests
     {
         var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
         var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
-        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3);
+        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3, existing: [first]);
 
         var effective = new EffectiveItemEvent(location, [first, second]);
 
@@ -310,6 +316,125 @@ public class EffectiveProjectionTests
         Assert.Null(effective.EffectiveReceivedByPartyId);
         Assert.Null(effective.EffectiveReleasedByPartyId);
         Assert.Null(effective.EffectiveReferenceIdOf(nameof(LocationEvent.Reason)));
+    }
+
+    [Fact]
+    public void ThreeSequentialCorrectionsEachRecordWhatTheyActuallyChanged()
+    {
+        // AUD-017. Bin 14 -> Bin 19 -> Bin 21 -> High-Value Safe. AR 195-5 1-7c(3) requires an
+        // MFR outlining THE ERROR and the corrective action; for the second correction the error
+        // was Bin 19, not Bin 14. Reporting it as "Bin 14 -> Bin 21" would describe a change
+        // that never happened and drop Bin 19 from the account of what went wrong.
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+
+        var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3, existing: [first]);
+        var third = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 7, "High-Value Safe / Drawer 2", 4, existing: [first, second]);
+
+        // Every correction keeps the ORIGINAL readable (2-5b(5)) ...
+        Assert.All([first, second, third], c => Assert.Equal("Shelf B / Bin 14", c.OriginalValue));
+        Assert.All([first, second, third], c => Assert.Equal(14, c.OriginalReferenceId));
+
+        // ... and states what IT changed.
+        Assert.Equal("Shelf B / Bin 14", first.PreviousEffectiveValue);
+        Assert.Equal(14, first.PreviousEffectiveReferenceId);
+        Assert.True(first.CorrectsTheOriginalEntry);
+
+        Assert.Equal("Shelf B / Bin 19", second.PreviousEffectiveValue);
+        Assert.Equal(19, second.PreviousEffectiveReferenceId);
+        Assert.False(second.CorrectsTheOriginalEntry);
+
+        Assert.Equal("Shelf B / Bin 21", third.PreviousEffectiveValue);
+        Assert.Equal(21, third.PreviousEffectiveReferenceId);
+        Assert.False(third.CorrectsTheOriginalEntry);
+
+        var effective = new EffectiveItemEvent(location, [first, second, third]);
+        Assert.Equal(7, effective.EffectiveStorageLocationId);
+        Assert.Equal("High-Value Safe / Drawer 2", effective.EffectiveValueOf(nameof(LocationEvent.StorageLocationPath)));
+        Assert.Equal(3, effective.Corrections.Count);
+    }
+
+    [Fact]
+    public void ACorrectionThatRestatesTheCurrentValueIsRefused_EvenIfItDiffersFromTheOriginal()
+    {
+        // Bin 14 -> Bin 19, then "correct" to Bin 19 again. That changes nothing about what the
+        // record reads, so it documents nothing - even though Bin 19 differs from the original.
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+
+        var ex = Assert.Throws<DomainRuleViolationException>(() => CorrectTo(
+            location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 3,
+            existing: [first]));
+
+        Assert.Equal("AUD-004", ex.RequirementId);
+    }
+
+    [Fact]
+    public void RestoringTheOriginalValueIsAValidCorrection()
+    {
+        // The mirror case. Bin 14 -> Bin 19 was itself the mistake; correcting back to Bin 14
+        // changes what the record reads and must be allowed. The old "compare to the original"
+        // rule would have refused it as a no-op.
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+
+        var back = CorrectTo(
+            location, nameof(LocationEvent.StorageLocationPath), 14, "Shelf B / Bin 14", 3,
+            reason: "The first correction was itself in error.", existing: [first]);
+
+        Assert.Equal(19, back.PreviousEffectiveReferenceId);
+        Assert.Equal(14, back.CorrectedReferenceId);
+
+        var effective = new EffectiveItemEvent(location, [first, back]);
+        Assert.Equal(14, effective.EffectiveStorageLocationId);
+
+        // Both corrections stay on the record.
+        Assert.Equal(2, effective.Corrections.Count);
+    }
+
+    [Fact]
+    public void ABackDatedCorrectionDoesNotTakePrecedenceOverALaterAppendedOne()
+    {
+        // The effective value follows APPEND ORDER, not a user-supplied occurrence time. If it
+        // followed occurrence time, whoever entered a correction last could back-date it to win
+        // over one entered before it - choosing the order of the record rather than observing
+        // it. Sequence numbers are assigned by the server and cannot be chosen.
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+
+        // Appended second (sequence 3) but dated EARLIER than the first correction.
+        var appendedFirst = CorrectionFactory.CreateReferenceCorrection(
+            location, [], nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19",
+            "first entered", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local.AddMinutes(30), Local.ToUniversalTime().AddMinutes(30), 1);
+        appendedFirst.AssignSequence(100, 2);
+
+        var appendedSecondButBackDated = CorrectionFactory.CreateReferenceCorrection(
+            location, [appendedFirst], nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21",
+            "entered later, dated earlier", CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            Local.AddMinutes(5), Local.ToUniversalTime().AddMinutes(5), 1);
+        appendedSecondButBackDated.AssignSequence(100, 3);
+
+        // Presented in a deliberately misleading order; the projection must not care.
+        var effective = new EffectiveItemEvent(location, [appendedSecondButBackDated, appendedFirst]);
+
+        Assert.Equal(21, effective.EffectiveStorageLocationId);
+        Assert.Equal(2, effective.Corrections[0].SequenceNumber);
+        Assert.Equal(3, effective.Corrections[1].SequenceNumber);
+    }
+
+    [Fact]
+    public void AChainedCorrectionSummarizesWhatItChangedAndNamesTheOriginalSeparately()
+    {
+        var location = NewLocationEvent(1, "Shelf B / Bin 14", 14);
+        var first = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 19, "Shelf B / Bin 19", 2);
+        var second = CorrectTo(location, nameof(LocationEvent.StorageLocationPath), 21, "Shelf B / Bin 21", 3, existing: [first]);
+
+        Assert.Contains("\"Shelf B / Bin 14\" → \"Shelf B / Bin 19\"", first.Summarize(), StringComparison.Ordinal);
+        Assert.DoesNotContain("as originally recorded", first.Summarize(), StringComparison.Ordinal);
+
+        Assert.Contains("\"Shelf B / Bin 19\" → \"Shelf B / Bin 21\"", second.Summarize(), StringComparison.Ordinal);
+        Assert.Contains("as originally recorded: \"Shelf B / Bin 14\"", second.Summarize(), StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Shelf B / Bin 14\" → \"Shelf B / Bin 21\"", second.Summarize(), StringComparison.Ordinal);
     }
 
     // Note: "corrections belonging to another event are ignored" cannot be asserted here.

@@ -299,6 +299,8 @@ CorrectionEvent #402
     ReferenceKind        = CustodyParty
     OriginalReferenceId  = 88
     CorrectedReferenceId = 91                     ← the replacement ROW
+    PreviousEffectiveValue       = "Smith"        ← what THIS correction changed
+    PreviousEffectiveReferenceId = 88             ← (= original here; differs in a chain)
     Reason               = "Transcription error; DA Form 4137 shows Jones"
     CorrectedByUserId    = 17
     OccurredAtUtc        = 2026-09-03T14:22:11Z
@@ -431,6 +433,7 @@ alone.
 | I-29 | A change of primary custodian is incomplete until the joint inventory is recorded with discrepancies resolved and the ledger statement entered | 3-2d, 3-2g(3) **[REG]** |
 | I-30 | A correction to a field that names a row carries the replacement identifier, and its display text is read from that row | **[DESIGN]** |
 | I-31 | A corrected storage location resolves within the item's own evidence room, on the same terms as an assigned one | 2-4c, 2-4e **[DESIGN]** |
+| I-32 | A correction records the value it changed as well as the original; which correction to a field is current is decided by server-assigned append order, never by a user-supplied occurrence time | 1-7c(3), 2-5b(5) **[CONTROL]** |
 | I-15 | A `CorrectionEvent` must carry a reason, and an MFR reference where 1-7c(3) applies | 1-7c(3) **[REG]** |
 | I-16 | Voucher status is always computed; there is no settable status column | 2-4h **[REG]** |
 | I-17 | Terminal-state items accept no further custody or location events except corrections | **[DESIGN]** |

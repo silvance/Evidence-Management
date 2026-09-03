@@ -362,6 +362,100 @@ public class AppendOnlyAndCorrectionTests : IDisposable
     }
 
     [Fact]
+    public async Task ThreeSequentialCorrectionsRecordTheChainEndToEnd()
+    {
+        // AUD-017, end to end through the service, with real identifiers and sequence numbers
+        // assigned by the recorder. Bin 14 -> Bin 19 -> High-Value Safe -> Bin 14 again.
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        RecordCorrectionRequest To(int locationId, string reason) => new(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), null, reason,
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-2026-040", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: locationId);
+
+        var r1 = await _harness.History.RecordCorrectionAsync(To(_harness.ShelfBBin19Id, "Wrong bin at intake"));
+        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        var r2 = await _harness.History.RecordCorrectionAsync(To(_harness.HighValueSafeId, "Bin 19 was also wrong"));
+        _harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        var r3 = await _harness.History.RecordCorrectionAsync(To(_harness.ShelfBBin14Id, "It was in Bin 14 after all"));
+
+        Assert.True(r1.Succeeded, r1.Error);
+        Assert.True(r2.Succeeded, r2.Error);
+        Assert.True(r3.Succeeded, r3.Error);
+
+        var history = await _harness.History.GetAsync(itemId);
+        var corrections = history!.History
+            .Where(r => r.Kind == ItemEventKind.Correction)
+            .OrderBy(r => r.SequenceNumber)
+            .ToList();
+
+        Assert.Equal(3, corrections.Count);
+
+        // Each states what IT changed; all keep the original.
+        Assert.Equal("Shelf B / Bin 14", corrections[0].CorrectionPreviousValue);
+        Assert.Equal("Shelf B / Bin 19", corrections[0].CorrectionNewValue);
+        Assert.True(corrections[0].CorrectionCorrectsTheOriginalEntry);
+
+        Assert.Equal("Shelf B / Bin 19", corrections[1].CorrectionPreviousValue);
+        Assert.Equal("High-Value Safe / Drawer 2", corrections[1].CorrectionNewValue);
+        Assert.False(corrections[1].CorrectionCorrectsTheOriginalEntry);
+
+        Assert.Equal("High-Value Safe / Drawer 2", corrections[2].CorrectionPreviousValue);
+        Assert.Equal("Shelf B / Bin 14", corrections[2].CorrectionNewValue);
+        Assert.False(corrections[2].CorrectionCorrectsTheOriginalEntry);
+
+        Assert.All(corrections, c => Assert.Equal("Shelf B / Bin 14", c.CorrectionOriginalValue));
+
+        // The record ends where the third correction put it, by identifier and by text.
+        Assert.Equal(_harness.ShelfBBin14Id, history.CurrentLocationId);
+        Assert.Equal("Shelf B / Bin 14", history.CurrentLocationPath);
+        Assert.True(history.ChainVerification.IsIntact);
+
+        // And the audit trail's previous value is what each correction actually changed.
+        var audits = _harness.Db.AuditEvents
+            .Where(a => a.AffectedRecordType == nameof(CorrectionEvent))
+            .OrderBy(a => a.Id)
+            .Select(a => a.PreviousValue)
+            .ToList();
+
+        Assert.Equal(["Shelf B / Bin 14", "Shelf B / Bin 19", "High-Value Safe / Drawer 2"], audits);
+    }
+
+    [Fact]
+    public async Task RestatingTheCurrentValueIsRefusedAfterAnEarlierCorrection()
+    {
+        var itemId = await AcceptedItemAsync();
+
+        await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(
+            itemId, _harness.ShelfBBin14Id, _harness.Clock.UtcNow, null, null));
+
+        var locationEvent = await _harness.Db.ItemEvents
+            .OfType<LocationEvent>()
+            .FirstAsync(e => e.EvidenceItemId == itemId);
+
+        RecordCorrectionRequest To(int locationId) => new(
+            locationEvent.Id, nameof(LocationEvent.StorageLocationPath), null, "reason",
+            CorrectionCategory.PostAcceptanceAccountabilityRecord,
+            "MFR-1", _harness.CommanderUserId, _harness.Clock.UtcNow,
+            CorrectedReferenceId: locationId);
+
+        Assert.True((await _harness.History.RecordCorrectionAsync(To(_harness.ShelfBBin19Id))).Succeeded);
+
+        var again = await _harness.History.RecordCorrectionAsync(To(_harness.ShelfBBin19Id));
+
+        Assert.False(again.Succeeded);
+        Assert.Equal("AUD-004", again.RequirementId);
+    }
+
+    [Fact]
     public async Task SeveralFieldsOfOneEventCanBeCorrectedIndependently()
     {
         // AUD-015. The old "one correction per event, ever" rule made a second error

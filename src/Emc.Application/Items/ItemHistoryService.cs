@@ -51,7 +51,14 @@ public sealed record ItemHistoryRow(
     /// form offer the right control - a picker rather than a text box - instead of relying on the
     /// server to reject free text after the fact (AUD-016).
     /// </summary>
-    IReadOnlyDictionary<string, CorrectableFieldReference>? ReferenceFieldKinds = null)
+    IReadOnlyDictionary<string, CorrectableFieldReference>? ReferenceFieldKinds = null,
+
+    /// <summary>
+    /// What this correction actually changed: the field as it read immediately before it. Equal
+    /// to the original value only for the first correction to a field (AUD-017).
+    /// </summary>
+    string? CorrectionPreviousValue = null,
+    bool CorrectionCorrectsTheOriginalEntry = true)
 {
     /// <summary>True when any field of this event has been corrected.</summary>
     public bool HasCorrections => CorrectedFieldNames.Count > 0;
@@ -215,7 +222,9 @@ public sealed class ItemHistoryService : IItemHistoryService
                     CorrectionOriginalReferenceId: correction?.OriginalReferenceId,
                     CorrectionNewReferenceId: correction?.CorrectedReferenceId,
                     ReferenceFieldKinds: e.ReferenceFields.ToDictionary(
-                        f => f.Key, f => f.Value.Kind, StringComparer.Ordinal));
+                        f => f.Key, f => f.Value.Kind, StringComparer.Ordinal),
+                    CorrectionPreviousValue: correction?.PreviousEffectiveValue,
+                    CorrectionCorrectsTheOriginalEntry: correction?.CorrectsTheOriginalEntry ?? true);
             })
             .ToList();
 
@@ -331,6 +340,14 @@ public sealed class ItemHistoryService : IItemHistoryService
                 "AUD-016");
         }
 
+        // AUD-017. Every correction already recorded against this event, so the factory can
+        // derive what the field reads NOW - a second correction changes the first correction's
+        // value, not the original entry. Loaded in full: a partial set would make that wrong.
+        var existingCorrections = await _db.ItemEvents
+            .OfType<CorrectionEvent>()
+            .Where(c => c.CorrectsEventId == correctedEvent.Id)
+            .ToListAsync(ct);
+
         var now = _clock.UtcNow;
         CorrectionEvent correction;
 
@@ -341,6 +358,7 @@ public sealed class ItemHistoryService : IItemHistoryService
             correction = referenceKind == CorrectableFieldReference.None
                 ? CorrectionFactory.Create(
                     correctedEvent: correctedEvent,
+                    existingCorrections: existingCorrections,
                     fieldName: request.FieldName,
                     correctedValue: request.CorrectedValue,
                     reason: request.Reason,
@@ -353,6 +371,7 @@ public sealed class ItemHistoryService : IItemHistoryService
                     supervisorNotifiedAtUtc: request.SupervisorNotifiedAtUtc)
                 : CorrectionFactory.CreateReferenceCorrection(
                     correctedEvent: correctedEvent,
+                    existingCorrections: existingCorrections,
                     fieldName: request.FieldName,
                     correctedReferenceId: request.CorrectedReferenceId!.Value,
                     correctedDisplayText: correctedDisplayText!,
@@ -376,7 +395,7 @@ public sealed class ItemHistoryService : IItemHistoryService
             AuditEventType.AccountabilityActionRecorded,
             nameof(CorrectionEvent),
             $"{item.Voucher.DisplayIdentifier}/{item.ItemNumber}#{correctedEvent.Id}",
-            previousValue: correction.OriginalValue,
+            previousValue: correction.PreviousEffectiveValue,
             newValue: correction.CorrectedValue,
             reason: request.Reason);
 

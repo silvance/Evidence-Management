@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260903131814_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260903134249_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -956,6 +956,13 @@ namespace Emc.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("OriginalValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int?>("PreviousEffectiveReferenceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PreviousEffectiveValue")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 

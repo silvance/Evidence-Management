@@ -227,8 +227,27 @@ of Bin 19 would not have listed the item the record said was in it. The same evi
 that governs assigning a location governs correcting one, so a correction is not a way around a
 check the original action applied.
 
-A field may be corrected more than once, and a correction may itself be corrected; the effective
-value is simply the most recent correction for that field. Nothing is ever hidden.
+A field may be corrected more than once, and a correction may itself be corrected. Two rules
+govern a chain of corrections to one field:
+
+**Each correction records what it changed, not only what was first written.** `OriginalValue` is
+the entry as originally recorded and is the same on every correction in the chain — 2-5b(5)'s
+struck-through entry, always readable. `PreviousEffectiveValue` is the field as it read
+immediately before *this* correction. For Bin 14 → Bin 19 → Bin 21 the second correction is a
+correction *of Bin 19*: 1-7c(3)'s MFR must outline the error, and the error was Bin 19. Reporting
+it as "Bin 14 → Bin 21" would describe a change that never happened. The no-change check and the
+audit trail's previous value both use the effective value, so restating the current value is
+refused even when it differs from the original, and restoring the original after a mistaken
+correction is allowed.
+
+**Which correction is current follows append order alone.** Corrections are ordered by
+`SequenceNumber`, which the server assigns and which is gapless; never by `OccurredAtUtc`, which
+comes from a form field. Back-dated entry is legitimate for events, so a user can supply any
+occurrence time — and if ordering used it, whoever entered a correction last could back-date it
+to take precedence over one entered before it. (Which *location event* is current is a different
+question — the item physically moved at a time — and that one does use occurrence time.)
+
+Nothing is ever hidden.
 
 The read model shows the corrected value with a visible **"Corrected"** marker; the original is
 one click away and is never hidden from the item history. The regulation's own metaphor is a

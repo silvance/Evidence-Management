@@ -124,12 +124,12 @@ public class EventAndCorrectionTests
         var corrected = NewCustodyEvent("SMITH, JOHN A.");
 
         Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.PurposeOfChangeOfCustody), "Released to owner", "   ",
+            corrected, [], nameof(CustodyEvent.PurposeOfChangeOfCustody), "Released to owner", "   ",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1));
 
         Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.PurposeOfChangeOfCustody),
+            corrected, [], nameof(CustodyEvent.PurposeOfChangeOfCustody),
             "Received into evidence room", "No change",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1));
@@ -145,7 +145,7 @@ public class EventAndCorrectionTests
 
         var ex = Assert.Throws<DomainRuleViolationException>(
             () => CorrectionFactory.CreateReferenceCorrection(
-                located, nameof(LocationEvent.StorageLocationPath),
+                located, [], nameof(LocationEvent.StorageLocationPath),
                 correctedReferenceId: located.StorageLocationId,
                 correctedDisplayText: "Shelf B / Bin 19",
                 reason: "Renamed",
@@ -168,7 +168,7 @@ public class EventAndCorrectionTests
         var corrected = NewCustodyEvent("SMITH, JOHN A.");
 
         var correction = CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.PurposeOfChangeOfCustody),
+            corrected, [], nameof(CustodyEvent.PurposeOfChangeOfCustody),
             "Released to trial counsel",
             "Transcription error; the DA Form 4137 shows release to trial counsel.",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
@@ -202,7 +202,7 @@ public class EventAndCorrectionTests
         })
         {
             var ex = Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-                evt, field, "some other text", "reason",
+                evt, [], field, "some other text", "reason",
                 CorrectionCategory.PostAcceptanceAccountabilityRecord,
                 Local, Local.ToUniversalTime(), 1));
 
@@ -219,7 +219,7 @@ public class EventAndCorrectionTests
 
         var ex = Assert.Throws<DomainRuleViolationException>(
             () => CorrectionFactory.CreateReferenceCorrection(
-                located, nameof(LocationEvent.Reason), 99, "text", "reason",
+                located, [], nameof(LocationEvent.Reason), 99, "text", "reason",
                 CorrectionCategory.PostAcceptanceAccountabilityRecord,
                 Local, Local.ToUniversalTime(), 1));
 
@@ -235,7 +235,7 @@ public class EventAndCorrectionTests
         var located = NewLocationEvent();
 
         var correction = CorrectionFactory.CreateReferenceCorrection(
-            located, nameof(LocationEvent.StorageLocationPath),
+            located, [], nameof(LocationEvent.StorageLocationPath),
             correctedReferenceId: 42,
             correctedDisplayText: "902d MI Group Evidence Room / Shelf B / Bin 19",
             reason: "Recorded against the wrong bin during intake.",
@@ -264,7 +264,7 @@ public class EventAndCorrectionTests
         var located = NewLocationEvent();
 
         CorrectionEvent Correction(int toId) => CorrectionFactory.CreateReferenceCorrection(
-            located, nameof(LocationEvent.StorageLocationPath), toId, "Shelf B / Bin 19",
+            located, [], nameof(LocationEvent.StorageLocationPath), toId, "Shelf B / Bin 19",
             "reason", CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1);
 
@@ -281,7 +281,7 @@ public class EventAndCorrectionTests
         var corrected = NewCustodyEvent();
 
         var ex = Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-            corrected, "NotARealField", "value", "reason",
+            corrected, [], "NotARealField", "value", "reason",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1));
 
@@ -298,7 +298,7 @@ public class EventAndCorrectionTests
             "037-26", null, true, Local, Local.ToUniversalTime(), 1);
 
         Assert.Throws<DomainRuleViolationException>(() => CorrectionFactory.Create(
-            numberEvent, nameof(DocumentNumberEvent.DocumentNumber), "038-26", "typo",
+            numberEvent, [], nameof(DocumentNumberEvent.DocumentNumber), "038-26", "typo",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1));
     }
@@ -313,7 +313,7 @@ public class EventAndCorrectionTests
         var corrected = NewCustodyEvent();
 
         var custodianCorrection = CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.Notes), "new", "reason",
+            corrected, [], nameof(CustodyEvent.Notes), "new", "reason",
             CorrectionCategory.PostAcceptanceAccountabilityRecord,
             Local, Local.ToUniversalTime(), 1);
 
@@ -321,7 +321,7 @@ public class EventAndCorrectionTests
         Assert.False(custodianCorrection.SatisfiesParagraph1_7c3);
 
         var agentCorrection = CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.Notes), "new", "reason",
+            corrected, [], nameof(CustodyEvent.Notes), "new", "reason",
             CorrectionCategory.PreAcceptanceFormCorrection,
             Local, Local.ToUniversalTime(), 1);
 
@@ -329,7 +329,7 @@ public class EventAndCorrectionTests
         Assert.True(agentCorrection.SatisfiesParagraph1_7c3);
 
         var transcriptionCorrection = CorrectionFactory.Create(
-            corrected, nameof(CustodyEvent.Notes), "new", "OCR read 8G4P2K8; verified 8G4P2K3",
+            corrected, [], nameof(CustodyEvent.Notes), "new", "OCR read 8G4P2K8; verified 8G4P2K3",
             CorrectionCategory.TranscriptionVerification,
             Local, Local.ToUniversalTime(), 1);
 

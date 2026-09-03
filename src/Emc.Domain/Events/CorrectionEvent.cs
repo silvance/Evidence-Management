@@ -60,6 +60,8 @@ public class CorrectionEvent : ItemEvent
         CorrectableFieldReference referenceKind,
         int? originalReferenceId,
         int? correctedReferenceId,
+        string? previousEffectiveValue,
+        int? previousEffectiveReferenceId,
         string? notes = null)
         : base(occurredAtLocal, recordedAtUtc, correctedByUserId, notes)
     {
@@ -68,12 +70,14 @@ public class CorrectionEvent : ItemEvent
         Reason = Guard.NotBlank(reason, "AUD-004", "Reason for the correction");
         FieldName = Guard.NotBlank(fieldName, "AUD-004", "Corrected field name");
 
-        // A correction to a reference field is judged on the IDENTIFIER, not the text. Two
-        // storage locations in different rooms can display the same path, and renaming a location
-        // would otherwise make a genuine move look like a no-op.
+        // Compared against the value as the record CURRENTLY READS, not against the value as
+        // first recorded. Correcting Bin 14 to Bin 19 and then Bin 19 to Bin 19 changes nothing
+        // and must be refused, even though Bin 19 differs from the original Bin 14. Judged on the
+        // IDENTIFIER for a reference field: two storage locations in different rooms can display
+        // the same path, and renaming one would otherwise make a genuine move look like a no-op.
         var changesNothing = referenceKind == CorrectableFieldReference.None
-            ? string.Equals(originalValue, correctedValue, StringComparison.Ordinal)
-            : originalReferenceId == correctedReferenceId;
+            ? string.Equals(previousEffectiveValue, correctedValue, StringComparison.Ordinal)
+            : previousEffectiveReferenceId == correctedReferenceId;
 
         if (changesNothing)
         {
@@ -113,6 +117,8 @@ public class CorrectionEvent : ItemEvent
         ReferenceKind = referenceKind;
         OriginalReferenceId = originalReferenceId;
         CorrectedReferenceId = correctedReferenceId;
+        PreviousEffectiveValue = previousEffectiveValue;
+        PreviousEffectiveReferenceId = previousEffectiveReferenceId;
     }
 
     public override ItemEventKind Kind => ItemEventKind.Correction;
@@ -132,6 +138,32 @@ public class CorrectionEvent : ItemEvent
     public string? OriginalValue { get; private set; }
 
     public string? CorrectedValue { get; private set; }
+
+    /// <summary>
+    /// The value THIS correction changed - the field as the record read immediately before it,
+    /// which is <see cref="OriginalValue"/> only when this is the first correction to the field.
+    ///
+    /// Both are needed and they answer different questions. AR 195-5 2-5b(5) keeps the ORIGINAL
+    /// entry readable, so an auditor must always be able to see what was first written. But
+    /// AR 195-5 1-7c(3) requires an MFR outlining THE ERROR and THE CORRECTIVE ACTION TAKEN, and
+    /// for the second correction in a chain the error was not the original entry: correcting
+    /// Bin 14 to Bin 19 and then to Bin 21 is a correction OF BIN 19. Reporting it as
+    /// "Bin 14 to Bin 21" would describe a change that never happened and would silently drop
+    /// Bin 19 from the account of what went wrong.
+    /// </summary>
+    public string? PreviousEffectiveValue { get; private set; }
+
+    /// <summary>The identifier <see cref="PreviousEffectiveValue"/> named, for a reference field.</summary>
+    public int? PreviousEffectiveReferenceId { get; private set; }
+
+    /// <summary>
+    /// True when this correction changed the field's first recorded value rather than an earlier
+    /// correction's. Derived, so the two cannot drift apart.
+    /// </summary>
+    public bool CorrectsTheOriginalEntry
+        => ReferenceKind == CorrectableFieldReference.None
+            ? string.Equals(PreviousEffectiveValue, OriginalValue, StringComparison.Ordinal)
+            : PreviousEffectiveReferenceId == OriginalReferenceId;
 
     /// <summary>AR 195-5 1-7c(3) - the corrective action documented.</summary>
     public string Reason { get; private set; } = string.Empty;
@@ -210,16 +242,33 @@ public class CorrectionEvent : ItemEvent
         yield return new("ReferenceKind", ReferenceKind.ToString());
         yield return new("OriginalReferenceId", OriginalReferenceId?.ToString("D", null));
         yield return new("CorrectedReferenceId", CorrectedReferenceId?.ToString("D", null));
+        yield return new("PreviousEffectiveValue", PreviousEffectiveValue);
+        yield return new(
+            "PreviousEffectiveReferenceId", PreviousEffectiveReferenceId?.ToString("D", null));
     }
 
+    /// <summary>
+    /// Reads as the change this correction actually made. For a second or later correction to the
+    /// same field that is not the original entry, so the original is named separately rather than
+    /// being presented as the value this correction replaced.
+    /// </summary>
     public override string Summarize()
-        => $"Correction to event #{CorrectsEventId}: {FieldName} "
-           + $"\"{OriginalValue}\" → \"{CorrectedValue}\" — {Reason}";
+        => CorrectsTheOriginalEntry
+            ? $"Correction to event #{CorrectsEventId}: {FieldName} "
+              + $"\"{OriginalValue}\" → \"{CorrectedValue}\" — {Reason}"
+            : $"Correction to event #{CorrectsEventId}: {FieldName} "
+              + $"\"{PreviousEffectiveValue}\" → \"{CorrectedValue}\" "
+              + $"(as originally recorded: \"{OriginalValue}\") — {Reason}";
 }
 
 /// <summary>
-/// Creates corrections, deriving the original value from the target event so a caller cannot
-/// state it. The only supported way to build a <see cref="CorrectionEvent"/>.
+/// Creates corrections. The only supported way to build a <see cref="CorrectionEvent"/>.
+///
+/// Every caller passes the corrections ALREADY RECORDED against the target event. From those and
+/// the event itself the factory derives what the caller may not state: the value as originally
+/// recorded (AUD-014) and the value as the record read immediately before this correction
+/// (AUD-017). An incomplete set of existing corrections would make the second of those wrong, so
+/// the application service loads all of them.
 /// </summary>
 public static class CorrectionFactory
 {
@@ -230,6 +279,7 @@ public static class CorrectionFactory
     /// </summary>
     public static CorrectionEvent Create(
         ItemEvent correctedEvent,
+        IEnumerable<CorrectionEvent> existingCorrections,
         string fieldName,
         string? correctedValue,
         string reason,
@@ -243,11 +293,17 @@ public static class CorrectionFactory
         string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(correctedEvent);
+        ArgumentNullException.ThrowIfNull(existingCorrections);
 
         // AUD-014. The original comes from the stored event, not from the caller. Also validates
         // that the field is correctable on this event type at all.
         var originalValue = correctedEvent.OriginalValueOf(fieldName);
         var referenceKind = correctedEvent.ReferenceKindOf(fieldName);
+
+        // AUD-017. What this correction changes is the field AS IT NOW READS, after any earlier
+        // corrections - derived here from the record, never stated by the caller.
+        var asItReads = new EffectiveItemEvent(correctedEvent, existingCorrections);
+        var previousEffectiveValue = asItReads.EffectiveValueOf(fieldName);
 
         if (referenceKind != CorrectableFieldReference.None)
         {
@@ -273,6 +329,8 @@ public static class CorrectionFactory
             CorrectableFieldReference.None,
             originalReferenceId: null,
             correctedReferenceId: null,
+            previousEffectiveValue,
+            previousEffectiveReferenceId: null,
             notes);
     }
 
@@ -292,6 +350,7 @@ public static class CorrectionFactory
     /// </summary>
     public static CorrectionEvent CreateReferenceCorrection(
         ItemEvent correctedEvent,
+        IEnumerable<CorrectionEvent> existingCorrections,
         string fieldName,
         int correctedReferenceId,
         string correctedDisplayText,
@@ -306,9 +365,15 @@ public static class CorrectionFactory
         string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(correctedEvent);
+        ArgumentNullException.ThrowIfNull(existingCorrections);
 
         var originalValue = correctedEvent.OriginalValueOf(fieldName);
         var referenceKind = correctedEvent.ReferenceKindOf(fieldName);
+
+        // AUD-017. See Create.
+        var asItReads = new EffectiveItemEvent(correctedEvent, existingCorrections);
+        var previousEffectiveValue = asItReads.EffectiveValueOf(fieldName);
+        var previousEffectiveReferenceId = asItReads.EffectiveReferenceIdOf(fieldName);
 
         if (referenceKind == CorrectableFieldReference.None)
         {
@@ -333,6 +398,8 @@ public static class CorrectionFactory
             referenceKind,
             correctedEvent.OriginalReferenceIdOf(fieldName),
             correctedReferenceId,
+            previousEffectiveValue,
+            previousEffectiveReferenceId,
             notes);
     }
 }

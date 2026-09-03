@@ -154,6 +154,10 @@ public sealed class CorrectionEventConfiguration : IEntityTypeConfiguration<Corr
         // retained verbatim and at the same length as the field it corrects.
         builder.Property(e => e.OriginalValue).HasMaxLength(4000);
         builder.Property(e => e.CorrectedValue).HasMaxLength(4000);
+
+        // AUD-017 - the value this correction changed, which for a second correction to the same
+        // field is the first correction's value rather than the original entry.
+        builder.Property(e => e.PreviousEffectiveValue).HasMaxLength(4000);
         builder.Property(e => e.Reason).HasMaxLength(2000);
 
         // AR 195-5 1-7c(3) - the MFR outlining the error and corrective action.
@@ -179,6 +183,7 @@ public sealed class CorrectionEventConfiguration : IEntityTypeConfiguration<Corr
         builder.Ignore(e => e.SatisfiesParagraph1_7c3);
         builder.Ignore(e => e.RequiresParagraph1_7c3Documentation);
         builder.Ignore(e => e.IsReferenceCorrection);
+        builder.Ignore(e => e.CorrectsTheOriginalEntry);
     }
 }
 

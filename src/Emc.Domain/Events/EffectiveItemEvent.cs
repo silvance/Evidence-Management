@@ -26,15 +26,24 @@ public sealed class EffectiveItemEvent
 
         Original = original;
 
+        // ORDERED BY APPEND SEQUENCE ALONE, deliberately.
+        //
+        // SequenceNumber is assigned by the server when the event is appended and is gapless
+        // (invariant I-07). OccurredAtUtc comes from a form field: back-dated entry is legitimate
+        // and common, so a user can supply any occurrence time they like. If ordering used it, a
+        // correction entered LAST could be back-dated to take precedence over one entered after
+        // it - which would let the order of the record be chosen rather than observed.
+        //
+        // "Which correction to this field is current" is a question about the ORDER THE RECORD
+        // WAS WRITTEN IN, and only the sequence number answers that. (Which location event is
+        // current is a different question - the item physically moved at a time - and that one
+        // does use occurrence time; see EffectiveHistory.LatestOf.)
         Corrections = corrections
             .Where(c => c.CorrectsEventId == original.Id)
-            .OrderBy(c => c.OccurredAtUtc)
-            .ThenBy(c => c.SequenceNumber)
+            .OrderBy(c => c.SequenceNumber)
             .ToList();
 
-        // A field may be corrected more than once; the most recent correction wins. Ordering is
-        // by occurrence then sequence, so a back-dated correction cannot silently take precedence
-        // over a later one recorded first.
+        // A field may be corrected more than once; the most recently APPENDED correction wins.
         _latestCorrectionByField = Corrections
             .GroupBy(c => c.FieldName, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
@@ -134,6 +143,10 @@ public static class EffectiveHistory
     /// <summary>
     /// The most recent event of a given type, with corrections applied. Used for the current
     /// location and current custody projections.
+    ///
+    /// Ordered by OCCURRENCE time here, unlike corrections. The question is when the item
+    /// physically moved or changed hands, and AR 195-5 2-3f records that time on the form; a
+    /// custody transfer at 0200 entered at 0800 happened at 0200. Sequence number breaks ties.
     /// </summary>
     public static EffectiveItemEvent? LatestOf<TEvent>(IEnumerable<ItemEvent> events)
         where TEvent : ItemEvent

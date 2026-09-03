@@ -494,6 +494,8 @@ namespace Emc.Infrastructure.Migrations
                     FieldName = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
                     OriginalValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
                     CorrectedValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    PreviousEffectiveValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    PreviousEffectiveReferenceId = table.Column<int>(type: "int", nullable: true),
                     Reason = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     Category = table.Column<int>(type: "int", nullable: true),
                     MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),

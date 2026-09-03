@@ -956,6 +956,13 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
+                    b.Property<int?>("PreviousEffectiveReferenceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PreviousEffectiveValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(2000)
