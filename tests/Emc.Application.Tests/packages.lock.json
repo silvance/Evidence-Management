@@ -40,6 +40,15 @@
           "Microsoft.TestPlatform.TestHost": "17.6.0"
         }
       },
+      "PDFsharp": {
+        "type": "Direct",
+        "requested": "[6.2.4, )",
+        "resolved": "6.2.4",
+        "contentHash": "GhTr9F1uOYXHCIEOB5PXIgqn5a8WLsJL2m0eewTA0IvY1j6N4HGXHKKmEyB90/N6vrjmYamf41V9zbmdW2HY3g==",
+        "dependencies": {
+          "System.Security.Cryptography.Pkcs": "8.0.1"
+        }
+      },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Direct",
         "requested": "[3.0.0, )",
@@ -86,6 +95,21 @@
           "Microsoft.Identity.Client": "4.78.0",
           "Microsoft.Identity.Client.Extensions.Msal": "4.78.0"
         }
+      },
+      "bblanchon.PDFium.Linux": {
+        "type": "Transitive",
+        "resolved": "152.0.7961",
+        "contentHash": "80m1PwszVp53avI/l+BCov8/6jl7B2FU+hQNTSrApMrkwKcCSRDHkXYYrGYsxpc8NAs/44tyrEQdCfX1yRzPhw=="
+      },
+      "bblanchon.PDFium.macOS": {
+        "type": "Transitive",
+        "resolved": "152.0.7961",
+        "contentHash": "GaBNtpfoiYbXTi9WLeEWSxWi2zG9kJMfuDMF7AH4kK0zjXz3C/Qg9epKIZKN3nfPaS48Qy3uV2VM14QBI/iAGg=="
+      },
+      "bblanchon.PDFium.Win32": {
+        "type": "Transitive",
+        "resolved": "152.0.7961",
+        "contentHash": "E6m7Y/OZ/eySQBy4drjDCF6pspBdp2PaF6vC04K1BgGbS8UtXOdL0SnReg3zE309hBZ6U/ZDMys9QE5VhBzDDQ=="
       },
       "Microsoft.AspNetCore.Authentication.Negotiate": {
         "type": "Transitive",
@@ -315,6 +339,44 @@
         "resolved": "5.11.0",
         "contentHash": "eaiXkUjC4NPcquGWzAGMXjuxvLwc6XGKMptSyOGQeT0X70BUZObuybJFZLA0OfTdueLd3US23NBPTBb6iF3V1Q=="
       },
+      "PDFtoImage": {
+        "type": "Transitive",
+        "resolved": "5.4.0",
+        "contentHash": "2eb8rDolYj9B7O87RpuqRG6oA6jEHV7z5PcBHmIP2KD75HNwJDxR91sXIYEh5DCCuvNxtSXtN8Bllfmma3RWBg==",
+        "dependencies": {
+          "SkiaSharp": "4.150.1",
+          "SkiaSharp.NativeAssets.Linux.NoDependencies": "4.150.1",
+          "SkiaSharp.NativeAssets.Win32": "4.150.1",
+          "SkiaSharp.NativeAssets.macOS": "4.150.1",
+          "bblanchon.PDFium.Linux": "152.0.7961",
+          "bblanchon.PDFium.Win32": "152.0.7961",
+          "bblanchon.PDFium.macOS": "152.0.7961"
+        }
+      },
+      "SkiaSharp": {
+        "type": "Transitive",
+        "resolved": "4.150.1",
+        "contentHash": "5v3T8X1N62Dp+AkPO70GNBNS/NRBPGMOTiN+Prg33sZAcm/Ug3YOAH+3RTj/jxJV8NGTJs2idGpC2Qdae2mGLQ==",
+        "dependencies": {
+          "SkiaSharp.NativeAssets.Win32": "4.150.1",
+          "SkiaSharp.NativeAssets.macOS": "4.150.1"
+        }
+      },
+      "SkiaSharp.NativeAssets.Linux.NoDependencies": {
+        "type": "Transitive",
+        "resolved": "4.150.1",
+        "contentHash": "2KVadgDky2xQw7lEMRT/u0ftX5K1u8X7MhCN47Em22Z6VM6JJg1c9cwfGuSPAt1oY6+GjGHH18vkeev+nqT9Kw=="
+      },
+      "SkiaSharp.NativeAssets.macOS": {
+        "type": "Transitive",
+        "resolved": "4.150.1",
+        "contentHash": "r755HVwaHZhyf1clWjrM2/RoOZYCzkQEmE9pu/mVsebPejWu52niNPUwtfyf112qoF0PIk6OndqVOUoITj6TwQ=="
+      },
+      "SkiaSharp.NativeAssets.Win32": {
+        "type": "Transitive",
+        "resolved": "4.150.1",
+        "contentHash": "qrLSL8OonbkMJdSH8heK0Jl39Y2xxZGdd7Ru4cyBXk2ITdx+Fu1sCFLmvCKmnMaYs//mlN/YSpSpOurEXErcQw=="
+      },
       "SQLitePCLRaw.config.e_sqlite3": {
         "type": "Transitive",
         "resolved": "3.0.0",
@@ -447,7 +509,8 @@
           "Emc.Application": "[1.0.0, )",
           "Emc.Domain": "[1.0.0, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.11, )",
-          "Microsoft.EntityFrameworkCore.SqlServer": "[10.0.11, )"
+          "Microsoft.EntityFrameworkCore.SqlServer": "[10.0.11, )",
+          "PDFtoImage": "[5.4.0, )"
         }
       },
       "emc.web": {

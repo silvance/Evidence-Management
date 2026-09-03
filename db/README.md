@@ -65,6 +65,9 @@ Integrity lives in the database, not only in the UI (engineering principle 7):
 | `TR_VoucherReviewActions_AppendOnly_Update` / `_Delete` | AR 195-5 2-3g — the record of the custodian's pre-acceptance review is kept as it happened |
 | Unique index over `(EvidenceRoomId, Date)` on `TemporaryIdentifierCounters` | Collision-safe temporary-identifier allocation (VCH-024); the counter row carries a concurrency stamp |
 | `EvidenceRoomNumberingPolicies` | Effective-dated per-room document-number layout (VCH-023). The regulation's layout applies when a room has none |
+| `SourceDocuments` / `SourceDocumentPages` + `TR_SourceDocuments_AppendOnly_*`, `TR_SourceDocumentPages_AppendOnly_*` | Immutable companion copies of scanned documents and their rendered pages (DOC-002). Bytes live in the filesystem store outside the web root; the row holds the generated key and the SHA-256 recorded at receipt (AUD-022) |
+| `PhysicalFileContainers`, `PhysicalVoucherDocuments`, `PhysicalVoucherDocumentEvents` + `TR_PhysicalVoucherDocumentEvents_AppendOnly_*` | The PAPER DA Form 4137: files, suspense folders, where the original is, inactive date, confirmed destruction (FIL-001..FIL-009) |
+| `VoucherFormRevisions`, `VoucherFormRevisionLines` + triggers | What the form contained at each submission (VCH-025) |
 
 ## Least privilege
 

@@ -30,6 +30,7 @@ public class DetailsModel : PageModel
 
     private readonly IEvidenceRoomTimeService _time;
     private readonly IPhysicalDocumentService _physical;
+    private readonly Emc.Application.Documents.ISourceDocumentService _documents;
 
     public DetailsModel(
         IEvidenceReadService reads,
@@ -37,9 +38,11 @@ public class DetailsModel : PageModel
         IEvidenceIntakeService intake,
         IEmcPageAuthorization authorization,
         IEvidenceRoomTimeService time,
-        IPhysicalDocumentService physical)
+        IPhysicalDocumentService physical,
+        Emc.Application.Documents.ISourceDocumentService documents)
     {
         _physical = physical;
+        _documents = documents;
         _reads = reads;
         _vouchers = vouchers;
         _intake = intake;
@@ -114,6 +117,10 @@ public class DetailsModel : PageModel
     /// <summary>The PAPER DA Form 4137 record (AR 195-5 2-4d, 2-4f, 2-4h). Not the scan.</summary>
     public PhysicalDocumentView? PhysicalDocument { get; private set; }
     public bool CanManagePhysicalFiles { get; private set; }
+
+    /// <summary>Companion copies (scans) attached to this voucher. Never the original.</summary>
+    public IReadOnlyList<Emc.Application.Documents.SourceDocumentListRow> SourceDocuments { get; private set; } = [];
+    public bool CanUploadSourceDocument { get; private set; }
 
     /// <summary>AR 195-5 2-3g - what each earlier submission of the form contained (VCH-025).</summary>
     public IReadOnlyList<FormRevisionRow> FormRevisions { get; private set; } = [];
@@ -439,6 +446,8 @@ public class DetailsModel : PageModel
         CanManagePhysicalFiles =
             (await _authorization.CheckAsync(EmcPermissions.ManagePhysicalFiles, view.EvidenceRoomId)).IsAllowed;
         PhysicalDocument = await _physical.GetForVoucherAsync(id);
+        SourceDocuments = await _documents.ListForVoucherAsync(id);
+        CanUploadSourceDocument = (await _authorization.CheckAsync(EmcPermissions.UploadSourceDocument, view.EvidenceRoomId)).IsAllowed;
 
         if (Physical.OccurredAtLocal == default)
         {

@@ -473,28 +473,42 @@ G-2X's expectations are known. Not V1.
 
 ## 9. Untrusted input: uploaded documents
 
-Not implemented in the first vertical slice, but the boundary is fixed now because retrofitting
-it is how these systems get compromised.
+A scanned document is **hostile input** and a **companion copy**. Both facts shape everything here.
 
-- **Validate type by content, not by extension or by the client's `Content-Type`.** PDF magic
-  bytes (`%PDF-`) plus a structural parse.
-- **Enforce a size limit** at the framework level (`RequestSizeLimit`) *and* at the storage layer.
-- **Store outside the web root** on a path with no execute permission, named by a generated
-  identifier — never by the user-supplied filename. The original filename is retained as **data**,
-  displayed encoded, and never used to build a path.
-- **Never execute embedded content.** No JavaScript execution, no form rendering, no external
-  resource resolution, no XFA. Rendering for display produces **rasterized page images**; the
-  original PDF is downloadable only with an explicit, audited action.
-- **Serve downloads with `Content-Disposition: attachment`** and `X-Content-Type-Options: nosniff`.
-- **SHA-256 on receipt**, stored with the record; the stored file is treated as immutable and is
-  never rewritten.
-- **The OCR subsystem runs fully locally.** No document is sent to any external or cloud service.
-  Candidate local engines (Tesseract for machine print, a locally-hosted handwriting model, and
-  template/coordinate-aware extraction exploiting DA Form 4137's fixed layout) are evaluated in
-  the V2 design; the constraint that they must run offline is architectural and non-negotiable.
-- **OCR output is never authoritative.** It lands in `ExtractedField` with a confidence band, and
-  becomes accountability data only through explicit human verification, preserving both the raw
-  extracted text and the verified value.
+**Companion copy.** `SourceDocument` is an immutable record of what was received: the bytes'
+SHA-256 as stored, size, page count, type, the uploader, and **provenance** — what paper was
+scanned (physical original, physical copy, electronic copy, unknown). Provenance is a statement
+about the scan's source, never a claim that the file is the original; the physical original's
+whereabouts live on `PhysicalVoucherDocument` (§4.6), which an upload never touches. No UI text
+calls the file "the original DA Form 4137".
+
+**Hostile input.** Three layers, one number:
+
+| Layer | Control |
+|---|---|
+| Request | Kestrel and IIS `MaxRequestBodySize`, multipart body limit, the upload page's `[RequestSizeLimit]` — the body is refused before application code runs |
+| Application | `PdfContentValidator` (header near the start, `%%EOF` near the end, size; the filename and declared type are not consulted), page-count limit, page-dimension/pixel limit from the page sizes **before** rendering, a render timeout, active-content detection (script, launch, open actions — reported, never executed) |
+| Storage | `FileSystemSourceDocumentStore`: generated keys, atomic partial-then-move writes, hash computed from the bytes written, key re-validation on every read, root containment check |
+
+Display is by **server-rendered PNG page images** (`IPdfRasterizer`, PDFium through NuGet
+runtime assets). The PDF is never handed to the browser inline; the original is available only
+as an attachment download under the separate `source-document.download` permission, audited.
+Every page-image and download request authorizes on the owning evidence room **before** the
+store is opened — a spy-store test proves zero reads for an unauthorized caller — and an
+unauthorized or absent document is a 404 either way.
+
+**Integrity.** The room-wide report re-hashes every stored document and page and reports a
+mismatch or missing file as a **document-integrity failure**, a third category beside
+event-chain failures and snapshot mismatches, in a row with identifiers only (AUD-022).
+
+**Deployment (ACLs).** `SourceDocuments:RootPath` must be outside the site's physical path. The
+deployer creates it; the application-pool identity gets Modify on it and no other principal
+does; no static-file provider is mapped to it; it is backed up with the database. The store
+refuses to start without a configured root.
+
+**Isolation.** PDFium parses untrusted bytes in-process today. The OCR worker (`Emc.OcrWorker`,
+§9.1) is the hard isolation boundary — a separate process that can crash without taking IIS
+down — and page rendering moves into it with OCR.
 
 ### Classification boundary — a real risk, stated plainly
 

@@ -1,0 +1,47 @@
+@page "/Documents/Upload/{voucherId:int}"
+@model Emc.Web.Pages.Documents.UploadModel
+@using Emc.Domain.Documents
+@{
+    ViewData["Title"] = "Upload a scanned document";
+}
+
+<h1>Upload a scanned document — @Model.VoucherIdentifier</h1>
+<partial name="_Messages" model="Model.Messages" />
+
+<p class="regulatory-note">
+    <strong>The file you upload is a digital companion copy. It is not the original DA Form 4137.</strong>
+    The physical original remains the authoritative record and its whereabouts are recorded on the
+    voucher's paper-record panel (AR 195-5 paras 2-4d, 2-4f). Uploading changes nothing there.
+    State what was scanned below; the scan's provenance is a fact about the scan, not a claim about
+    the paper.
+</p>
+
+<div class="panel">
+    <form method="post" enctype="multipart/form-data" asp-route-voucherId="@Model.VoucherId">
+        <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+        <div class="form-row">
+            <label asp-for="Input.File">PDF file</label>
+            <input asp-for="Input.File" type="file" accept="application/pdf,.pdf" />
+            <span class="hint">PDF only, validated by content, not by name. Limit 50 MB, 200 pages. Embedded content is never executed; pages are shown as server-rendered images.</span>
+        </div>
+        <div class="form-row">
+            <label asp-for="Input.DocumentType">Document type</label>
+            <select asp-for="Input.DocumentType" asp-items="Html.GetEnumSelectList<SourceDocumentType>()"></select>
+        </div>
+        <div class="form-row">
+            <label asp-for="Input.Provenance">What was scanned</label>
+            <select asp-for="Input.Provenance" asp-items="Html.GetEnumSelectList<ScanProvenance>()"></select>
+            <span class="hint">PhysicalOriginal means the paper original was scanned — not that this file is the original.</span>
+        </div>
+        <div class="form-row">
+            <label asp-for="Input.ClassificationMarking">Classification marking</label>
+            <input asp-for="Input.ClassificationMarking" autocomplete="off" />
+            <span class="hint">Cannot exceed the level this deployment is accredited for (DEC-06).</span>
+        </div>
+        <div class="form-row">
+            <label asp-for="Input.ProvenanceNotes">Notes</label>
+            <textarea asp-for="Input.ProvenanceNotes"></textarea>
+        </div>
+        <button type="submit">Upload</button>
+    </form>
+</div>

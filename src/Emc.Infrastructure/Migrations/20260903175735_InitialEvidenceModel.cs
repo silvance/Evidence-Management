@@ -612,6 +612,57 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "SourceDocuments",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    CaseId = table.Column<int>(type: "int", nullable: true),
+                    VoucherId = table.Column<int>(type: "int", nullable: true),
+                    DocumentType = table.Column<int>(type: "int", nullable: false),
+                    Provenance = table.Column<int>(type: "int", nullable: false),
+                    OriginalFilename = table.Column<string>(type: "nvarchar(260)", maxLength: 260, nullable: false),
+                    ContentLength = table.Column<long>(type: "bigint", nullable: false),
+                    Sha256 = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
+                    PageCount = table.Column<int>(type: "int", nullable: false),
+                    StorageKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    ReceivedByUserId = table.Column<int>(type: "int", nullable: false),
+                    ReceivedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ClassificationMarking = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    ImportStatus = table.Column<int>(type: "int", nullable: false),
+                    ProvenanceNotes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SourceDocuments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SourceDocuments_Cases_CaseId",
+                        column: x => x.CaseId,
+                        principalTable: "Cases",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SourceDocuments_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SourceDocuments_EvidenceVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SourceDocuments_Users_ReceivedByUserId",
+                        column: x => x.ReceivedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "VoucherFormRevisions",
                 columns: table => new
                 {
@@ -783,6 +834,34 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_PhysicalVoucherDocumentEvents_Users_RecordedByUserId",
                         column: x => x.RecordedByUserId,
                         principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SourceDocumentPages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    PageNumber = table.Column<int>(type: "int", nullable: false),
+                    WidthPx = table.Column<int>(type: "int", nullable: false),
+                    HeightPx = table.Column<int>(type: "int", nullable: false),
+                    RenderDpi = table.Column<int>(type: "int", nullable: false),
+                    StorageKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Sha256 = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
+                    ContentLength = table.Column<long>(type: "bigint", nullable: false),
+                    RendererVersion = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    RenderedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SourceDocumentPages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SourceDocumentPages_SourceDocuments_SourceDocumentId",
+                        column: x => x.SourceDocumentId,
+                        principalTable: "SourceDocuments",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -1057,6 +1136,44 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_SourceDocumentPages_SourceDocumentId_PageNumber",
+                table: "SourceDocumentPages",
+                columns: new[] { "SourceDocumentId", "PageNumber" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDocumentPages_StorageKey",
+                table: "SourceDocumentPages",
+                column: "StorageKey",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDocuments_CaseId",
+                table: "SourceDocuments",
+                column: "CaseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDocuments_EvidenceRoomId_Sha256",
+                table: "SourceDocuments",
+                columns: new[] { "EvidenceRoomId", "Sha256" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDocuments_ReceivedByUserId",
+                table: "SourceDocuments",
+                column: "ReceivedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDocuments_StorageKey",
+                table: "SourceDocuments",
+                column: "StorageKey",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDocuments_VoucherId",
+                table: "SourceDocuments",
+                column: "VoucherId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_StorageLocations_EvidenceRoomId_ParentId_Name",
                 table: "StorageLocations",
                 columns: new[] { "EvidenceRoomId", "ParentId", "Name" },
@@ -1139,6 +1256,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "RoleAssignments");
 
             migrationBuilder.DropTable(
+                name: "SourceDocumentPages");
+
+            migrationBuilder.DropTable(
                 name: "StorageLocations");
 
             migrationBuilder.DropTable(
@@ -1167,6 +1287,9 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "Roles");
+
+            migrationBuilder.DropTable(
+                name: "SourceDocuments");
 
             migrationBuilder.DropTable(
                 name: "EvidenceItems");

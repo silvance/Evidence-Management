@@ -1,0 +1,227 @@
+using Emc.Domain.Common;
+
+namespace Emc.Domain.Documents;
+
+/// <summary>What kind of paper the scan is a copy of.</summary>
+public enum SourceDocumentType
+{
+    /// <summary>A DA Form 4137, Evidence/Property Custody Document.</summary>
+    DaForm4137 = 1,
+
+    /// <summary>A memorandum for record (AR 195-5 1-7c(3), 2-3e, 3-2f, 3-3a).</summary>
+    MemorandumForRecord = 2,
+
+    /// <summary>A receipt or chain-of-custody document from another agency (AR 195-5 2-3g).</summary>
+    ExternalChainOfCustody = 3,
+
+    /// <summary>A laboratory examination request (DD Form 2922) or laboratory chain-of-custody document (2-3j).</summary>
+    LaboratoryRequest = 4,
+
+    OtherAuthorizedAttachment = 5
+}
+
+/// <summary>
+/// What was scanned. A statement about the scan's SOURCE - never a claim that the digital file is
+/// the original. The physical original's whereabouts are the PhysicalVoucherDocument's business.
+/// </summary>
+public enum ScanProvenance
+{
+    Unknown = 0,
+
+    /// <summary>The paper scanned was the physical original.</summary>
+    PhysicalOriginal = 1,
+
+    /// <summary>The paper scanned was a physical copy.</summary>
+    PhysicalCopy = 2,
+
+    /// <summary>Received electronically; no paper was scanned here.</summary>
+    ElectronicCopyReceived = 3
+}
+
+public enum SourceDocumentImportStatus
+{
+    /// <summary>Stored and hashed; page images rendered.</summary>
+    Rendered = 1,
+
+    /// <summary>Stored and hashed; page rendering failed. The original bytes are kept; nothing else was produced.</summary>
+    RenderFailed = 2
+}
+
+/// <summary>
+/// An immutable digital COMPANION COPY of a scanned paper document.
+///
+/// Immutable in every field: the bytes are hashed on receipt and the hash is verified against
+/// the stored bytes on demand (AUD-022). The original filename is metadata only; the storage key
+/// is generated and contains nothing the uploader chose (DOC-006). The UI never calls this file
+/// "the original DA Form 4137"; provenance says what paper was scanned, and the paper record
+/// says where that paper is.
+///
+/// Requirements: DOC-001, DOC-002, DOC-006.
+/// </summary>
+public class SourceDocument : Entity, IAppendOnly
+{
+    private readonly List<SourceDocumentPage> _pages = [];
+
+    private SourceDocument() { }
+
+    public SourceDocument(
+        int evidenceRoomId,
+        int? caseId,
+        int? voucherId,
+        SourceDocumentType documentType,
+        ScanProvenance provenance,
+        string originalFilename,
+        long contentLength,
+        string sha256,
+        int pageCount,
+        string storageKey,
+        int receivedByUserId,
+        DateTimeOffset receivedAtUtc,
+        string classificationMarking,
+        SourceDocumentImportStatus importStatus,
+        string? provenanceNotes = null)
+    {
+        if (voucherId is null && caseId is null)
+        {
+            throw new DomainRuleViolationException(
+                "DOC-001", "A source document belongs to a voucher or to a case.");
+        }
+
+        EvidenceRoomId = evidenceRoomId;
+        CaseId = caseId;
+        VoucherId = voucherId;
+        DocumentType = documentType;
+        Provenance = provenance;
+
+        // Metadata only. Kept as given (trimmed, bounded) so the record shows what the uploader
+        // named it; never used as a path.
+        OriginalFilename = Guard.NotBlank(originalFilename, "DOC-001", "Original filename");
+        if (OriginalFilename.Length > 260)
+        {
+            OriginalFilename = OriginalFilename[..260];
+        }
+
+        ContentLength = contentLength > 0
+            ? contentLength
+            : throw new DomainRuleViolationException("DOC-003", "The document is empty.");
+        Sha256 = ValidateSha256(sha256);
+        PageCount = pageCount >= 0 ? pageCount : throw new DomainRuleViolationException("DOC-001", "Page count cannot be negative.");
+        StorageKey = ValidateStorageKey(storageKey);
+        ReceivedByUserId = receivedByUserId;
+        ReceivedAtUtc = AccountabilityTime.Normalize(receivedAtUtc);
+        ClassificationMarking = Guard.NotBlank(classificationMarking, "SEC-003", "Classification marking");
+        ImportStatus = importStatus;
+        ProvenanceNotes = Guard.TrimToNull(provenanceNotes);
+    }
+
+    public int EvidenceRoomId { get; private set; }
+    public int? CaseId { get; private set; }
+    public int? VoucherId { get; private set; }
+    public SourceDocumentType DocumentType { get; private set; }
+    public ScanProvenance Provenance { get; private set; }
+    public string OriginalFilename { get; private set; } = string.Empty;
+    public long ContentLength { get; private set; }
+
+    /// <summary>Hex, lower case, 64 characters. Computed on receipt from the bytes actually stored.</summary>
+    public string Sha256 { get; private set; } = string.Empty;
+
+    public int PageCount { get; private set; }
+
+    /// <summary>Generated by the store. Contains nothing user-supplied.</summary>
+    public string StorageKey { get; private set; } = string.Empty;
+
+    public int ReceivedByUserId { get; private set; }
+    public DateTimeOffset ReceivedAtUtc { get; private set; }
+
+    /// <summary>The marking the uploader applied, bounded by the deployment's accredited level (SEC-003).</summary>
+    public string ClassificationMarking { get; private set; } = string.Empty;
+
+    public SourceDocumentImportStatus ImportStatus { get; private set; }
+    public string? ProvenanceNotes { get; private set; }
+
+    public IReadOnlyList<SourceDocumentPage> Pages => _pages.AsReadOnly();
+
+    /// <summary>Attaches a rendered page. Only during construction of the record; pages are immutable too.</summary>
+    public SourceDocumentPage AddRenderedPage(
+        int pageNumber, int widthPx, int heightPx, int renderDpi, string storageKey, string sha256,
+        long contentLength, string rendererVersion, DateTimeOffset renderedAtUtc)
+    {
+        if (_pages.Any(p => p.PageNumber == pageNumber))
+        {
+            throw new DomainRuleViolationException("DOC-005", $"Page {pageNumber} has already been rendered.");
+        }
+
+        var page = new SourceDocumentPage(this, pageNumber, widthPx, heightPx, renderDpi, storageKey, sha256, contentLength, rendererVersion, renderedAtUtc);
+        _pages.Add(page);
+        return page;
+    }
+
+    public static string ValidateSha256(string sha256)
+    {
+        var hash = Guard.NotBlank(sha256, "DOC-001", "SHA-256").ToLowerInvariant();
+        if (hash.Length != 64 || !hash.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f'))
+        {
+            throw new DomainRuleViolationException("DOC-001", "SHA-256 must be 64 hexadecimal characters.");
+        }
+
+        return hash;
+    }
+
+    /// <summary>
+    /// A storage key is a relative, forward-slash path of generated segments. Nothing that could
+    /// escape the store's root is accepted, whatever produced it (DOC-006).
+    /// </summary>
+    public static string ValidateStorageKey(string storageKey)
+    {
+        var key = Guard.NotBlank(storageKey, "DOC-006", "Storage key");
+
+        if (key.Contains("..", StringComparison.Ordinal)
+            || key.Contains('\\')
+            || key.StartsWith('/')
+            || key.Contains(':')
+            || key.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))
+        {
+            throw new DomainRuleViolationException("DOC-006", "The storage key is not a valid relative key.");
+        }
+
+        return key;
+    }
+}
+
+/// <summary>
+/// One rendered page image of a source document: a server-generated raster, so the browser is
+/// never handed the PDF itself to interpret (DOC-005). Immutable.
+/// </summary>
+public class SourceDocumentPage : Entity, IAppendOnly
+{
+    private SourceDocumentPage() { }
+
+    internal SourceDocumentPage(
+        SourceDocument document, int pageNumber, int widthPx, int heightPx, int renderDpi,
+        string storageKey, string sha256, long contentLength, string rendererVersion, DateTimeOffset renderedAtUtc)
+    {
+        SourceDocumentId = document.Id;
+        Document = document;
+        PageNumber = Guard.Positive(pageNumber, "DOC-005", "Page number");
+        WidthPx = Guard.Positive(widthPx, "DOC-005", "Width");
+        HeightPx = Guard.Positive(heightPx, "DOC-005", "Height");
+        RenderDpi = Guard.Positive(renderDpi, "DOC-005", "DPI");
+        StorageKey = SourceDocument.ValidateStorageKey(storageKey);
+        Sha256 = SourceDocument.ValidateSha256(sha256);
+        ContentLength = contentLength;
+        RendererVersion = Guard.NotBlank(rendererVersion, "DOC-005", "Renderer version");
+        RenderedAtUtc = AccountabilityTime.Normalize(renderedAtUtc);
+    }
+
+    public int SourceDocumentId { get; private set; }
+    public SourceDocument? Document { get; private set; }
+    public int PageNumber { get; private set; }
+    public int WidthPx { get; private set; }
+    public int HeightPx { get; private set; }
+    public int RenderDpi { get; private set; }
+    public string StorageKey { get; private set; } = string.Empty;
+    public string Sha256 { get; private set; } = string.Empty;
+    public long ContentLength { get; private set; }
+    public string RendererVersion { get; private set; } = string.Empty;
+    public DateTimeOffset RenderedAtUtc { get; private set; }
+}

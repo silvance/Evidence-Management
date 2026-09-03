@@ -12,6 +12,21 @@ var connectionString = builder.Configuration.GetConnectionString("Emc")
 
 builder.Services.AddEmcInfrastructure(connectionString);
 
+// DOC-004. Upload limits at the REQUEST layer: the server (Kestrel here; under IIS in-process
+// the per-page RequestSizeLimit attribute sets the same server feature, and web.config's
+// requestLimits caps the request before it reaches .NET at all) and multipart form parsing both
+// refuse a body larger than the configured maximum before any application code runs. The same
+// figure is enforced again in SourceDocumentService, and the upload page carries the attribute
+// form of it. Several layers, one number.
+var uploadLimit = builder.Configuration.GetValue<long?>("SourceDocuments:MaxContentBytes") ?? 50L * 1024 * 1024;
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = uploadLimit + 64 * 1024);
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = uploadLimit;
+    options.ValueLengthLimit = 64 * 1024;
+    options.MultipartHeadersLengthLimit = 16 * 1024;
+});
+
 // IAM-003: Windows Authentication (Negotiate/Kerberos), which in an Army environment is
 // CAC-backed. EMC stores no passwords and no password hashes.
 builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme).AddNegotiate();

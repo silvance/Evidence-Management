@@ -30,6 +30,7 @@ public interface IEmcDbContext
     DbSet<VoucherFormRevision> VoucherFormRevisions { get; }
     DbSet<Emc.Domain.Filing.PhysicalFileContainer> PhysicalFileContainers { get; }
     DbSet<Emc.Domain.Filing.PhysicalVoucherDocument> PhysicalVoucherDocuments { get; }
+    DbSet<Emc.Domain.Documents.SourceDocument> SourceDocuments { get; }
     DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments { get; }
     DbSet<EvidenceItem> EvidenceItems { get; }
     DbSet<ItemEvent> ItemEvents { get; }

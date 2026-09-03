@@ -24,19 +24,33 @@ public sealed record ItemIntegrityRow(
     public bool IsIntact => Chain.IsIntact && Snapshot.IsConsistent;
 }
 
+public enum DocumentHashStatus { Match = 1, Mismatch = 2, Missing = 3 }
+
+/// <summary>
+/// One source document's integrity, for the room report. Identifiers and statuses only - no
+/// filename, case number, document number or content (AUD-022, IAM-009).
+/// </summary>
+public sealed record DocumentIntegrityRow(
+    int DocumentId, int EvidenceRoomId, DocumentHashStatus OriginalHash, int PagesChecked, int PagesMismatched);
+
 public sealed record IntegrityReport(
     int EvidenceRoomId,
     DateTimeOffset RanAtUtc,
     int ItemsChecked,
-    IReadOnlyList<ItemIntegrityRow> Findings)
+    IReadOnlyList<ItemIntegrityRow> Findings,
+    int DocumentsChecked = 0,
+    IReadOnlyList<DocumentIntegrityRow>? DocumentFindings = null)
 {
+    /// <summary>Source documents whose stored bytes no longer hash to what was recorded, or are missing (AUD-022). Distinct from both counts below.</summary>
+    public int DocumentIntegrityFailures => DocumentFindings?.Count ?? 0;
+
     /// <summary>Items whose history itself does not verify (AUD-008). An incident, not a repair.</summary>
     public int EventChainFailures => Findings.Count(f => !f.Chain.IsIntact);
 
     /// <summary>Items whose history verifies but whose stored summary disagrees with it (AUD-021).</summary>
     public int SnapshotMismatches => Findings.Count(f => f.Chain.IsIntact && !f.Snapshot.IsConsistent);
 
-    public bool IsIntact => Findings.Count == 0;
+    public bool IsIntact => Findings.Count == 0 && DocumentIntegrityFailures == 0;
 }
 
 public interface IIntegrityVerificationService
@@ -55,17 +69,20 @@ public sealed class IntegrityVerificationService : IIntegrityVerificationService
     private readonly IEvidenceAuthorizationService _authorization;
     private readonly IAuditRecorder _audit;
     private readonly IClock _clock;
+    private readonly Emc.Application.Documents.ISourceDocumentStore? _store;
 
     public IntegrityVerificationService(
         IEmcDbContext db,
         IEvidenceAuthorizationService authorization,
         IAuditRecorder audit,
-        IClock clock)
+        IClock clock,
+        Emc.Application.Documents.ISourceDocumentStore? store = null)
     {
         _db = db;
         _authorization = authorization;
         _audit = audit;
         _clock = clock;
+        _store = store;
     }
 
     public async Task<OperationResult<IntegrityReport>> VerifyEvidenceRoomAsync(
@@ -114,12 +131,52 @@ public sealed class IntegrityVerificationService : IIntegrityVerificationService
             }
         }
 
-        var report = new IntegrityReport(evidenceRoomId, _clock.UtcNow, items.Count, findings);
+        // AUD-022. Source documents: the bytes under each key must still hash to what was recorded
+        // at receipt. Reported apart from event-chain and snapshot findings - it is a third kind of
+        // thing: the record is intact, the companion copy it points at is not. Identifiers only.
+        var documentFindings = new List<DocumentIntegrityRow>();
+        var documentsChecked = 0;
+
+        if (_store is not null)
+        {
+            var documents = await _db.SourceDocuments.AsNoTracking()
+                .Include(d => d.Pages)
+                .Where(d => d.EvidenceRoomId == evidenceRoomId)
+                .Select(d => new { d.Id, d.EvidenceRoomId, d.StorageKey, d.Sha256, Pages = d.Pages.Select(p => new { p.StorageKey, p.Sha256 }).ToList() })
+                .ToListAsync(ct);
+
+            foreach (var d in documents)
+            {
+                documentsChecked++;
+                var actual = await _store.ComputeSha256Async(d.StorageKey, ct);
+                var status = actual is null ? DocumentHashStatus.Missing
+                    : string.Equals(actual, d.Sha256, StringComparison.Ordinal) ? DocumentHashStatus.Match
+                    : DocumentHashStatus.Mismatch;
+
+                var pagesMismatched = 0;
+                foreach (var p in d.Pages)
+                {
+                    var pageHash = await _store.ComputeSha256Async(p.StorageKey, ct);
+                    if (!string.Equals(pageHash, p.Sha256, StringComparison.Ordinal))
+                    {
+                        pagesMismatched++;
+                    }
+                }
+
+                if (status != DocumentHashStatus.Match || pagesMismatched > 0)
+                {
+                    documentFindings.Add(new DocumentIntegrityRow(d.Id, d.EvidenceRoomId, status, d.Pages.Count, pagesMismatched));
+                }
+            }
+        }
+
+        var report = new IntegrityReport(evidenceRoomId, _clock.UtcNow, items.Count, findings, documentsChecked, documentFindings);
 
         _audit.Record(
             AuditEventType.IntegrityVerificationRun, "EvidenceRoom", evidenceRoomId.ToString(),
             newValue: $"{report.ItemsChecked} items checked; {report.EventChainFailures} event-chain "
-                      + $"failures; {report.SnapshotMismatches} snapshot mismatches.",
+                      + $"failures; {report.SnapshotMismatches} snapshot mismatches; "
+                      + $"{report.DocumentsChecked} source documents checked; {report.DocumentIntegrityFailures} document-integrity failures.",
             succeeded: report.IsIntact);
 
         await _db.SaveChangesAsync(ct);

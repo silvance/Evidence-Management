@@ -1,0 +1,49 @@
+@page "/Documents/View/{id:int}"
+@model Emc.Web.Pages.Documents.ViewModel
+@{
+    ViewData["Title"] = "Source document";
+    var d = Model.Document!;
+}
+
+<h1>Source document @d.Id — @d.DocumentType</h1>
+<partial name="_Messages" model="Model.Messages" />
+
+<p class="regulatory-note">
+    <strong>DIGITAL COMPANION COPY. The physical original DA Form 4137 remains the authoritative
+    record.</strong> This scan was recorded as: <em>@d.Provenance</em>. Where the paper is now is
+    on the voucher's paper-record panel; this page does not say.
+</p>
+
+<div class="panel">
+    <table>
+        <tbody>
+            <tr><th>Voucher</th><td>@if (d.VoucherId is not null) { <a asp-page="/Vouchers/Details" asp-route-id="@d.VoucherId">@d.VoucherIdentifier</a> }</td></tr>
+            <tr><th>Original filename (metadata only)</th><td>@d.OriginalFilename</td></tr>
+            <tr><th>Size</th><td>@d.ContentLength.ToString("N0") bytes, @d.PageCount page(s)</td></tr>
+            <tr><th>SHA-256</th><td><code>@d.Sha256</code></td></tr>
+            <tr><th>Received</th><td>@d.ReceivedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z by @d.ReceivedByName</td></tr>
+            <tr><th>Marking</th><td>@d.ClassificationMarking</td></tr>
+            <tr><th>Import</th><td>@d.ImportStatus</td></tr>
+            @if (d.ProvenanceNotes is not null) { <tr><th>Notes</th><td>@d.ProvenanceNotes</td></tr> }
+        </tbody>
+    </table>
+    <p>
+        <a asp-page="/Documents/View" asp-route-id="@d.Id" asp-page-handler="Download">Download the original PDF</a>
+        <span class="hint">(requires the download permission; every download is audit logged)</span>
+    </p>
+</div>
+
+@foreach (var pg in d.Pages)
+{
+    <div class="panel">
+        <h2>Page @pg.PageNumber of @d.PageCount</h2>
+        <img src="@Url.Page("/Documents/View", "Page", new { id = d.Id, pageNumber = pg.PageNumber })"
+             alt="Rendered page @pg.PageNumber" width="@pg.WidthPx" height="@pg.HeightPx"
+             style="max-width:100%;height:auto;border:1px solid #999;" />
+    </div>
+}
+
+@if (d.Pages.Count == 0)
+{
+    <div class="panel"><p>No page images are available for this document.</p></div>
+}

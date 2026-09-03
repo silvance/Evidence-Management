@@ -207,6 +207,51 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+    /// <summary>DOC-002. A stored scan's record is immutable: its hash is what receipt recorded.</summary>
+    public const string CreateSourceDocumentsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_SourceDocuments_AppendOnly_Update
+        ON dbo.SourceDocuments
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50015, 'SourceDocuments is append-only and cannot be modified. A source document is an immutable companion copy; its recorded hash is what receipt recorded.', 1;
+        END;
+        """;
+
+    public const string CreateSourceDocumentsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_SourceDocuments_AppendOnly_Delete
+        ON dbo.SourceDocuments
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50016, 'SourceDocuments is append-only and cannot be deleted. Digital retention is undetermined (DEC-07); nothing is destroyed.', 1;
+        END;
+        """;
+
+    public const string CreateSourceDocumentPagesUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_SourceDocumentPages_AppendOnly_Update
+        ON dbo.SourceDocumentPages
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50017, 'SourceDocumentPages is append-only and cannot be modified.', 1;
+        END;
+        """;
+
+    public const string CreateSourceDocumentPagesDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_SourceDocumentPages_AppendOnly_Delete
+        ON dbo.SourceDocumentPages
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50018, 'SourceDocumentPages is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -222,7 +267,11 @@ public static class AppendOnlyTriggers
         CreateFormRevisionLinesUpdateTrigger,
         CreateFormRevisionLinesDeleteTrigger,
         CreatePhysicalDocumentEventsUpdateTrigger,
-        CreatePhysicalDocumentEventsDeleteTrigger
+        CreatePhysicalDocumentEventsDeleteTrigger,
+        CreateSourceDocumentsUpdateTrigger,
+        CreateSourceDocumentsDeleteTrigger,
+        CreateSourceDocumentPagesUpdateTrigger,
+        CreateSourceDocumentPagesDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -240,6 +289,10 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_PhysicalVoucherDocumentEvents_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_SourceDocuments_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_SourceDocuments_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Delete;"
     ];
 }

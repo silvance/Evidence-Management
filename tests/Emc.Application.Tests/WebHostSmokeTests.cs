@@ -127,6 +127,9 @@ public class EmcWebFactory : WebApplicationFactory<Program>
 
         builder.UseEnvironment("Development");
 
+        // Source documents go to a per-factory temporary root, outside any web root.
+        builder.UseSetting("SourceDocuments:RootPath", Path.Combine(Path.GetTempPath(), "emc-tests", Guid.NewGuid().ToString("N")));
+
         builder.ConfigureServices(services =>
         {
             // Swap SQL Server for SQLite. Nothing else about the application is replaced.
@@ -370,6 +373,14 @@ public class EmcWebFactory : WebApplicationFactory<Program>
 
         throw new InvalidOperationException(
             $"POST {postUrl} did not redirect: {detail}. Response body written to {dump}.");
+    }
+
+    /// <summary>GETs a page and returns the anti-forgery token it rendered, for tests that build their own POST bodies (multipart uploads).</summary>
+    public async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string url)
+    {
+        using var getResponse = await client.GetAsync(url);
+        getResponse.EnsureSuccessStatusCode();
+        return ExtractAntiforgeryToken(await getResponse.Content.ReadAsStringAsync());
     }
 
     private static string ExtractAntiforgeryToken(string html)

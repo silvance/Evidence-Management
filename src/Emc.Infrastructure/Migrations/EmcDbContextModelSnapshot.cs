@@ -554,6 +554,141 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("SystemConfigurations", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Documents.SourceDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CaseId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ClassificationMarking")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<long>("ContentLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("DocumentType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ImportStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OriginalFilename")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Provenance")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProvenanceNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("ReceivedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("ReceivedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int?>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId");
+
+                    b.HasIndex("ReceivedByUserId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("EvidenceRoomId", "Sha256");
+
+                    b.ToTable("SourceDocuments", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.SourceDocumentPage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<long>("ContentLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("HeightPx")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RenderDpi")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("RenderedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RendererVersion")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("WidthPx")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("SourceDocumentId", "PageNumber")
+                        .IsUnique();
+
+                    b.ToTable("SourceDocumentPages", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Events.CustodyParty", b =>
                 {
                     b.Property<int>("Id")
@@ -1639,6 +1774,42 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Voucher");
                 });
 
+            modelBuilder.Entity("Emc.Domain.Documents.SourceDocument", b =>
+                {
+                    b.HasOne("Emc.Domain.Cases.Case", null)
+                        .WithMany()
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Cases.EvidenceVoucher", null)
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.SourceDocumentPage", b =>
+                {
+                    b.HasOne("Emc.Domain.Documents.SourceDocument", "Document")
+                        .WithMany("Pages")
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("Emc.Domain.Events.CustodyParty", b =>
                 {
                     b.HasOne("Emc.Domain.Identity.User", "User")
@@ -1881,6 +2052,11 @@ namespace Emc.Infrastructure.Migrations
             modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevision", b =>
                 {
                     b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.SourceDocument", b =>
+                {
+                    b.Navigation("Pages");
                 });
 
             modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocument", b =>

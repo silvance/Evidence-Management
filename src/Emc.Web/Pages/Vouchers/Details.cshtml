@@ -505,6 +505,38 @@
     </div>
 }
 
+<div class="panel">
+    <h2>Scanned companion copies</h2>
+    <p class="regulatory-note">
+        Digital companion copies of paper documents. None of them is the original DA Form 4137;
+        the paper record above says where that is.
+    </p>
+    @if (Model.SourceDocuments.Count > 0)
+    {
+        <table>
+            <thead><tr><th>#</th><th>Type</th><th>What was scanned</th><th>Filename (metadata)</th><th>Pages</th><th>Received</th><th>Status</th></tr></thead>
+            <tbody>
+            @foreach (var doc in Model.SourceDocuments)
+            {
+                <tr>
+                    <td><a asp-page="/Documents/View" asp-route-id="@doc.Id">@doc.Id</a></td>
+                    <td>@doc.DocumentType</td>
+                    <td>@doc.Provenance</td>
+                    <td>@doc.OriginalFilename</td>
+                    <td class="numeric">@doc.PageCount</td>
+                    <td>@doc.ReceivedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+                    <td>@doc.ImportStatus</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    @if (Model.CanUploadSourceDocument)
+    {
+        <p><a asp-page="/Documents/Upload" asp-route-voucherId="@Model.VoucherId">Upload a scanned document</a></p>
+    }
+</div>
+
 @if (Model.DocumentNumbers.Count > 0)
 {
     <div class="panel">
