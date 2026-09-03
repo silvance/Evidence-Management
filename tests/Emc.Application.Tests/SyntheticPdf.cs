@@ -12,9 +12,11 @@ namespace Emc.Application.Tests;
 /// </summary>
 public static class SyntheticPdf
 {
-    static SyntheticPdf()
+    static SyntheticPdf() => EnsureFontResolver();
+
+    /// <summary>PDFsharp needs a font resolver on Linux; the built-in failsafe one uses fonts embedded in the package - no system fonts, no network.</summary>
+    public static void EnsureFontResolver()
     {
-        // PDFsharp needs a font resolver on Linux; the built-in one uses no system fonts and no network.
         if (GlobalFontSettings.FontResolver is null)
         {
             GlobalFontSettings.UseWindowsFontsUnderWindows = false;

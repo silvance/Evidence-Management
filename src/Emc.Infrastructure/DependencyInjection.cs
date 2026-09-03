@@ -82,6 +82,8 @@ public static class DependencyInjection
         services.AddSingleton<Emc.Application.Ocr.IImagePreprocessor>(sp =>
             new Emc.Infrastructure.Ocr.SkiaImagePreprocessor(
                 sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Emc.Application.Ocr.OcrOptions>>().Value.TargetDpi));
+        // Identification order: the DA Form 4137 mapper first; the generic fallback LAST.
+        services.AddSingleton<Emc.Application.Ocr.IFormTemplateMapper, Emc.Application.Ocr.DaForm4137.DaForm4137TemplateMapper>();
         services.AddSingleton<Emc.Application.Ocr.IFormTemplateMapper, Emc.Application.Ocr.GenericLineTemplateMapper>();
         services.AddScoped<Emc.Application.Ocr.IOcrJobProcessor, Emc.Application.Ocr.OcrJobProcessor>();
         return services;

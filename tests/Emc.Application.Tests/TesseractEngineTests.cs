@@ -152,6 +152,23 @@ public class TesseractEngineTests : IDisposable
     }
 
     [Fact]
+    public void TwoSegmentationPassesMergeByGeometry_WithoutDuplicatingWords()
+    {
+        var primary = new OcrPageResult([new("LABEL", 95m, 10, 10, 50, 20, 1, 1, 1, 1)], 500, 500);
+        var secondary = new OcrPageResult(
+        [
+            new("LABEL", 90m, 12, 11, 48, 19, 1, 1, 1, 1),   // same word, slightly different box: dropped
+            new("VALUE", 88m, 10, 60, 60, 20, 1, 1, 2, 1)    // where the first pass read nothing: kept
+        ], 500, 500);
+
+        var merged = TesseractProcessOcrEngine.MergeWords(primary, secondary);
+
+        Assert.Equal(2, merged.Words.Count);
+        Assert.Contains(merged.Words, w => w.Text == "VALUE" && w.BlockIndex > 1);
+        Assert.Equal(2, merged.Lines.Count());
+    }
+
+    [Fact]
     public void TheWorkerConfigurationNamesNoNetworkLocation()
     {
         // OCR-006. The worker's settings are paths; no URL can be configured for the engine or a model.

@@ -104,17 +104,58 @@ public sealed class TesseractProcessOcrEngine : IOcrEngine
         return new OrientationResult(rotate, confidence);
     }
 
+    /// <summary>
+    /// Two passes, merged. No single page-segmentation mode reads a boxed form reliably: psm 3
+    /// (automatic layout) keeps the small printed labels inside boxed rows but, on some inputs,
+    /// drops the value line beneath a label; psm 6 (one uniform block) keeps every value line
+    /// but drops the small labels. The union - psm 3 words, plus any psm 6 word that lands where
+    /// psm 3 read nothing - covers both. The cost is a second engine pass per page, in a worker.
+    /// </summary>
     public async Task<OcrPageResult> RecognizeAsync(byte[] png, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(png);
+        var primary = await RecognizeWithAsync(png, "3", ct);
+        var secondary = await RecognizeWithAsync(png, "6", ct);
+        return MergeWords(primary, secondary);
+    }
+
+    private async Task<OcrPageResult> RecognizeWithAsync(byte[] png, string psm, CancellationToken ct)
+    {
         var (exitCode, stdout) = await RunAsync(png,
-            dir => ["input.png", "-", "--tessdata-dir", _options.TessdataPath, "-l", _options.Languages, "--psm", "6", "tsv"], ct);
+            dir => ["input.png", "-", "--tessdata-dir", _options.TessdataPath, "-l", _options.Languages, "--psm", psm, "tsv"], ct);
         if (exitCode != 0)
         {
             throw new OcrEngineException(OcrFailureCategory.EngineCrashed);
         }
 
         return ParseTsv(stdout);
+    }
+
+    /// <summary>
+    /// Keeps every primary word; adds a secondary word only where it overlaps no primary word
+    /// by more than a third of its own area. Added words keep their own line grouping, offset
+    /// so they never merge into a primary line.
+    /// </summary>
+    internal static OcrPageResult MergeWords(OcrPageResult primary, OcrPageResult secondary)
+    {
+        const int blockOffset = 100_000;
+        var words = new List<OcrWord>(primary.Words);
+        foreach (var w in secondary.Words)
+        {
+            var area = Math.Max(1, w.Width * w.Height);
+            var covered = primary.Words.Any(p =>
+            {
+                var ix = Math.Max(0, Math.Min(p.Left + p.Width, w.Left + w.Width) - Math.Max(p.Left, w.Left));
+                var iy = Math.Max(0, Math.Min(p.Top + p.Height, w.Top + w.Height) - Math.Max(p.Top, w.Top));
+                return (double)(ix * iy) / area > 0.33;
+            });
+            if (!covered)
+            {
+                words.Add(w with { BlockIndex = w.BlockIndex + blockOffset });
+            }
+        }
+
+        return new OcrPageResult(words, Math.Max(primary.ImageWidth, secondary.ImageWidth), Math.Max(primary.ImageHeight, secondary.ImageHeight));
     }
 
     /// <summary>
