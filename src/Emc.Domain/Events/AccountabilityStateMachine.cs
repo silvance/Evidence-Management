@@ -38,7 +38,12 @@ public static class AccountabilityStateMachine
 
             // AR 195-5 2-8a(1)/(2) — items with no evidentiary value, and items impractical to
             // keep, may be disposed of BEFORE being processed into the evidence room.
-            AccountabilityStatus.DispositionPending
+            AccountabilityStatus.DispositionPending,
+
+            // AR 195-5 2-3g — a line on a returned form withdrawn as entered in error. Only from
+            // Acquired, which is where a returned voucher's items sit; never from any state in
+            // which the custodian has received the item.
+            AccountabilityStatus.WithdrawnAsEnteredInError
         ],
 
         [AccountabilityStatus.TemporaryStorage] =
@@ -111,7 +116,8 @@ public static class AccountabilityStateMachine
         // Terminal states.
         [AccountabilityStatus.Disposed] = [],
         [AccountabilityStatus.ReliefGranted] = [],
-        [AccountabilityStatus.PermanentlyTransferred] = []
+        [AccountabilityStatus.PermanentlyTransferred] = [],
+        [AccountabilityStatus.WithdrawnAsEnteredInError] = []
     };
 
     public static bool IsAllowed(AccountabilityStatus from, AccountabilityStatus to)
@@ -136,7 +142,8 @@ public static class AccountabilityStateMachine
         AccountabilityStatus.Draft,
         AccountabilityStatus.Acquired,
         AccountabilityStatus.TemporaryStorage,
-        AccountabilityStatus.AwaitingCustodian
+        AccountabilityStatus.AwaitingCustodian,
+        AccountabilityStatus.WithdrawnAsEnteredInError
     ];
 
     /// <summary>True while the custodian has not yet received the item (AR 195-5 2-4c).</summary>
@@ -153,11 +160,41 @@ public static class AccountabilityStateMachine
         => Allowed.ContainsKey(status) && !PreAcceptance.Contains(status);
 
     /// <summary>
-    /// True when an evidence-room location may be recorded for the item. AR 195-5 2-4e places
-    /// the location in the DA Form 4137's location block, which presupposes receipt under 2-4c.
+    /// States in which the item is PHYSICALLY IN THE EVIDENCE ROOM, listed by name:
+    ///
+    ///   InEvidenceRoom      received under 2-4c and held;
+    ///   DispositionPending  approval sought (2-8) while the item is still held by the room;
+    ///   LongTermRetention   sealed into a long-term container that is itself in the room (2-13).
+    ///
+    /// Everything else is not: before receipt the agent or a temporary facility has it (2-1a,
+    /// 4-3a, 2-4a); on temporary release another party has it and the original DA Form 4137 went
+    /// with it (2-7a, 2-4f(2)); in discrepancy review or inquiry it CANNOT BE LOCATED (3-3a, 3-3b),
+    /// and giving it a bin would be the software resolving a discrepancy the regulation resolves
+    /// through a 5-working-day review and, failing that, an AR 15-6 inquiry; and the terminal
+    /// states are gone from the room.
+    ///
+    /// The earlier predicate was "received and not terminal", which let a released or missing
+    /// item be assigned a new location.
     /// </summary>
-    public static bool MayHoldEvidenceRoomLocation(AccountabilityStatus status)
-        => HasBeenReceivedByCustodian(status) && !IsTerminal(status);
+    private static readonly HashSet<AccountabilityStatus> PhysicallyInRoom =
+    [
+        AccountabilityStatus.InEvidenceRoom,
+        AccountabilityStatus.DispositionPending,
+        AccountabilityStatus.LongTermRetention
+    ];
+
+    public static bool IsPhysicallyInEvidenceRoom(AccountabilityStatus status)
+        => PhysicallyInRoom.Contains(status);
+
+    /// <summary>
+    /// True when a NEW evidence-room location may be recorded for the item. AR 195-5 2-4e concerns
+    /// the location of evidence in the evidence room, so the item must be physically there. An
+    /// item on temporary release keeps its last recorded location in its history - that is where
+    /// it was - but cannot be given a new one until it is returned (TemporarilyReleased ->
+    /// InEvidenceRoom); a missing item cannot be given one until it is found through 3-3.
+    /// </summary>
+    public static bool MayAssignEvidenceRoomLocation(AccountabilityStatus status)
+        => IsPhysicallyInEvidenceRoom(status);
 
     /// <summary>Every status the machine knows. For exhaustiveness tests.</summary>
     public static IReadOnlyCollection<AccountabilityStatus> AllStatuses => Allowed.Keys;

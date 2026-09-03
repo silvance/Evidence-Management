@@ -87,9 +87,13 @@
             <tbody>
             @foreach (var item in Model.Items)
             {
-                <tr>
+                <tr class="@(item.IsWithdrawnFromForm ? "history-row--superseded" : "")">
                     <td class="numeric">@item.ItemNumber</td>
                     <td>
+                        @if (item.IsWithdrawnFromForm)
+                        {
+                            <span class="badge">withdrawn — entered in error (para 2-3g)</span>
+                        }
                         @item.DescriptionForForm
                         @if (item.IsPossibleBiohazard)
                         {
@@ -111,7 +115,7 @@
                     <td><span class="badge badge--@item.AccountabilityStatus.ToString().ToLowerInvariant()">@item.AccountabilityStatus</span></td>
                     <td>
                         <a asp-page="/Items/History" asp-route-id="@item.Id">History</a>
-                        @if (Model.CanEditDraft)
+                        @if (Model.CanEditDraft && Model.ReviewStage == VoucherReviewStage.Draft)
                         {
                             <form method="post" asp-page-handler="RemoveItem" asp-route-id="@Model.VoucherId" asp-route-itemId="@item.Id" style="display:inline">
                                 <button type="submit" class="secondary">Remove</button>
@@ -265,6 +269,73 @@
     </div>
 }
 
+@if (Model.CanWithdrawLine)
+{
+    <div class="panel">
+        <h2>Withdraw a line entered in error</h2>
+        <p class="regulatory-note">
+            AR 195-5 para 2-3g. A line that never corresponded to a physical item is withdrawn from
+            the corrected form. It stays visible on the earlier submitted revision and in its own
+            history. <strong>A physical item that was actually acquired cannot be removed this
+            way</strong>: it is evidence in your custody and leaves the process only under
+            para 2-8, which this application does not yet support. Consult the CI supervisor.
+        </p>
+        <form method="post" asp-page-handler="WithdrawLine" asp-route-id="@Model.VoucherId">
+            <div asp-validation-summary="ModelOnly" class="message message--error"></div>
+            <div class="form-row">
+                <label asp-for="Withdraw.ItemId">Line</label>
+                <select asp-for="Withdraw.ItemId">
+                    @foreach (var item in Model.Items.Where(i => !i.IsWithdrawnFromForm))
+                    {
+                        <option value="@item.Id">Item @item.ItemNumber — @item.DescriptionForForm</option>
+                    }
+                </select>
+            </div>
+            <div class="form-row">
+                <label asp-for="Withdraw.Reason">Why the line was entered in error</label>
+                <textarea asp-for="Withdraw.Reason"></textarea>
+                <span asp-validation-for="Withdraw.Reason" class="field-validation-error"></span>
+            </div>
+            <div class="form-row">
+                <label>
+                    <input asp-for="Withdraw.AttestsNoPhysicalItemExists" />
+                    No physical item corresponds to this line. It was entered in error.
+                </label>
+            </div>
+            <button type="submit">Withdraw line</button>
+        </form>
+    </div>
+}
+
+@if (Model.FormRevisions.Count > 0)
+{
+    <div class="panel">
+        <h2>Submitted form revisions (AR 195-5 para 2-3g)</h2>
+        <p class="regulatory-note">
+            What the DA Form 4137 contained each time it went to the evidence custodian. The
+            current form is the item list above; these are kept as submitted and never change.
+        </p>
+        @foreach (var revision in Model.FormRevisions)
+        {
+            <h3>Revision @revision.RevisionNumber — @revision.Kind, @revision.SubmittedByName, @revision.SubmittedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</h3>
+            <table>
+                <thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Serial / identifier</th></tr></thead>
+                <tbody>
+                @foreach (var line in revision.Lines)
+                {
+                    <tr>
+                        <td class="numeric">@line.LineNumber</td>
+                        <td>@line.Description</td>
+                        <td>@line.Quantity</td>
+                        <td>@line.SerialNumber @line.UniqueDeviceIdentifier</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
 @if (Model.CanRecordAgentCorrection)
 {
     <div class="panel">
@@ -316,9 +387,10 @@
             Submitting here records the electronic voucher; it does not transfer physical custody.
         </p>
         <p class="regulatory-note">
-            Once submitted, items can no longer be edited. AR 195-5 para 2-3g has the custodian
-            have the submitting agent correct and initial errors on the form, and thereafter any
-            change is made through a correction that leaves the original readable (para 2-5b(5)).
+            Once submitted, items can no longer be edited unless the custodian returns the form.
+            AR 195-5 para 2-3g has the custodian have the submitting agent correct and initial
+            errors on the form; after acceptance, an incorrect entry is corrected by the custodian
+            under para 1-7c(3).
         </p>
         <form method="post" asp-page-handler="Submit" asp-route-id="@Model.VoucherId">
             <button type="submit">Submit for custodian intake</button>

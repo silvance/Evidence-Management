@@ -178,8 +178,9 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
 
         // Each item records the assignment in its own history, and moves into the evidence room.
         // AR 195-5 2-4c ties the document number to receipt of the evidence by the custodian, so
-        // acceptance and numbering happen together (invariant I-12).
-        foreach (var item in voucher.Items.OrderBy(i => i.ItemNumber))
+        // acceptance and numbering happen together (invariant I-12). A line withdrawn from the
+        // form under 2-3g is not on the corrected form and is not received (VCH-026).
+        foreach (var item in voucher.CurrentFormLines)
         {
             await _events.AppendAsync(
                 item,
@@ -301,17 +302,32 @@ public sealed class EvidenceIntakeService : IEvidenceIntakeService
                 "That storage location is no longer in use.", "LOC-004");
         }
 
-        // Invariant I-12. AR 195-5 2-4e places the location in the DA Form 4137's location block,
-        // which presupposes the evidence has been received into the evidence room under 2-4c.
-        // Stated as a predicate on the state machine rather than a list here, which is how the
-        // earlier list came to omit TemporaryStorage (4-3a) - an item in a temporary facility is
-        // not in the evidence room either.
-        if (!AccountabilityStateMachine.MayHoldEvidenceRoomLocation(item.AccountabilityStatus))
+        // Invariant I-12. AR 195-5 2-4e concerns the location of evidence IN the evidence room,
+        // so a new location is recorded only for an item that is physically there. The state
+        // machine says which states those are; the message says what the regulation's own path
+        // back into the room is for the others.
+        if (!AccountabilityStateMachine.MayAssignEvidenceRoomLocation(item.AccountabilityStatus))
         {
-            return OperationResult.Failure(
-                "AR 195-5 para 2-4c: the evidence must be received by the evidence custodian and "
-                + "assigned a document number before an evidence-room location is recorded.",
-                "ITEM-001");
+            var why = item.AccountabilityStatus switch
+            {
+                AccountabilityStatus.TemporarilyReleased =>
+                    "This item is on temporary release: it is in another party's custody and the "
+                    + "original DA Form 4137 accompanies it (AR 195-5 paras 2-7a, 2-4f(2)). Its last "
+                    + "evidence-room location remains in its history. Record its return to the "
+                    + "evidence room first; a new location may be recorded then.",
+                AccountabilityStatus.DiscrepancyReview or AccountabilityStatus.Inquiry =>
+                    "This item cannot be located (AR 195-5 para 3-3). A discrepancy is resolved "
+                    + "through the 5-working-day review, and failing that an AR 15-6 inquiry - "
+                    + "not by recording a location for an item that has not been found. Record the "
+                    + "item as located through that process first.",
+                _ when AccountabilityStateMachine.IsBeforeCustodianReceipt(item.AccountabilityStatus) =>
+                    "AR 195-5 para 2-4c: the evidence must be received by the evidence custodian and "
+                    + "assigned a document number before an evidence-room location is recorded.",
+                _ =>
+                    $"This item is {item.AccountabilityStatus} and is no longer held in the evidence room."
+            };
+
+            return OperationResult.Failure(why, "LOC-008");
         }
 
         var previous = item.CurrentLocationPath;

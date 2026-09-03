@@ -61,7 +61,8 @@ public sealed record VoucherDetailView(
     string? DocumentNumberFormatDescription = null,
     string? DocumentNumberExample = null,
     bool DocumentNumberLayoutIsRegulatory = true,
-    bool DocumentNumberLayoutAwaitsValidation = false);
+    bool DocumentNumberLayoutAwaitsValidation = false,
+    IReadOnlyList<FormRevisionRow>? FormRevisions = null);
 
 public sealed record VoucherReviewActionRow(
     VoucherReviewActionKind Kind,
@@ -81,7 +82,21 @@ public sealed record ItemListRow(
     bool IsPossibleBiohazard,
     bool IsSealed,
     AccountabilityStatus AccountabilityStatus,
-    bool IsLastItem);
+    bool IsLastItem,
+
+    /// <summary>AR 195-5 2-3g - withdrawn from the returned form as entered in error; not on the current form (VCH-026).</summary>
+    bool IsWithdrawnFromForm = false);
+
+/// <summary>What the form contained when it went to the custodian (VCH-025).</summary>
+public sealed record FormRevisionRow(
+    int RevisionNumber,
+    VoucherFormRevisionKind Kind,
+    string SubmittedByName,
+    DateTimeOffset SubmittedAtUtc,
+    IReadOnlyList<FormRevisionLineRow> Lines);
+
+public sealed record FormRevisionLineRow(
+    int LineNumber, string Description, string? Quantity, string? SerialNumber, string? UniqueDeviceIdentifier);
 
 public sealed record DocumentNumberRow(
     string DocumentNumber, DateTimeOffset EnteredAtUtc, bool IsCurrent, string? SupersessionReason);
@@ -248,6 +263,7 @@ public sealed class EvidenceReadService : IEvidenceReadService
             .Include(v => v.Items)
             .Include(v => v.DocumentNumberAssignments)
             .Include(v => v.ReviewActions)
+            .Include(v => v.FormRevisions).ThenInclude(r => r.Lines)
             .FirstOrDefaultAsync(v => v.Id == voucherId, ct);
 
         if (voucher?.Case is null)
@@ -256,6 +272,7 @@ public sealed class EvidenceReadService : IEvidenceReadService
         }
 
         var ordered = voucher.Items.OrderBy(i => i.ItemNumber).ToList();
+        var lastCurrentId = ordered.LastOrDefault(i => !i.IsWithdrawnFromForm)?.Id;
 
         var items = ordered
             .Select((item, index) => new ItemListRow(
@@ -271,8 +288,27 @@ public sealed class EvidenceReadService : IEvidenceReadService
                 item.IsSealed,
                 item.AccountabilityStatus,
 
-                // AR 195-5 2-3d - LAST ITEM after the last listed item.
-                index == ordered.Count - 1))
+                // AR 195-5 2-3d - LAST ITEM after the last listed CURRENT item. A withdrawn
+                // line is shown, struck through, but is not an item on the form.
+                item.Id == lastCurrentId,
+                item.IsWithdrawnFromForm))
+            .ToList();
+
+        var revisionActorIds = voucher.FormRevisions.Select(r => r.SubmittedByUserId).Distinct().ToList();
+        var revisionActorNames = await _db.Users
+            .AsNoTracking()
+            .Where(u => revisionActorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.PrintedNameAndGrade, ct);
+
+        var revisions = voucher.FormRevisions
+            .OrderBy(r => r.RevisionNumber)
+            .Select(r => new FormRevisionRow(
+                r.RevisionNumber, r.Kind,
+                revisionActorNames.GetValueOrDefault(r.SubmittedByUserId, "(unknown user)"),
+                r.SubmittedAtUtc,
+                r.Lines.OrderBy(l => l.LineNumber)
+                    .Select(l => new FormRevisionLineRow(l.LineNumber, l.Description, l.Quantity, l.SerialNumber, l.UniqueDeviceIdentifier))
+                    .ToList()))
             .ToList();
 
         // AR 195-5 2-7g - superseded numbers stay recorded and visible. "Current" is simply the
@@ -338,7 +374,8 @@ public sealed class EvidenceReadService : IEvidenceReadService
             policy.Describe(),
             policy.Example(),
             policy.IsRegulatoryLayout,
-            policy.IsAwaitingValidation);
+            policy.IsAwaitingValidation,
+            revisions);
     }
 
     public async Task<int?> GetReadableItemEvidenceRoomIdAsync(int itemId, CancellationToken ct = default)

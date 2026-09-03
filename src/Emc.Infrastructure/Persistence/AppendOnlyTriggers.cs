@@ -135,6 +135,55 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+    /// <summary>
+    /// AR 195-5 2-3g / VCH-025. A form revision is what the DA Form 4137 contained when it went to
+    /// the custodian. It is the record that lets a corrected form differ from the submitted one
+    /// without erasing anything, so it is kept on the same terms as the rest.
+    /// </summary>
+    public const string CreateFormRevisionsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_VoucherFormRevisions_AppendOnly_Update
+        ON dbo.VoucherFormRevisions
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50009, 'VoucherFormRevisions is append-only and cannot be modified. A submitted DA Form 4137 revision is kept as it was submitted (AR 195-5 para 2-3g).', 1;
+        END;
+        """;
+
+    public const string CreateFormRevisionsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_VoucherFormRevisions_AppendOnly_Delete
+        ON dbo.VoucherFormRevisions
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50010, 'VoucherFormRevisions is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
+    public const string CreateFormRevisionLinesUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_VoucherFormRevisionLines_AppendOnly_Update
+        ON dbo.VoucherFormRevisionLines
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50011, 'VoucherFormRevisionLines is append-only and cannot be modified.', 1;
+        END;
+        """;
+
+    public const string CreateFormRevisionLinesDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_VoucherFormRevisionLines_AppendOnly_Delete
+        ON dbo.VoucherFormRevisionLines
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50012, 'VoucherFormRevisionLines is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -144,7 +193,11 @@ public static class AppendOnlyTriggers
         CreateDocumentNumberUpdateTrigger,
         CreateDocumentNumberDeleteTrigger,
         CreateVoucherReviewUpdateTrigger,
-        CreateVoucherReviewDeleteTrigger
+        CreateVoucherReviewDeleteTrigger,
+        CreateFormRevisionsUpdateTrigger,
+        CreateFormRevisionsDeleteTrigger,
+        CreateFormRevisionLinesUpdateTrigger,
+        CreateFormRevisionLinesDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -156,6 +209,10 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_DocumentNumbers_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_DocumentNumbers_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_VoucherReviewActions_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_VoucherReviewActions_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_VoucherReviewActions_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_VoucherFormRevisions_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_VoucherFormRevisions_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_VoucherFormRevisionLines_AppendOnly_Delete;"
     ];
 }

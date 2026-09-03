@@ -122,6 +122,23 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
     /// <summary>The 2-3g review as it happened, in order. Append-only.</summary>
     public IReadOnlyList<VoucherReviewAction> ReviewActions => _reviewActions.AsReadOnly();
 
+    private readonly List<VoucherFormRevision> _formRevisions = [];
+
+    /// <summary>
+    /// What the form contained each time it went to the custodian (VCH-025). Append-only. The
+    /// CURRENT form is <see cref="CurrentFormLines"/>; these are what earlier submissions read.
+    /// </summary>
+    public IReadOnlyList<VoucherFormRevision> FormRevisions => _formRevisions.AsReadOnly();
+
+    /// <summary>
+    /// The lines the corrected DA Form 4137 now contains: every item except those withdrawn as
+    /// entered in error under 2-3g. Item numbers are NOT reassigned after a withdrawal - the paper
+    /// form keeps its numbering with the erroneous line lined through, and every event already
+    /// recorded names the item by its number - so current lines may skip a number [DESIGN].
+    /// </summary>
+    public IEnumerable<EvidenceItem> CurrentFormLines
+        => _items.Where(i => !i.IsWithdrawnFromForm).OrderBy(i => i.ItemNumber);
+
     public string? Remarks { get; private set; }
     public Guid ConcurrencyStamp { get; set; }
 
@@ -157,7 +174,9 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
     {
         get
         {
-            if (_items.Count == 0)
+            var lines = CurrentFormLines.ToList();
+
+            if (lines.Count == 0)
             {
                 return VoucherDerivedStatus.Draft;
             }
@@ -175,21 +194,21 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
                 return VoucherDerivedStatus.ReturnedForCorrection;
             }
 
-            var terminalCount = _items.Count(i => IsTerminal(i.AccountabilityStatus));
-            if (terminalCount == _items.Count)
+            var terminalCount = lines.Count(i => IsTerminal(i.AccountabilityStatus));
+            if (terminalCount == lines.Count)
             {
                 return VoucherDerivedStatus.Inactive;
             }
 
             // By meaning, not by enum order (see AccountabilityStateMachine).
-            var acceptedCount = _items.Count(
+            var acceptedCount = lines.Count(
                 i => AccountabilityStateMachine.HasBeenReceivedByCustodian(i.AccountabilityStatus));
             if (acceptedCount == 0)
             {
                 return VoucherDerivedStatus.AwaitingCustodianAcceptance;
             }
 
-            return acceptedCount < _items.Count
+            return acceptedCount < lines.Count
                 ? VoucherDerivedStatus.PartiallyAccepted
                 : VoucherDerivedStatus.Active;
         }
@@ -262,23 +281,28 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
         return item;
     }
 
-    /// <summary>Removes an item and renumbers the remainder so numbering stays contiguous (I-01).</summary>
+    /// <summary>
+    /// Removes a NEVER-SUBMITTED draft line outright and renumbers the remainder (I-01). A line that
+    /// has been before the custodian carries history and is withdrawn instead - see
+    /// <see cref="WithdrawLineAsEnteredInError"/>.
+    /// </summary>
     public void RemoveItem(EvidenceItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
         RequireDraft("VCH-010", "items");
 
-        // VCH-021. An item on a voucher the custodian returned (2-3g) already carries its
-        // submission and return on its own history, and that history is append-only. It is
-        // corrected, not deleted - a line through the entry on the paper form (2-5b(5)), not a
-        // torn-out page. A never-submitted draft item has no history and may still be removed.
-        if (item.Events.Count > 0)
+        // VCH-021. Once a line has been submitted it is on the record: an earlier form revision
+        // shows it and its own history shows the submission and return. Deleting the row would
+        // erase that. On a returned form (2-3g) the line is WITHDRAWN - kept in history, excluded
+        // from the current corrected form - not deleted.
+        if (item.Events.Count > 0 || _formRevisions.Any(r => r.Lines.Any(l => l.EvidenceItemId == item.Id && item.Id != 0)))
         {
             throw new DomainRuleViolationException(
                 "VCH-021",
-                $"Item {item.ItemNumber} already carries accountability events and cannot be "
-                + "removed. Correct its description instead; if it was listed in error, say so in "
-                + "the description and in the correction recorded for the custodian (AR 195-5 2-3g).");
+                $"Item {item.ItemNumber} has been submitted to the evidence custodian and is on the "
+                + "record. If it was entered in error, withdraw the line from the returned form "
+                + "(AR 195-5 2-3g); it stays visible on the earlier submitted revision. If it is a "
+                + "physical item that was actually acquired, it cannot be removed here at all.");
         }
 
         if (!_items.Remove(item))
@@ -318,6 +342,86 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
         _reviewActions.Add(new VoucherReviewAction(
             this, VoucherReviewActionKind.Submitted, ReviewStage, submittedByUserId,
             submittedAtUtc, narrative: null, paperFormCorrectedAndInitialedAttested: null));
+
+        // VCH-025 - what the form contained when it went to the custodian.
+        _formRevisions.Add(new VoucherFormRevision(
+            this, _formRevisions.Count + 1, VoucherFormRevisionKind.InitialSubmission,
+            submittedByUserId, submittedAtUtc, CurrentFormLines));
+    }
+
+    /// <summary>
+    /// AR 195-5 2-3g — the submitting agent withdraws a line that was ENTERED IN ERROR from the
+    /// returned form. The line is kept: the earlier revision shows it, the item's own history
+    /// shows the withdrawal, and the review record shows who withdrew it and why. It simply is
+    /// not part of the corrected form the custodian will receive.
+    ///
+    /// The one thing this must never become is a way to make physical evidence disappear. A
+    /// line that describes an item the agent actually acquired is evidence in the agent's custody
+    /// (2-1a), and it leaves the evidence process only through disposition under 2-8 - for
+    /// example 2-8a(1), items the agent determines have no evidentiary value, approved by the CI
+    /// supervisor on the Final Disposal Authority section. That workflow is outside this slice, so
+    /// the agent attests that NO physical item corresponds to the line, and without that
+    /// attestation the withdrawal is refused (VCH-026).
+    ///
+    /// The status transition itself is recorded by the application service as a StatusEvent
+    /// (invariant I-22); this method validates and records the review action.
+    /// </summary>
+    public void WithdrawLineAsEnteredInError(
+        EvidenceItem item,
+        int agentUserId,
+        string reason,
+        bool attestsNoPhysicalItemExists,
+        DateTimeOffset withdrawnAtUtc)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        if (ReviewStage != VoucherReviewStage.ReturnedToSubmittingAgentForCorrection)
+        {
+            throw new DomainRuleViolationException(
+                "VCH-026",
+                $"A line is withdrawn from a form the custodian has returned for correction "
+                + $"(AR 195-5 2-3g). This voucher is {ReviewStage}.");
+        }
+
+        RequireSubmittingAgent(agentUserId, "VCH-026", "withdraw a line from");
+
+        if (!_items.Contains(item))
+        {
+            throw new DomainRuleViolationException("ITEM-002", "The item does not belong to this voucher.");
+        }
+
+        if (item.IsWithdrawnFromForm)
+        {
+            throw new DomainRuleViolationException(
+                "VCH-026", $"Item {item.ItemNumber} has already been withdrawn from the form.");
+        }
+
+        if (!AccountabilityStateMachine.IsAllowed(item.AccountabilityStatus, AccountabilityStatus.WithdrawnAsEnteredInError))
+        {
+            throw new DomainRuleViolationException(
+                "VCH-026",
+                $"Item {item.ItemNumber} is {item.AccountabilityStatus} and cannot be withdrawn as "
+                + "entered in error.");
+        }
+
+        var why = Guard.NotBlank(reason, "VCH-026", "Reason the line was entered in error");
+
+        if (!attestsNoPhysicalItemExists)
+        {
+            throw new DomainRuleViolationException(
+                "VCH-026",
+                $"Item {item.ItemNumber} cannot be withdrawn. Withdrawing a line is for an entry "
+                + "that never corresponded to a physical item. An item that was actually acquired "
+                + "is evidence in the agent's custody and leaves the evidence process only under "
+                + "AR 195-5 para 2-8 - for example para 2-8a(1), no evidentiary value, approved by "
+                + "the CI supervisor on the Final Disposal Authority section - which this "
+                + "application does not yet support. Keep the line and consult the CI supervisor.");
+        }
+
+        _reviewActions.Add(new VoucherReviewAction(
+            this, VoucherReviewActionKind.LineWithdrawn, ReviewStage, agentUserId,
+            withdrawnAtUtc, $"Item {item.ItemNumber} withdrawn as entered in error: {why}",
+            paperFormCorrectedAndInitialedAttested: null));
     }
 
     /// <summary>
@@ -420,6 +524,11 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
         _reviewActions.Add(new VoucherReviewAction(
             this, VoucherReviewActionKind.Resubmitted, ReviewStage, agentUserId,
             resubmittedAtUtc, narrative: null, paperFormCorrectedAndInitialedAttested: null));
+
+        // VCH-025 - the corrected form as it now goes to the custodian.
+        _formRevisions.Add(new VoucherFormRevision(
+            this, _formRevisions.Count + 1, VoucherFormRevisionKind.Resubmission,
+            agentUserId, resubmittedAtUtc, CurrentFormLines));
     }
 
     private void RequireSubmittingAgent(int userId, string requirementId, string verb)
@@ -435,7 +544,7 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
 
     private void RequireAtLeastOneItem()
     {
-        if (_items.Count == 0)
+        if (!CurrentFormLines.Any())
         {
             throw new DomainRuleViolationException(
                 "VCH-011",
@@ -519,9 +628,10 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
         {
             throw new DomainRuleViolationException(
                 requirementId,
-                $"AR 195-5 2-3g: {what} may only be changed while the voucher is a draft. Once the "
-                + "voucher has been submitted for custodian intake, accountability data is "
-                + "append-only and must be changed through a correction.");
+                $"AR 195-5 2-3g: {what} may be changed while the voucher is a draft, or while the "
+                + "custodian has returned it to the submitting agent for correction. Otherwise the "
+                + "form is before the custodian or has been accepted, and change goes through the "
+                + "review or, after acceptance, a correction.");
         }
     }
 }

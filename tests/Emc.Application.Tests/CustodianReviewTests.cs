@@ -224,11 +224,11 @@ public class CustodianReviewTests : IDisposable
     }
 
     [Fact]
-    public async Task AnItemAlreadyOnTheRecordCannotBeRemovedFromAReturnedVoucher()
+    public async Task AnItemAlreadyOnTheRecordCannotBeDeletedFromAReturnedVoucher()
     {
-        // VCH-021. A returned item carries accountability events (its submission and return).
-        // Those are append-only, so the item is corrected, not deleted - as a line through an
-        // entry on the paper form (2-5b(5)) rather than a torn-out page.
+        // VCH-021. A submitted line is on the record - revision 1 shows it, its history shows the
+        // submission and return. It is withdrawn (below), not deleted. This is a 2-3g form-review
+        // rule; it does not rest on the ledger-correction procedure of 2-5b(5).
         var (_, itemId) = await ReturnedVoucherAsync();
 
         _harness.SignInAsAgent();
@@ -236,6 +236,102 @@ public class CustodianReviewTests : IDisposable
 
         Assert.False(result.Succeeded);
         Assert.Equal("VCH-021", result.RequirementId);
+        Assert.DoesNotContain("2-5b", result.Error!, StringComparison.Ordinal);
+        Assert.Contains("withdraw", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ALineEnteredInErrorIsWithdrawn_KeptInHistory_AndNeverAccepted()
+    {
+        // VCH-025 / VCH-026, end to end. Two lines submitted; the custodian returns the form;
+        // the agent withdraws the erroneous line; the corrected form is resubmitted and accepted
+        // with ONE item. The withdrawn line stays on revision 1 and in its own history, receives
+        // no document number and no evidence-room state.
+        var (voucherId, firstItemId) = await SubmittedVoucherAsync();
+
+        _harness.SignInAsAgent();
+        var second = await _harness.Vouchers.AddItemAsync(new AddItemRequest(
+            voucherId, "One item entered against the wrong case", "1", null, null, false, false, false, null));
+        // (added before submission in the helper? no - the helper submitted already, so re-drive:)
+        Assert.False(second.Succeeded); // cannot add to a submitted form
+
+        _harness.SignInAsCustodian();
+        Assert.True((await _harness.Vouchers.ReturnForCorrectionAsync(
+            new ReturnVoucherForCorrectionRequest(voucherId, "Item 1 was seized under another case; add the correct item."))).Succeeded);
+
+        _harness.SignInAsAgent();
+        var added = await _harness.Vouchers.AddItemAsync(new AddItemRequest(
+            voucherId, "One USB flash drive, black", "1", null, null, false, false, false, null));
+        Assert.True(added.Succeeded, added.Error);
+
+        var withdrawn = await _harness.Vouchers.WithdrawItemLineAsync(new WithdrawItemLineRequest(
+            firstItemId, "Entered against the wrong case; no such item was seized under this case.", true));
+        Assert.True(withdrawn.Succeeded, withdrawn.Error);
+
+        Assert.True((await _harness.Vouchers.RecordAgentCorrectionAsync(
+            new RecordAgentCorrectionRequest(voucherId, "Withdrew line 1; added the correct item as line 2.", true))).Succeeded);
+        Assert.True((await _harness.Vouchers.ResubmitForCustodianIntakeAsync(voucherId)).Succeeded);
+
+        _harness.SignInAsCustodian();
+        var accepted = await _harness.Intake.RecordOfficialDocumentNumberAsync(
+            new RecordDocumentNumberRequest(voucherId, "009-26", true, _harness.Clock.UtcNow));
+        Assert.True(accepted.Succeeded, accepted.Error);
+
+        var view = await _harness.Reads.GetVoucherAsync(voucherId);
+
+        // Current form: line 2 only, and it is the LAST ITEM; line 1 shown withdrawn.
+        var line1 = view!.Items.Single(i => i.Id == firstItemId);
+        var line2 = view.Items.Single(i => i.Id == added.Value);
+        Assert.True(line1.IsWithdrawnFromForm);
+        Assert.False(line1.IsLastItem);
+        Assert.Equal(AccountabilityStatus.WithdrawnAsEnteredInError, line1.AccountabilityStatus);
+        Assert.Equal(AccountabilityStatus.InEvidenceRoom, line2.AccountabilityStatus);
+        Assert.True(line2.IsLastItem);
+        Assert.Equal(VoucherDerivedStatus.Active, view.DerivedStatus);
+
+        // Revisions: 1 = the form as first submitted (line 1 only); 2 = the corrected form (line 2).
+        Assert.Equal(2, view.FormRevisions!.Count);
+        Assert.Equal([1], view.FormRevisions[0].Lines.Select(l => l.LineNumber).ToList());
+        Assert.Equal([2], view.FormRevisions[1].Lines.Select(l => l.LineNumber).ToList());
+
+        // The withdrawn line got no document number and no evidence-room state, and its history
+        // shows why.
+        var history = await _harness.History.GetAsync(firstItemId);
+        Assert.DoesNotContain(history!.History, r => r.Kind == ItemEventKind.DocumentNumber);
+        Assert.Contains(history.History, r => r.Kind == ItemEventKind.Status && r.Summary.Contains("WithdrawnAsEnteredInError", StringComparison.Ordinal));
+        Assert.True(history.ChainVerification.IsIntact);
+
+        // The review record shows who withdrew what.
+        Assert.Contains(view.ReviewActions!, a => a.Kind == VoucherReviewActionKind.LineWithdrawn && a.ActorName == _harness.AgentPrintedNameAndGrade);
+    }
+
+    [Fact]
+    public async Task APhysicalItemCannotBeDroppedThroughLineWithdrawal()
+    {
+        var (_, itemId) = await ReturnedVoucherAsync();
+
+        _harness.SignInAsAgent();
+        var result = await _harness.Vouchers.WithdrawItemLineAsync(new WithdrawItemLineRequest(
+            itemId, "We decided not to keep it.", AttestsNoPhysicalItemExists: false));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("VCH-026", result.RequirementId);
+        Assert.Contains("2-8", result.Error!, StringComparison.Ordinal);
+
+        var item = await _harness.Db.EvidenceItems.AsNoTracking().SingleAsync(i => i.Id == itemId);
+        Assert.Equal(AccountabilityStatus.Acquired, item.AccountabilityStatus);
+    }
+
+    [Fact]
+    public async Task AnotherAgentCannotWithdrawALine()
+    {
+        var (_, itemId) = await ReturnedVoucherAsync();
+
+        _harness.SignInAsSecondAgent();
+        var result = await _harness.Vouchers.WithdrawItemLineAsync(new WithdrawItemLineRequest(itemId, "dup", true));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("VCH-026", result.RequirementId);
     }
 
     [Fact]

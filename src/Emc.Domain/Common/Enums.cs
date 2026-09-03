@@ -52,7 +52,17 @@ public enum AccountabilityStatus
     /// AR 195-5 2-7g — terminal for this evidence room. Permanently transferred to another
     /// evidence room, which assigns its own next document number. Not disposition.
     /// </summary>
-    PermanentlyTransferred = 12
+    PermanentlyTransferred = 12,
+
+    /// <summary>
+    /// Terminal, pre-acceptance only. A line on a DA Form 4137 that the custodian returned under
+    /// AR 195-5 2-3g and that the submitting agent withdrew as ENTERED IN ERROR - a line that never
+    /// corresponded to a physical item. It stays on the record (the earlier submitted form revision
+    /// shows it) but is not part of the corrected form and is never accepted evidence. A physical
+    /// item that was actually acquired cannot leave the process this way; that is disposition
+    /// under 2-8, which this application does not yet support.
+    /// </summary>
+    WithdrawnAsEnteredInError = 13
 }
 
 /// <summary>Derived from contained items — never stored as maintained state (AR 195-5 2-4h).</summary>

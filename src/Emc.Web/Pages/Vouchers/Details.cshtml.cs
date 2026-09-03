@@ -100,6 +100,13 @@ public class DetailsModel : PageModel
     [BindProperty]
     public AgentCorrectionInput AgentCorrection { get; set; } = new();
 
+    [BindProperty]
+    public WithdrawLineInput Withdraw { get; set; } = new();
+
+    /// <summary>AR 195-5 2-3g - what each earlier submission of the form contained (VCH-025).</summary>
+    public IReadOnlyList<FormRevisionRow> FormRevisions { get; private set; } = [];
+    public bool CanWithdrawLine { get; private set; }
+
     public async Task<IActionResult> OnGetAsync(int id)
         => await LoadAsync(id) ? Page() : NotFound();
 
@@ -192,6 +199,25 @@ public class DetailsModel : PageModel
 
         return Respond(id, result.Succeeded, result.Error, result.RequirementId,
             result.Warnings, "Correction recorded. Resubmit the voucher when the form is ready for the custodian.");
+    }
+
+    public async Task<IActionResult> OnPostWithdrawLineAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        if (!IsValidForPrefix(nameof(Withdraw)))
+        {
+            return Page();
+        }
+
+        var result = await _vouchers.WithdrawItemLineAsync(new WithdrawItemLineRequest(
+            Withdraw.ItemId, Withdraw.Reason!, Withdraw.AttestsNoPhysicalItemExists));
+
+        return Respond(id, result.Succeeded, result.Error, result.RequirementId,
+            result.Warnings, "Line withdrawn from the returned form as entered in error. It remains on the earlier submitted revision.");
     }
 
     public async Task<IActionResult> OnPostResubmitAsync(int id)
@@ -367,6 +393,8 @@ public class DetailsModel : PageModel
             && view.ReviewStage == VoucherReviewStage.ReturnedToSubmittingAgentForCorrection;
         CanResubmit = editDecision.IsAllowed
             && view.ReviewStage == VoucherReviewStage.CorrectedBySubmittingAgent;
+        CanWithdrawLine = CanRecordAgentCorrection && view.Items.Any(i => !i.IsWithdrawnFromForm);
+        FormRevisions = view.FormRevisions ?? [];
         AuthorizationWarnings = numberDecision.Warnings ?? [];
 
         if (TempData[SuccessKey] is string success)
@@ -432,6 +460,23 @@ public class DetailsModel : PageModel
         /// (VCH-019). An attestation, not an initial; the application supplies neither.
         /// </summary>
         public bool PaperFormCorrectedAndInitialedAttested { get; set; }
+    }
+
+    public sealed class WithdrawLineInput
+    {
+        public int ItemId { get; set; }
+
+        /// <summary>AR 195-5 para 2-3g - why the line was entered in error (VCH-026).</summary>
+        [Required(ErrorMessage = "State why the line was entered in error.")]
+        [StringLength(2000)]
+        public string? Reason { get; set; }
+
+        /// <summary>
+        /// The attestation that NO physical item corresponds to the line. Without it the
+        /// withdrawal is refused: physical evidence leaves the process under para 2-8, not by
+        /// lining out its entry (VCH-026).
+        /// </summary>
+        public bool AttestsNoPhysicalItemExists { get; set; }
     }
 
     public sealed class DocumentNumberInput

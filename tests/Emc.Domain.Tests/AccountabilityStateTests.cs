@@ -78,31 +78,75 @@ public class AccountabilityStateTests
         }
     }
 
-    [Theory]
-    [InlineData(AccountabilityStatus.Draft)]
-    [InlineData(AccountabilityStatus.Acquired)]
-    [InlineData(AccountabilityStatus.TemporaryStorage)]
-    [InlineData(AccountabilityStatus.AwaitingCustodian)]
-    public void PreAcceptanceStatesCannotHoldAnEvidenceRoomLocation(AccountabilityStatus status)
-    {
-        // AR 195-5 2-4e presupposes receipt under 2-4c. TemporaryStorage (4-3a) is the one the
-        // earlier hand-written list left out.
-        Assert.True(AccountabilityStateMachine.IsBeforeCustodianReceipt(status));
-        Assert.False(AccountabilityStateMachine.MayHoldEvidenceRoomLocation(status));
-    }
+    /// <summary>
+    /// LOC-008. Every status, classified by physical presence. AR 195-5 2-4e concerns the
+    /// location of evidence IN the evidence room. The earlier predicate ("received and not
+    /// terminal") let an item on temporary release - in another party's custody, its original
+    /// DA Form 4137 with it (2-7a, 2-4f(2)) - and an item that cannot be located (3-3) be given a
+    /// new bin. Exhaustive: a status added to the enum without a row here fails the count test.
+    /// </summary>
+    public static IEnumerable<object[]> PresenceByStatus() =>
+    [
+        [AccountabilityStatus.Draft, false],
+        [AccountabilityStatus.Acquired, false],
+        [AccountabilityStatus.TemporaryStorage, false],          // 4-3a temporary facility
+        [AccountabilityStatus.AwaitingCustodian, false],
+        [AccountabilityStatus.InEvidenceRoom, true],
+        [AccountabilityStatus.TemporarilyReleased, false],       // 2-7a: out, with the original form
+        [AccountabilityStatus.DispositionPending, true],         // 2-8: still held while approval is sought
+        [AccountabilityStatus.Disposed, false],
+        [AccountabilityStatus.DiscrepancyReview, false],         // 3-3a: cannot be located
+        [AccountabilityStatus.Inquiry, false],                   // 3-3b: cannot be located
+        [AccountabilityStatus.ReliefGranted, false],
+        [AccountabilityStatus.LongTermRetention, true],          // 2-13: sealed container, in the room
+        [AccountabilityStatus.PermanentlyTransferred, false],
+        [AccountabilityStatus.WithdrawnAsEnteredInError, false]  // never a physical item
+    ];
 
     [Theory]
-    [InlineData(AccountabilityStatus.InEvidenceRoom, true)]
-    [InlineData(AccountabilityStatus.TemporarilyReleased, true)]
-    [InlineData(AccountabilityStatus.DiscrepancyReview, true)]
-    [InlineData(AccountabilityStatus.LongTermRetention, true)]
-    [InlineData(AccountabilityStatus.Disposed, false)]
-    [InlineData(AccountabilityStatus.ReliefGranted, false)]
-    [InlineData(AccountabilityStatus.PermanentlyTransferred, false)]
-    public void ReceivedItemsMayHoldALocationUnlessTerminal(AccountabilityStatus status, bool mayHold)
+    [MemberData(nameof(PresenceByStatus))]
+    public void ANewLocationMayBeAssignedOnlyToAnItemPhysicallyInTheRoom(AccountabilityStatus status, bool inRoom)
     {
-        Assert.True(AccountabilityStateMachine.HasBeenReceivedByCustodian(status));
-        Assert.Equal(mayHold, AccountabilityStateMachine.MayHoldEvidenceRoomLocation(status));
+        Assert.Equal(inRoom, AccountabilityStateMachine.IsPhysicallyInEvidenceRoom(status));
+        Assert.Equal(inRoom, AccountabilityStateMachine.MayAssignEvidenceRoomLocation(status));
+    }
+
+    [Fact]
+    public void ThePresenceTableCoversEveryStatus()
+    {
+        var classified = PresenceByStatus().Select(r => (AccountabilityStatus)r[0]).ToHashSet();
+        Assert.Equal(Enum.GetValues<AccountabilityStatus>().ToHashSet(), classified);
+    }
+
+    [Fact]
+    public void AReleasedItemRegainsTheLocationWorkflowOnlyByReturningToTheRoom()
+    {
+        // The historical rule is preserved: the last location stays in history. A NEW one needs
+        // the state transition back into the room first.
+        Assert.False(AccountabilityStateMachine.MayAssignEvidenceRoomLocation(AccountabilityStatus.TemporarilyReleased));
+        Assert.True(AccountabilityStateMachine.IsAllowed(AccountabilityStatus.TemporarilyReleased, AccountabilityStatus.InEvidenceRoom));
+        Assert.True(AccountabilityStateMachine.MayAssignEvidenceRoomLocation(AccountabilityStatus.InEvidenceRoom));
+
+        // A missing item is found through 3-3, not by being given a bin.
+        Assert.False(AccountabilityStateMachine.MayAssignEvidenceRoomLocation(AccountabilityStatus.DiscrepancyReview));
+        Assert.False(AccountabilityStateMachine.MayAssignEvidenceRoomLocation(AccountabilityStatus.Inquiry));
+        Assert.True(AccountabilityStateMachine.IsAllowed(AccountabilityStatus.Inquiry, AccountabilityStatus.InEvidenceRoom));
+    }
+
+    [Fact]
+    public void AWithdrawnLineIsTerminalAndReachableOnlyFromAcquired()
+    {
+        // VCH-026. Only a line on a returned form (whose items sit in Acquired) can be withdrawn;
+        // nothing the custodian has received can be.
+        Assert.True(AccountabilityStateMachine.IsTerminal(AccountabilityStatus.WithdrawnAsEnteredInError));
+        Assert.True(AccountabilityStateMachine.IsBeforeCustodianReceipt(AccountabilityStatus.WithdrawnAsEnteredInError));
+
+        foreach (var from in Enum.GetValues<AccountabilityStatus>())
+        {
+            Assert.Equal(
+                from == AccountabilityStatus.Acquired,
+                AccountabilityStateMachine.IsAllowed(from, AccountabilityStatus.WithdrawnAsEnteredInError));
+        }
     }
 
     [Fact]

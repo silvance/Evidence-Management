@@ -146,6 +146,13 @@ public class EvidenceItem : Entity, IConcurrencyStamped
     public IReadOnlyList<ItemEvent> Events => _events.AsReadOnly();
 
     /// <summary>
+    /// AR 195-5 2-3g - withdrawn from a returned form as entered in error. Not part of the current
+    /// corrected form; never accepted evidence; still on the record (VCH-026).
+    /// </summary>
+    public bool IsWithdrawnFromForm
+        => AccountabilityStatus == AccountabilityStatus.WithdrawnAsEnteredInError;
+
+    /// <summary>
     /// AR 195-5 2-3d — "The words LAST ITEM will be placed in capital letters after the last
     /// listed item on the next line below that item." Derived from position, never a stored flag,
     /// so it cannot drift when items are added or removed (ITEM-008).
@@ -217,10 +224,17 @@ public class EvidenceItem : Entity, IConcurrencyStamped
     {
         ArgumentNullException.ThrowIfNull(itemEvent);
 
-        // Invariant I-17: a terminal item accepts no further custody or location events. A
-        // correction is always permitted, because the record of a terminal item can still contain
-        // an error that AR 195-5 1-7c(3) requires to be corrected.
-        if (EvidenceVoucher.IsTerminal(AccountabilityStatus) && itemEvent is not CorrectionEvent)
+        // Invariant I-17: a terminal item accepts no further custody or location events. Two
+        // exceptions: a correction is always permitted, because the record of a terminal item can
+        // still contain an error that AR 195-5 1-7c(3) requires to be corrected; and the status
+        // event that RECORDS the transition into the terminal state, which is appended after the
+        // transition itself (invariant I-22) and is the last event the item will ever take.
+        var recordsEntryIntoThisTerminalState =
+            itemEvent is StatusEvent status && status.ToStatus == AccountabilityStatus;
+
+        if (EvidenceVoucher.IsTerminal(AccountabilityStatus)
+            && itemEvent is not CorrectionEvent
+            && !recordsEntryIntoThisTerminalState)
         {
             throw new DomainRuleViolationException(
                 "ITEM-001",

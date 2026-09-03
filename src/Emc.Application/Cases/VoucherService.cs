@@ -50,6 +50,13 @@ public sealed record ReturnVoucherForCorrectionRequest(int VoucherId, string Err
 public sealed record RecordAgentCorrectionRequest(
     int VoucherId, string WhatWasCorrected, bool PaperFormCorrectedAndInitialedAttested);
 
+/// <summary>
+/// AR 195-5 2-3g - withdraw a line entered in error from a returned form. The attestation that no
+/// physical item corresponds to the line is what keeps this from being a way to drop evidence
+/// (VCH-026).
+/// </summary>
+public sealed record WithdrawItemLineRequest(int ItemId, string Reason, bool AttestsNoPhysicalItemExists);
+
 public interface IVoucherService
 {
     Task<OperationResult<int>> CreateDraftAsync(CreateVoucherRequest request, CancellationToken ct = default);
@@ -66,6 +73,9 @@ public interface IVoucherService
 
     /// <summary>Puts the corrected form before the custodian again. The submitting agent only.</summary>
     Task<OperationResult> ResubmitForCustodianIntakeAsync(int voucherId, CancellationToken ct = default);
+
+    /// <summary>AR 195-5 2-3g. The submitting agent only; returned voucher only; no physical item.</summary>
+    Task<OperationResult> WithdrawItemLineAsync(WithdrawItemLineRequest request, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -73,9 +83,9 @@ public interface IVoucherService
 ///
 /// AR 195-5 2-3b — the agent who first acquired the evidence prepares the DA Form 4137.
 /// AR 195-5 2-3g — the custodian reviews the submitted form and has the submitting agent
-/// "correct and initial all errors", which is why items are editable only while the voucher is a
-/// draft (VCH-010, invariant I-10). After submission, change happens through a correction so the
-/// original entry remains readable (AR 195-5 2-5b(5)).
+/// "correct and initial all errors", which is why items are editable while the voucher is a draft
+/// or has been returned for correction (VCH-010, invariant I-10). Each submission snapshots what
+/// the form contained (VCH-025). After acceptance, change is a 1-7c(3) correction.
 /// </summary>
 public sealed class VoucherService : IVoucherService
 {
@@ -483,6 +493,63 @@ public sealed class VoucherService : IVoucherService
         return OperationResult.Success();
     }
 
+    public async Task<OperationResult> WithdrawItemLineAsync(
+        WithdrawItemLineRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var item = await _db.EvidenceItems
+            .Include(i => i.Voucher!).ThenInclude(v => v.Items)
+            .Include(i => i.Voucher!).ThenInclude(v => v.ReviewActions)
+            .FirstOrDefaultAsync(i => i.Id == request.ItemId, ct);
+
+        if (item?.Voucher is null)
+        {
+            return OperationResult.Failure("Item not found.", "ITEM-001");
+        }
+
+        var voucher = item.Voucher;
+
+        var decision = await _authorization.AuthorizeAsync(
+            EmcPermissions.EditDraftVoucher, voucher.EvidenceRoomId, ct);
+
+        if (!decision.IsAllowed)
+        {
+            return (await DenyAsync<bool>(decision, nameof(EvidenceItem), item.Id.ToString(), ct))
+                .ToUntyped();
+        }
+
+        var now = _clock.UtcNow;
+
+        try
+        {
+            // Validates the stage, the agent, and the no-physical-item attestation.
+            voucher.WithdrawLineAsEnteredInError(
+                item, _currentUser.UserId, request.Reason, request.AttestsNoPhysicalItemExists, now);
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        // The line's own history records the withdrawal (invariant I-22). Terminal: it will never
+        // be accepted, numbered or located.
+        await AppendStatusAsync(
+            item, AccountabilityStatus.WithdrawnAsEnteredInError,
+            "Line withdrawn from the returned DA Form 4137 as entered in error (AR 195-5 2-3g): "
+            + request.Reason.Trim(), now, ct);
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded,
+            nameof(EvidenceItem), $"{voucher.DisplayIdentifier}/{item.ItemNumber}",
+            previousValue: "On returned form",
+            newValue: "Withdrawn as entered in error",
+            reason: request.Reason);
+
+        await _db.SaveChangesAsync(ct);
+        return OperationResult.Success();
+    }
+
     public async Task<OperationResult> ResubmitForCustodianIntakeAsync(
         int voucherId, CancellationToken ct = default)
     {
@@ -513,8 +580,9 @@ public sealed class VoucherService : IVoucherService
         }
 
         // Items added while the voucher was with the agent start from Draft; the rest were
-        // returned to Acquired. All end up awaiting the custodian again.
-        foreach (var item in voucher.Items.OrderBy(i => i.ItemNumber))
+        // returned to Acquired. All end up awaiting the custodian again. A withdrawn line is
+        // terminal and is not part of the corrected form.
+        foreach (var item in voucher.CurrentFormLines)
         {
             if (item.AccountabilityStatus == AccountabilityStatus.Draft)
             {
@@ -592,6 +660,7 @@ public sealed class VoucherService : IVoucherService
             .Include(v => v.Items).ThenInclude(i => i.Events)
             .Include(v => v.DocumentNumberAssignments)
             .Include(v => v.ReviewActions)
+            .Include(v => v.FormRevisions).ThenInclude(r => r.Lines)
             .FirstOrDefaultAsync(v => v.Id == voucherId, ct);
 
     private async Task<OperationResult<T>> DenyAsync<T>(

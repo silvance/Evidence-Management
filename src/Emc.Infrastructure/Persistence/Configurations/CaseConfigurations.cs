@@ -152,6 +152,14 @@ public sealed class EvidenceVoucherConfiguration : IEntityTypeConfiguration<Evid
             .HasForeignKey(a => a.VoucherId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // VCH-025 - what the form contained at each submission. Append-only.
+        builder.HasMany(v => v.FormRevisions)
+            .WithOne(r => r.Voucher)
+            .HasForeignKey(r => r.VoucherId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Ignore(v => v.CurrentFormLines);
+
         // VCH-007, invariant I-16 - voucher status is DERIVED from its items (AR 195-5 2-4h).
         // There is deliberately no status column to drift out of step with reality. The same
         // goes for IsSubmitted, which is derived from ReviewStage.
@@ -161,6 +169,46 @@ public sealed class EvidenceVoucherConfiguration : IEntityTypeConfiguration<Evid
         builder.Ignore(v => v.HasOfficialDocumentNumber);
         builder.Ignore(v => v.DisplayIdentifier);
         builder.Ignore(v => v.AllowsItemEditing);
+    }
+}
+
+public sealed class VoucherFormRevisionConfiguration : IEntityTypeConfiguration<VoucherFormRevision>
+{
+    public void Configure(EntityTypeBuilder<VoucherFormRevision> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("VoucherFormRevisions");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Kind).HasConversion<int>().IsRequired();
+        builder.HasIndex(r => new { r.VoucherId, r.RevisionNumber }).IsUnique();
+
+        builder.HasMany(r => r.Lines)
+            .WithOne(l => l.Revision)
+            .HasForeignKey(l => l.RevisionId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class VoucherFormRevisionLineConfiguration : IEntityTypeConfiguration<VoucherFormRevisionLine>
+{
+    public void Configure(EntityTypeBuilder<VoucherFormRevisionLine> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("VoucherFormRevisionLines");
+        builder.HasKey(l => l.Id);
+        builder.Property(l => l.Description).HasMaxLength(4000).IsRequired();
+        builder.Property(l => l.Quantity).HasMaxLength(256);
+        builder.Property(l => l.SerialNumber).HasMaxLength(256);
+        builder.Property(l => l.UniqueDeviceIdentifier).HasMaxLength(256);
+
+        builder.HasOne(l => l.EvidenceItem)
+            .WithMany()
+            .HasForeignKey(l => l.EvidenceItemId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(l => new { l.RevisionId, l.LineNumber }).IsUnique();
     }
 }
 

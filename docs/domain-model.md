@@ -98,6 +98,7 @@ items ("a box containing tools") to be listed as one item with one DA Form 4002.
 | `StatusEvent` | **[DESIGN].** Records each `AccountabilityStatus` transition with actor and reason so the workflow itself is auditable. |
 | `DocumentNumberEvent` | **[REG] 2-4c, 2-7g.** Item-visible record that the voucher's official number was assigned or superseded. |
 | `CorrectionEvent` | **[REG-modelled] 2-5b(5), 1-7c(3).** See §5. |
+| `VoucherFormRevision` / `VoucherFormRevisionLine` | **✚ ADDED. [DESIGN] modelled on 2-3g.** What the form contained each time it went to the custodian. Append-only; SQL triggers. Lets the corrected form differ from the submitted one without erasing anything. Not the 2-5b(5) ledger procedure and not a 1-7c(3) correction. |
 | `VoucherReviewAction` | **✚ ADDED. [REG] 2-3g.** One step of the custodian's pre-acceptance review — submitted, returned (with what the custodian identified), corrected by the submitting agent (with what was corrected and the attestation that the paper form was corrected and initialed), resubmitted, accepted. Append-only; SQL trigger. `EvidenceVoucher.ReviewStage` is the one stored workflow state on the voucher; `IsSubmitted` is derived from it. Distinct from `CorrectionEvent`: that is the 1-7c(3) path for an accepted record. |
 | `EvidenceRoomNumberingPolicy` | **✚ ADDED. [LOCAL]** How an evidence room writes its document numbers, effective-dated: layout (`SequenceThenYear` — the regulation's `001-26` — or `YearThenSequence`, `26-01`), sequence width, year width, separator, basis (`RegulationDefault` / `LocalAuthorized` with authority cited / `LegacyObserved`, flagged), notes. Structured, not a regex. The regulation's layout is the default when a room has recorded none. |
 | `TemporaryIdentifierCounter` | **✚ ADDED. [CONTROL]** Last temporary-identifier ordinal issued per evidence room per date, with a concurrency stamp. Replaces `COUNT(*) + 1`. Not a regulatory number. |
@@ -425,7 +426,7 @@ alone.
 
 | # | Invariant | Basis |
 |---|---|---|
-| I-10 | Items may be added, edited or removed **only** while the voucher is a draft or has been returned by the custodian for correction under 2-3g | 2-3g **[REG]** |
+| I-10 | Items may be added or edited only while the voucher is a draft or has been returned by the custodian under 2-3g; a submitted line is never deleted — on a returned form it is withdrawn as entered in error, with the agent's attestation that no physical item corresponds to it | 2-3g, 2-8a **[REG]** |
 | I-11 | Only a user with an **active `CustodianAppointment`** for that evidence room may accept evidence, transcribe the document number, or assign a location | 1-4g(1), 1-4i, 2-4c **[REG]** |
 | I-12 | An item cannot reach `InEvidenceRoom` without an official document number on its voucher | 2-4c **[REG]** |
 | I-13 | `ApplicationAdministrator` alone grants **no** accountability permission | **[DESIGN]** |
@@ -446,6 +447,8 @@ alone.
 | I-36 | A document number's identity is `(EvidenceRoom, CalendarYear, Sequence)`; the text as written is presentation under the room's numbering policy and is preserved verbatim | 2-4c **[DESIGN]** |
 | I-37 | The four-digit calendar year is resolved from the date of receipt when the number is recorded and is never re-derived from the clock; a disagreement is confirmed by the custodian, not guessed | 2-4c **[CONTROL]** |
 | I-38 | Only the regulation's layout may be recorded as the regulation default; any other layout cites a local authority or is flagged as awaiting validation | 2-4c **[LOCAL]** |
+| I-42 | Each submission of a DA Form 4137 takes an immutable snapshot of its lines (`VoucherFormRevision`); the current corrected form is the voucher's non-withdrawn items. Item numbers are never reassigned after a withdrawal | 2-3g **[DESIGN]** |
+| I-43 | A new evidence-room location is recorded only for an item physically in the room; released and missing items re-enter the location workflow only through their regulatory state transitions | 2-4e, 3-3 **[REG]** |
 | I-39 | Whether an item has been received by the custodian, and whether it may hold a location, are named predicates on the state machine; no code compares `AccountabilityStatus` by numeric order | **[DESIGN]** |
 | I-40 | `EvidenceItem.AccountabilityStatus`, `LastEventSequenceNumber` and `LastEventHash` are derived summaries of the events and are verified against them; a disagreement is a snapshot mismatch, reported apart from a chain failure | **[CONTROL]** |
 | I-41 | A temporary identifier is issued from a per-room, per-date counter under optimistic concurrency; two drafts never share one | **[CONTROL]** |

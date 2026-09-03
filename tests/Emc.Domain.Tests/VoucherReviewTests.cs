@@ -258,6 +258,134 @@ public class VoucherReviewTests
         Assert.Contains("resubmit", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static EvidenceVoucher ReturnedWithTwoLines()
+    {
+        var voucher = TestData.NewDraftVoucher();
+        voucher.AddSimpleItem("One item");
+        voucher.AddSimpleItem("One item entered twice by mistake");
+        voucher.SubmitForCustodianIntake(Agent, TestData.Now);
+        voucher.ReturnForCorrection(Custodian, "Item 2 duplicates item 1.", TestData.Now.AddHours(1));
+
+        // The application service records these transitions as status events; a returned
+        // voucher's lines sit in Acquired (AR 195-5 2-3g, 2-1a).
+        foreach (var item in voucher.Items)
+        {
+            item.TransitionTo(AccountabilityStatus.Acquired);
+        }
+
+        return voucher;
+    }
+
+    [Fact]
+    public void EachSubmissionSnapshotsWhatTheFormContained()
+    {
+        // VCH-025. Revision 1 is the form as first submitted; the corrected form is revision 2.
+        // Neither changes afterwards.
+        var voucher = ReturnedWithTwoLines();
+        var first = Assert.Single(voucher.FormRevisions);
+
+        Assert.Equal(1, first.RevisionNumber);
+        Assert.Equal(VoucherFormRevisionKind.InitialSubmission, first.Kind);
+        Assert.Equal(2, first.Lines.Count);
+        Assert.Equal("One item entered twice by mistake", first.Lines[1].Description);
+
+        voucher.Items[0].UpdateDetails("One item, corrected", "1", "SN-2", null, false, false, false, null);
+        voucher.RecordCorrectionBySubmittingAgent(Agent, "fixed", true, TestData.Now.AddHours(2));
+        voucher.Resubmit(Agent, TestData.Now.AddHours(3));
+
+        Assert.Equal(2, voucher.FormRevisions.Count);
+        Assert.Equal("One item", voucher.FormRevisions[0].Lines[0].Description);            // unchanged history
+        Assert.Equal("One item, corrected", voucher.FormRevisions[1].Lines[0].Description);  // the corrected form
+        Assert.Equal(VoucherFormRevisionKind.Resubmission, voucher.FormRevisions[1].Kind);
+    }
+
+    [Fact]
+    public void ALineEnteredInErrorIsWithdrawnFromTheCurrentForm_NotDeleted()
+    {
+        // VCH-026. The corrected form no longer lists the line; the record still does.
+        var voucher = ReturnedWithTwoLines();
+        var duplicate = voucher.Items[1];
+
+        voucher.WithdrawLineAsEnteredInError(duplicate, Agent, "Duplicate of item 1.", true, TestData.Now.AddHours(2));
+        duplicate.TransitionTo(AccountabilityStatus.WithdrawnAsEnteredInError);
+
+        Assert.True(duplicate.IsWithdrawnFromForm);
+        Assert.Equal(2, voucher.Items.Count);
+        Assert.Single(voucher.CurrentFormLines);
+        Assert.Equal(1, voucher.CurrentFormLines.Single().ItemNumber);
+
+        var action = voucher.ReviewActions.Last();
+        Assert.Equal(VoucherReviewActionKind.LineWithdrawn, action.Kind);
+        Assert.Equal(Agent, action.ActorUserId);
+        Assert.Contains("Duplicate", action.Narrative!, StringComparison.Ordinal);
+
+        // Still on revision 1.
+        Assert.Contains(voucher.FormRevisions[0].Lines, l => l.LineNumber == 2);
+
+        // And absent from the corrected form's revision.
+        voucher.RecordCorrectionBySubmittingAgent(Agent, "Withdrew duplicate line 2.", true, TestData.Now.AddHours(3));
+        voucher.Resubmit(Agent, TestData.Now.AddHours(4));
+        Assert.Single(voucher.FormRevisions[1].Lines);
+    }
+
+    [Fact]
+    public void APhysicalItemCannotBeDroppedByWithdrawingItsLine()
+    {
+        // VCH-026. The escape hatch that must not exist. Without the attestation that no
+        // physical item corresponds to the line, the withdrawal is refused and the message
+        // points to 2-8.
+        var voucher = ReturnedWithTwoLines();
+
+        var ex = Assert.Throws<DomainRuleViolationException>(() => voucher.WithdrawLineAsEnteredInError(
+            voucher.Items[1], Agent, "We no longer want to hold this.", attestsNoPhysicalItemExists: false, TestData.Now.AddHours(2)));
+
+        Assert.Equal("VCH-026", ex.RequirementId);
+        Assert.Contains("2-8", ex.Message, StringComparison.Ordinal);
+        Assert.Empty(voucher.ReviewActions.Where(a => a.Kind == VoucherReviewActionKind.LineWithdrawn));
+    }
+
+    [Fact]
+    public void OnlyTheSubmittingAgentWithdrawsALine_AndOnlyFromAReturnedForm()
+    {
+        var voucher = ReturnedWithTwoLines();
+
+        Assert.Equal("VCH-026", Assert.Throws<DomainRuleViolationException>(() => voucher.WithdrawLineAsEnteredInError(
+            voucher.Items[1], OtherAgent, "dup", true, TestData.Now)).RequirementId);
+
+        var submitted = Submitted();
+        Assert.Equal("VCH-026", Assert.Throws<DomainRuleViolationException>(() => submitted.WithdrawLineAsEnteredInError(
+            submitted.Items[0], Agent, "dup", true, TestData.Now)).RequirementId);
+    }
+
+    [Fact]
+    public void WithdrawingEveryLineLeavesNothingToResubmit()
+    {
+        var voucher = Submitted();
+        voucher.ReturnForCorrection(Custodian, "Nothing on this form was seized.", TestData.Now.AddHours(1));
+        var only = voucher.Items[0];
+        only.TransitionTo(AccountabilityStatus.Acquired);
+        voucher.WithdrawLineAsEnteredInError(only, Agent, "Entered against the wrong case.", true, TestData.Now.AddHours(2));
+        only.TransitionTo(AccountabilityStatus.WithdrawnAsEnteredInError);
+        voucher.RecordCorrectionBySubmittingAgent(Agent, "withdrew all", true, TestData.Now.AddHours(3));
+
+        Assert.Equal("VCH-011", Assert.Throws<DomainRuleViolationException>(
+            () => voucher.Resubmit(Agent, TestData.Now.AddHours(4))).RequirementId);
+    }
+
+    [Fact]
+    public void NoParagraph1_7c3DocumentationIsDemandedForA2_3gCorrection()
+    {
+        // A 2-3g correction is the agent fixing a form the custodian has not accepted. It is not a
+        // custodian finding an incorrect entry in an accepted record (1-7c(3)) and it is not a
+        // ledger entry (2-5b(5)); no MFR and no supervisor notification are part of it.
+        var voucher = ReturnedWithTwoLines();
+        voucher.RecordCorrectionBySubmittingAgent(Agent, "fixed", true, TestData.Now.AddHours(2));
+
+        var action = voucher.ReviewActions.Last();
+        Assert.Equal(VoucherReviewActionKind.CorrectedBySubmittingAgent, action.Kind);
+        Assert.DoesNotContain("MFR", action.Narrative ?? string.Empty, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ASecondDocumentNumberDoesNotReopenOrDuplicateTheAcceptance()
     {

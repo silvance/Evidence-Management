@@ -27,6 +27,7 @@ public interface IEmcDbContext
     DbSet<EvidenceVoucher> EvidenceVouchers { get; }
     DbSet<TemporaryIdentifierCounter> TemporaryIdentifierCounters { get; }
     DbSet<VoucherReviewAction> VoucherReviewActions { get; }
+    DbSet<VoucherFormRevision> VoucherFormRevisions { get; }
     DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments { get; }
     DbSet<EvidenceItem> EvidenceItems { get; }
     DbSet<ItemEvent> ItemEvents { get; }

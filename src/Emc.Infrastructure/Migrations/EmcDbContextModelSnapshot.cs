@@ -326,6 +326,87 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("TemporaryIdentifierCounters", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("SubmittedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoucherId", "RevisionNumber")
+                        .IsUnique();
+
+                    b.ToTable("VoucherFormRevisions", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevisionLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("EvidenceItemId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsPossibleBiohazard")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSealed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Quantity")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("RevisionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SerialNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("UniqueDeviceIdentifier")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceItemId");
+
+                    b.HasIndex("RevisionId", "LineNumber")
+                        .IsUnique();
+
+                    b.ToTable("VoucherFormRevisionLines", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>
                 {
                     b.Property<int>("Id")
@@ -1356,6 +1437,36 @@ namespace Emc.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevision", b =>
+                {
+                    b.HasOne("Emc.Domain.Cases.EvidenceVoucher", "Voucher")
+                        .WithMany("FormRevisions")
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Voucher");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevisionLine", b =>
+                {
+                    b.HasOne("Emc.Domain.Cases.EvidenceItem", "EvidenceItem")
+                        .WithMany()
+                        .HasForeignKey("EvidenceItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Cases.VoucherFormRevision", "Revision")
+                        .WithMany("Lines")
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("EvidenceItem");
+
+                    b.Navigation("Revision");
+                });
+
             modelBuilder.Entity("Emc.Domain.Cases.VoucherReviewAction", b =>
                 {
                     b.HasOne("Emc.Domain.Identity.User", null)
@@ -1547,9 +1658,16 @@ namespace Emc.Infrastructure.Migrations
                 {
                     b.Navigation("DocumentNumberAssignments");
 
+                    b.Navigation("FormRevisions");
+
                     b.Navigation("Items");
 
                     b.Navigation("ReviewActions");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Cases.VoucherFormRevision", b =>
+                {
+                    b.Navigation("Lines");
                 });
 #pragma warning restore 612, 618
         }

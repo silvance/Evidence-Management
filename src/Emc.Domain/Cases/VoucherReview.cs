@@ -42,7 +42,10 @@ public enum VoucherReviewActionKind
     ReturnedForCorrection = 2,
     CorrectedBySubmittingAgent = 3,
     Resubmitted = 4,
-    Accepted = 5
+    Accepted = 5,
+
+    /// <summary>AR 195-5 2-3g - the submitting agent withdrew a line entered in error from the returned form.</summary>
+    LineWithdrawn = 6
 }
 
 /// <summary>

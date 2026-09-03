@@ -529,6 +529,29 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "VoucherFormRevisions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    VoucherId = table.Column<int>(type: "int", nullable: false),
+                    RevisionNumber = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    SubmittedByUserId = table.Column<int>(type: "int", nullable: false),
+                    SubmittedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VoucherFormRevisions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_VoucherFormRevisions_EvidenceVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "VoucherReviewActions",
                 columns: table => new
                 {
@@ -646,6 +669,39 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_ItemEvents_ItemEvents_CorrectsEventId",
                         column: x => x.CorrectsEventId,
                         principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "VoucherFormRevisionLines",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    RevisionId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceItemId = table.Column<int>(type: "int", nullable: false),
+                    LineNumber = table.Column<int>(type: "int", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
+                    Quantity = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    SerialNumber = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    UniqueDeviceIdentifier = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    IsPossibleBiohazard = table.Column<bool>(type: "bit", nullable: false),
+                    IsSealed = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VoucherFormRevisionLines", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_VoucherFormRevisionLines_EvidenceItems_EvidenceItemId",
+                        column: x => x.EvidenceItemId,
+                        principalTable: "EvidenceItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_VoucherFormRevisionLines_VoucherFormRevisions_RevisionId",
+                        column: x => x.RevisionId,
+                        principalTable: "VoucherFormRevisions",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -875,6 +931,23 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_VoucherFormRevisionLines_EvidenceItemId",
+                table: "VoucherFormRevisionLines",
+                column: "EvidenceItemId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VoucherFormRevisionLines_RevisionId_LineNumber",
+                table: "VoucherFormRevisionLines",
+                columns: new[] { "RevisionId", "LineNumber" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VoucherFormRevisions_VoucherId_RevisionNumber",
+                table: "VoucherFormRevisions",
+                columns: new[] { "VoucherId", "RevisionNumber" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_VoucherReviewActions_ActorUserId",
                 table: "VoucherReviewActions",
                 column: "ActorUserId");
@@ -916,13 +989,13 @@ namespace Emc.Infrastructure.Migrations
                 name: "TemporaryIdentifierCounters");
 
             migrationBuilder.DropTable(
+                name: "VoucherFormRevisionLines");
+
+            migrationBuilder.DropTable(
                 name: "VoucherReviewActions");
 
             migrationBuilder.DropTable(
                 name: "CustodyParties");
-
-            migrationBuilder.DropTable(
-                name: "EvidenceItems");
 
             migrationBuilder.DropTable(
                 name: "EvidenceRoomNumberingPolicies");
@@ -934,10 +1007,16 @@ namespace Emc.Infrastructure.Migrations
                 name: "Roles");
 
             migrationBuilder.DropTable(
-                name: "EvidenceVouchers");
+                name: "EvidenceItems");
+
+            migrationBuilder.DropTable(
+                name: "VoucherFormRevisions");
 
             migrationBuilder.DropTable(
                 name: "Users");
+
+            migrationBuilder.DropTable(
+                name: "EvidenceVouchers");
 
             migrationBuilder.DropTable(
                 name: "Cases");
