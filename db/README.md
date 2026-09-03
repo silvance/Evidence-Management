@@ -26,6 +26,29 @@ dotnet ef migrations script --idempotent \
 `db/schema-v1.sql` is a committed copy for review. **Regenerate it whenever a migration is
 added**, so a reviewer can see the schema change without running the tooling.
 
+## Seeding a new installation
+
+Administration screens for users, roles, storage locations and system configuration are designed
+but not built in the first vertical slice, so `db/seed-initial.sql` is the supported way to bring
+a new installation up. **Review and edit the values marked `<-- EDIT` before running it.**
+
+```
+sqlcmd -S <server> -d Emc -i db/seed-initial.sql
+```
+
+It creates system configuration, the six roles, one evidence room, one user keyed to an Active
+Directory object SID, a role assignment, a written custodian appointment, and a few storage
+locations. It creates no accountability data.
+
+Two values in it are decisions, not defaults:
+
+- **`AccreditedClassificationLevel`** — see open decision **DEC-06**. An aggregation of CI
+  evidence descriptions may itself be classified, which changes the accreditation and the hosting
+  enclave. Settle this with the security manager before the system holds real data.
+- **`AuthoritativeMode` / `NumberingMode`** — leave both at `0`. Setting either to `1` makes EMC a
+  stand-alone automated evidence ledger, which AR 195-5 para 2-5c requires **Army G-2X** to
+  approve for a CI organization beforehand.
+
 ## What the schema enforces
 
 Integrity lives in the database, not only in the UI (engineering principle 7):

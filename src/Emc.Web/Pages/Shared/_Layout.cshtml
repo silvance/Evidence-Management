@@ -43,7 +43,20 @@
     {
         <div class="authoritative-notice authoritative-notice--error" role="alert">
             System configuration has not been initialised. Until it is, this application must not
-            be used to record evidence accountability information.
+            be used to record evidence accountability information. See <code>db/seed-initial.sql</code>.
+        </div>
+    }
+
+    @if (!CurrentUser.IsAuthenticated)
+    {
+        @* The fallback policy already required a Windows identity to reach this page, so
+           reaching here unauthenticated means the Windows account has no EMC user record.
+           Authorization will deny every action, and saying so plainly is better than leaving
+           someone to discover it one greyed-out button at a time. *@
+        <div class="authoritative-notice authoritative-notice--error" role="alert">
+            Your Windows account is not registered in this application, so no actions are
+            available to you. Ask an application administrator to add your account. Roles are
+            resolved from this application's own records, never from your workstation.
         </div>
     }
 
