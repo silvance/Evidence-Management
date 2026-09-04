@@ -1965,9 +1965,15 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ExpectedFollowUpLocal")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<bool>("FirstCopyChainAnnotatedOnReturnAttested")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("OriginalAnnotatedOnReturnAttested")
+                        .HasColumnType("bit");
 
                     b.Property<int>("PaperAccompanying")
                         .HasColumnType("int");
@@ -2901,6 +2907,39 @@ namespace Emc.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.OwnsOne("Emc.Domain.Suspense.LaboratorySubmission", "Laboratory", b1 =>
+                        {
+                            b1.Property<int>("TemporaryReleaseId")
+                                .HasColumnType("int");
+
+                            b1.Property<bool>("CoordinatedWithUsacilAttested")
+                                .HasColumnType("bit")
+                                .HasColumnName("LaboratoryCoordinatedWithUsacilAttested");
+
+                            b1.Property<string>("ExaminationRequestReference")
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)")
+                                .HasColumnName("ExaminationRequestReference");
+
+                            b1.Property<string>("LaboratoryName")
+                                .IsRequired()
+                                .HasMaxLength(256)
+                                .HasColumnType("nvarchar(256)")
+                                .HasColumnName("LaboratoryName");
+
+                            b1.Property<string>("ShippingDocumentReference")
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)")
+                                .HasColumnName("ShippingDocumentReference");
+
+                            b1.HasKey("TemporaryReleaseId");
+
+                            b1.ToTable("TemporaryReleases");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TemporaryReleaseId");
+                        });
+
                     b.OwnsOne("Emc.Domain.Suspense.PaperReleaseAttestations", "Attestations", b1 =>
                         {
                             b1.Property<int>("TemporaryReleaseId")
@@ -2936,6 +2975,8 @@ namespace Emc.Infrastructure.Migrations
 
                     b.Navigation("Attestations")
                         .IsRequired();
+
+                    b.Navigation("Laboratory");
 
                     b.Navigation("ReceivedBy");
 

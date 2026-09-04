@@ -45,6 +45,70 @@ public enum TemporaryReleaseEventKind
     Closed = 5
 }
 
+/// <summary>Why an item on a release is accounted for without coming back (SUSP-016).</summary>
+public enum NotReturnedReason
+{
+    /// <summary>AR 195-5 3-1a(4), 2-8e(4): entered as a permanent part of the record of trial - final disposition.</summary>
+    EnteredInRecordOfTrial = 1,
+
+    /// <summary>AR 195-5 2-7c(2), 2-7e(5): consumed in examination, or retained by the laboratory under its protocols; an MFR explains it.</summary>
+    ConsumedOrRetainedByLaboratory = 2
+}
+
+/// <summary>
+/// AR 195-5 2-7c, 2-7e, 2-7f: a submission to a laboratory. Evidence goes only to the USACIL
+/// unless coordinated with the USACIL first (2-7c(1)); physiological specimens go to the DFT
+/// with a COPY of the form instead of the original, often not returned (2-7c(2)); a copy of a
+/// commercial shipping document stays with the suspense copy until receipt is acknowledged
+/// (2-7f). Owned by the release; immutable.
+/// </summary>
+public sealed class LaboratorySubmission
+{
+    public const string UsacilName = "USACIL";
+    public const string DftName = "AFMES DFT";
+
+    private LaboratorySubmission() { }
+
+    public LaboratorySubmission(string laboratoryName, bool coordinatedWithUsacilAttested, string? examinationRequestReference, string? shippingDocumentReference)
+    {
+        LaboratoryName = Guard.NotBlank(laboratoryName, "SUSP-013", "Laboratory");
+        CoordinatedWithUsacilAttested = coordinatedWithUsacilAttested;
+        ExaminationRequestReference = Guard.TrimToNull(examinationRequestReference);
+        ShippingDocumentReference = Guard.TrimToNull(shippingDocumentReference);
+    }
+
+    public string LaboratoryName { get; private set; } = string.Empty;
+
+    /// <summary>AR 195-5 2-7c(1): a laboratory other than the USACIL only "after prior coordination with the USACIL".</summary>
+    public bool CoordinatedWithUsacilAttested { get; private set; }
+
+    /// <summary>DD Form 2922 (Forensic Laboratory Examination Request) reference, when one was prepared.</summary>
+    public string? ExaminationRequestReference { get; private set; }
+
+    /// <summary>AR 195-5 2-7f: the commercial shipping document (e.g. a GBL) whose copy is attached to the suspense copy.</summary>
+    public string? ShippingDocumentReference { get; private set; }
+
+    public bool IsUsacil => string.Equals(LaboratoryName.Trim(), UsacilName, StringComparison.OrdinalIgnoreCase);
+    public bool IsDft => LaboratoryName.Contains("DFT", StringComparison.OrdinalIgnoreCase) || LaboratoryName.Contains("Forensic Toxicology", StringComparison.OrdinalIgnoreCase);
+
+    internal void RequireCompliant(PaperCopyKind paperAccompanying)
+    {
+        if (!IsUsacil && !CoordinatedWithUsacilAttested)
+        {
+            throw new DomainRuleViolationException(
+                "SUSP-013",
+                $"AR 195-5 para 2-7c(1): evidence is sent only to the USACIL for examination; it can be sent to another laboratory ({LaboratoryName}) only after prior coordination with the USACIL. Record that coordination.");
+        }
+
+        if (IsDft && paperAccompanying != PaperCopyKind.AdditionalTemporaryReleaseCopy)
+        {
+            throw new DomainRuleViolationException(
+                "SUSP-014",
+                "AR 195-5 para 2-7c(2): a COPY of the DA Form 4137 is sent to the DFT instead of the original. Release a copy with the specimens; the original stays in the active file.");
+        }
+    }
+}
+
 /// <summary>AR 195-5 2-7a - how the custodian kept "reasonable and adequate contact".</summary>
 public enum ContactMethod
 {
@@ -91,7 +155,7 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         int voucherId, int evidenceRoomId, SuspenseCategory category,
         CustodyParty releasedBy, CustodyParty receivedBy,
         string purpose, string? destination, DateTimeOffset releasedAtLocal, DateTimeOffset recordedAtUtc, int recordedByUserId,
-        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, PaperCopyKind paperAccompanying, string? notes)
+        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, PaperCopyKind paperAccompanying, LaboratorySubmission? laboratory, string? notes)
     {
         if (paperAccompanying is not (PaperCopyKind.Original or PaperCopyKind.AdditionalTemporaryReleaseCopy))
         {
@@ -99,6 +163,7 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         }
 
         PaperAccompanying = paperAccompanying;
+        Laboratory = laboratory;
         VoucherId = Guard.Positive(voucherId, "SUSP-001", "Voucher");
         EvidenceRoomId = Guard.Positive(evidenceRoomId, "SUSP-001", "Evidence room");
         Category = category;
@@ -130,11 +195,25 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         int voucherId, int evidenceRoomId, SuspenseCategory category,
         CustodyParty releasedBy, CustodyParty receivedBy,
         string purpose, string? destination, DateTimeOffset releasedAtLocal, DateTimeOffset recordedAtUtc, int recordedByUserId,
-        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, PaperCopyKind paperAccompanying = PaperCopyKind.Original, string? notes = null)
+        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, PaperCopyKind paperAccompanying = PaperCopyKind.Original,
+        LaboratorySubmission? laboratory = null, string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(releasedBy);
         ArgumentNullException.ThrowIfNull(receivedBy);
         ArgumentNullException.ThrowIfNull(attestations);
+
+        // AR 195-5 2-7c: a laboratory release names its laboratory and meets 2-7c(1)/(2).
+        if (category == SuspenseCategory.Usacil && laboratory is null)
+        {
+            throw new DomainRuleViolationException("SUSP-013", "AR 195-5 para 2-7c: a release for laboratory examination names the laboratory (the USACIL unless coordinated otherwise).");
+        }
+
+        if (category != SuspenseCategory.Usacil && laboratory is not null)
+        {
+            throw new DomainRuleViolationException("SUSP-013", "A laboratory submission is a USACIL-category release (2-4f(3)(a)).");
+        }
+
+        laboratory?.RequireCompliant(paperAccompanying);
 
         if (category == SuspenseCategory.PendingDispositionApproval)
         {
@@ -173,7 +252,7 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         }
 
         return new TemporaryRelease(voucherId, evidenceRoomId, category, releasedBy, receivedBy, purpose, destination, releasedAtLocal, recordedAtUtc, recordedByUserId,
-            expectedFollowUpLocal, attestations, suspenseFolderContainerId, paperAccompanying, notes);
+            expectedFollowUpLocal, attestations, suspenseFolderContainerId, paperAccompanying, laboratory, notes);
     }
 
     public int VoucherId { get; private set; }
@@ -208,6 +287,15 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
 
     /// <summary>AR 195-5 2-7b: the ORIGINAL went with this evidence, or a COPY did (a further recipient, or several at once - SUSP-008).</summary>
     public PaperCopyKind PaperAccompanying { get; private set; }
+
+    /// <summary>AR 195-5 2-7c/2-7e/2-7f: the laboratory particulars of a USACIL-category release; null otherwise.</summary>
+    public LaboratorySubmission? Laboratory { get; private set; }
+
+    /// <summary>AR 195-5 2-7b on return: "the original DA Form 4137, properly annotated by the custodian and the person returning the evidence". Recorded when the paper comes back.</summary>
+    public bool OriginalAnnotatedOnReturnAttested { get; private set; }
+
+    /// <summary>AR 195-5 2-7b on return: "the first (suspense) copy, with the chain of custody properly annotated".</summary>
+    public bool FirstCopyChainAnnotatedOnReturnAttested { get; private set; }
 
     public string? Notes { get; private set; }
     public TemporaryReleaseStatus Status { get; private set; }
@@ -279,6 +367,29 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         item.MarkReturned(returnCustodyEvent, returnedAtLocal);
         _events.Add(new TemporaryReleaseEvent(this, TemporaryReleaseEventKind.ItemReturned, AccountabilityTime.Normalize(returnedAtLocal).ToUniversalTime(), recordedAtUtc, recordedByUserId, evidenceItemId, narrative));
         CloseIfNothingOut(recordedAtUtc, recordedByUserId);
+    }
+
+    /// <summary>
+    /// AR 195-5 2-7b: the paper came back with the evidence and was annotated. Both attestations
+    /// are required: the original by the custodian and the returner, the first copy's chain.
+    /// Records that paper acts occurred; never a signature (AUD-013).
+    /// </summary>
+    public void RecordPaperReturned(bool originalAnnotatedAttested, bool firstCopyChainAnnotatedAttested, DateTimeOffset recordedAtUtc, int recordedByUserId)
+    {
+        if (!originalAnnotatedAttested || !firstCopyChainAnnotatedAttested)
+        {
+            throw new DomainRuleViolationException(
+                "SUSP-012",
+                "AR 195-5 para 2-7b: when the evidence is returned, the original DA Form 4137 is properly annotated by the custodian and the person returning it, and the first (suspense) copy has the chain of custody properly annotated. Record both.");
+        }
+
+        OriginalAnnotatedOnReturnAttested = true;
+        FirstCopyChainAnnotatedOnReturnAttested = true;
+        _events.Add(new TemporaryReleaseEvent(this, TemporaryReleaseEventKind.Note, recordedAtUtc, recordedAtUtc, recordedByUserId, null,
+            PaperAccompanying == PaperCopyKind.Original
+                ? "AR 195-5 2-7b: original annotated by the custodian and the returner; first copy's chain annotated; original to the active file, first copy filed with it."
+                : "AR 195-5 2-7b: returned copy's chain recorded on the first copy."));
+        ConcurrencyStamp = Guid.NewGuid();
     }
 
     /// <summary>An item accounted for without coming back (record of trial 2-8e(4); consumed or retained at the laboratory 2-7c(2)). The item's own status change is recorded on the item.</summary>

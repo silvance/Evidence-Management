@@ -1,5 +1,6 @@
 using Emc.Domain.Common;
 using Emc.Domain.Events;
+using Emc.Domain.Filing;
 using Emc.Domain.Identity;
 using Emc.Domain.Suspense;
 using Xunit;
@@ -58,11 +59,49 @@ public class TemporaryReleaseTests
     {
         // 2-7e. No counter attestations for mail; and mail is the laboratory path, not adjudication.
         var mail = CustodyParty.ForAccountableMailNumber("RA 000 000 000 US", "USPS registered");
-        var release = TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), mail, "Forensic examination, USACIL (TEST)", "USACIL", T0, T0, 9, null, PaperReleaseAttestations.NoneForAccountableMail(), 11);
+        var usacil = new LaboratorySubmission("USACIL", false, "DD 2922 TEST", null);
+        var release = TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), mail, "Forensic examination, USACIL (TEST)", "USACIL", T0, T0, 9, null, PaperReleaseAttestations.NoneForAccountableMail(), 11, laboratory: usacil);
         Assert.Equal(CustodyPartyKind.AccountableMailNumber, release.ReceivedBy.Kind);
+        Assert.True(release.Laboratory!.IsUsacil);
 
         var wrong = Assert.Throws<DomainRuleViolationException>(() => TemporaryRelease.Create(1, 7, SuspenseCategory.Adjudication, Custodian(), mail, "x", null, T0, T0, 9, null, PaperReleaseAttestations.NoneForAccountableMail(), 11));
         Assert.Equal("COC-006", wrong.RequirementId);
+    }
+
+    [Fact]
+    public void ALaboratoryReleaseNamesItsLaboratory_OtherLaboratoriesNeedUsacilCoordination_TheDftTakesACopy()
+    {
+        // AR 195-5 2-7c(1), 2-7c(2). SUSP-013 / SUSP-014.
+        var lab = CustodyParty.ForOrganization("USACIL (TEST)");
+        var none = Assert.Throws<DomainRuleViolationException>(() => TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), lab, "x", null, T0, T0, 9, null, All(), 11));
+        Assert.Equal("SUSP-013", none.RequirementId);
+
+        var onTrial = Assert.Throws<DomainRuleViolationException>(() => TemporaryRelease.Create(1, 7, SuspenseCategory.Adjudication, Custodian(), TrialCounsel(), "x", null, T0, T0, 9, null, All(), 11, laboratory: new LaboratorySubmission("USACIL", false, null, null)));
+        Assert.Equal("SUSP-013", onTrial.RequirementId);
+
+        var uncoordinated = Assert.Throws<DomainRuleViolationException>(() => TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), lab, "x", null, T0, T0, 9, null, All(), 11, laboratory: new LaboratorySubmission("State laboratory (TEST)", false, null, null)));
+        Assert.Equal("SUSP-013", uncoordinated.RequirementId);
+
+        var coordinated = TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), lab, "x", null, T0, T0, 9, null, All(), 11, laboratory: new LaboratorySubmission("State laboratory (TEST)", true, null, null));
+        Assert.False(coordinated.Laboratory!.IsUsacil);
+
+        var dftOriginal = Assert.Throws<DomainRuleViolationException>(() => TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), lab, "x", null, T0, T0, 9, null, All(), 11, PaperCopyKind.Original, new LaboratorySubmission("AFMES DFT", true, null, null)));
+        Assert.Equal("SUSP-014", dftOriginal.RequirementId);
+        var dft = TemporaryRelease.Create(1, 7, SuspenseCategory.Usacil, Custodian(), lab, "x", null, T0, T0, 9, null, All(), 11, PaperCopyKind.AdditionalTemporaryReleaseCopy, new LaboratorySubmission("AFMES DFT", true, null, "GBL TEST"));
+        Assert.True(dft.Laboratory!.IsDft);
+        Assert.Equal(PaperCopyKind.AdditionalTemporaryReleaseCopy, dft.PaperAccompanying);
+    }
+
+    [Fact]
+    public void ThePaperReturnRecordsBothAnnotations_OrNeither()
+    {
+        var release = Open();
+        var both = Assert.Throws<DomainRuleViolationException>(() => release.RecordPaperReturned(true, false, T0, 9));
+        Assert.Equal("SUSP-012", both.RequirementId);
+        Assert.False(release.OriginalAnnotatedOnReturnAttested);
+        release.RecordPaperReturned(true, true, T0, 9);
+        Assert.True(release.OriginalAnnotatedOnReturnAttested && release.FirstCopyChainAnnotatedOnReturnAttested);
+        Assert.DoesNotContain("signature", release.Events.Last().Narrative ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

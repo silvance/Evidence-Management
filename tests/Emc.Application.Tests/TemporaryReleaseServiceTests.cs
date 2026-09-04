@@ -57,7 +57,25 @@ public class TemporaryReleaseServiceTests : IDisposable
 
     private TemporaryReleaseRequest Request(int voucherId, int folderId, SuspenseCategory category = SuspenseCategory.Adjudication, ReleaseRecipient? to = null, params int[] itemIds)
         => new(voucherId, itemIds, category, to ?? Counsel(), category == SuspenseCategory.Usacil ? "Forensic examination, USACIL (TEST)" : "Presentation at trial, US v. TEST", "Fort Test courtroom 2",
-            _harness.Clock.UtcNow.AddHours(-3), folderId, true, true, true, true, true, _harness.Clock.UtcNow.AddDays(30), null, "TEST release note");
+            _harness.Clock.UtcNow.AddHours(-3), folderId, true, true, true, true, true, _harness.Clock.UtcNow.AddDays(30), null, "TEST release note",
+            Laboratory: category == SuspenseCategory.Usacil ? new LaboratoryDetails("USACIL", ExaminationRequestReference: "DD 2922 TEST-0001") : null);
+
+    private async Task<(int VoucherId, int FirstItem, int SecondItem, int Binder, int Usacil, int Adjudication)> ReadyAsync(string number = "004-26", string suffix = "")
+    {
+        var (voucherId, item1, item2) = await AcceptedVoucherAsync(number);
+        var binder = await ContainerAsync(PhysicalFileKind.Active4137File, $"ACTIVE 001-26 to 050-26{suffix}", 1, 50);
+        var usacil = await ContainerAsync(PhysicalFileKind.SuspenseUsacil, $"USACIL{suffix}");
+        var adjudication = await ContainerAsync(PhysicalFileKind.SuspenseAdjudication, $"ADJUDICATION{suffix}");
+        await FileOriginalAsync(voucherId, binder);
+        return (voucherId, item1, item2, binder, usacil, adjudication);
+    }
+
+    private async Task PlaceAsync(int itemId, int locationId)
+    {
+        _harness.SignInAsCustodian();
+        var placed = await _harness.Intake.AssignStorageLocationAsync(new AssignLocationRequest(itemId, locationId, _harness.Clock.UtcNow, "Initial placement (TEST)", null));
+        Assert.True(placed.Succeeded, placed.Error);
+    }
 
     [Fact]
     public async Task AReleaseWritesCustodyStatusPaperAndSuspenseTogether()
@@ -324,6 +342,238 @@ public class TemporaryReleaseServiceTests : IDisposable
         // The original cannot go out as the original while copies are in use.
         var original = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item1]));
         Assert.Equal("SUSP-001", original.RequirementId); // item 1 is out; and for a fresh item the paper rule would answer FIL-015
+    }
+
+    [Fact]
+    public async Task AReturnWritesCustodyStatusAndPaper_AndTheLocationOnlyAsTheCustodianSays()
+    {
+        // AR 195-5 2-7b (SUSP-012), LOC-008: the returner -> custodian custody event, the status
+        // back to the room, no automatic bin; the original back to its binder with the first copy.
+        var (voucherId, item1, item2, binder, _, adjudication) = await ReadyAsync();
+        await PlaceAsync(item1, _harness.ShelfBBin14Id);
+        await PlaceAsync(item2, _harness.ShelfBBin19Id);
+        var release = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item1, item2]));
+        Assert.True(release.Succeeded, release.Error);
+        _harness.Clock.Advance(TimeSpan.FromDays(12));
+
+        // Both a location and a confirmation is a contradiction; both attestations are required.
+        var both = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item1, _harness.HighValueSafeId, true)], _harness.Clock.UtcNow, true, true));
+        Assert.Equal("LOC-008", both.RequirementId);
+
+        // A partial return: item 1 to a NEW bin; the original stays out with item 2.
+        var returnedAt = _harness.Clock.UtcNow.AddHours(-2);
+        var partial = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item1, _harness.HighValueSafeId)], returnedAt, true, true));
+        Assert.True(partial.Succeeded, partial.Error);
+        Assert.Contains(partial.Warnings, w => w.Contains("remain out", StringComparison.Ordinal));
+
+        _harness.Db.ChangeTracker.Clear();
+        var view = (await _harness.Releases.GetAsync(release.Value))!;
+        Assert.Equal(TemporaryReleaseStatus.Open, view.Status);
+        Assert.Equal(1, view.ItemsOut);
+        Assert.Equal(TemporaryReleaseItemStatus.Returned, view.Items.Single(i => i.EvidenceItemId == item1).Status);
+        Assert.NotNull(view.Items.Single(i => i.EvidenceItemId == item1).ReturnCustodyEventId);
+        Assert.False(view.OriginalAnnotatedOnReturnAttested); // not until the paper is back
+        Assert.Equal(OriginalDisposition.AccompanyingTemporaryRelease, (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!.OriginalDisposition);
+
+        var history1 = (await _harness.History.GetAsync(item1))!;
+        Assert.Equal(AccountabilityStatus.InEvidenceRoom, history1.AccountabilityStatus);
+        Assert.Equal(_harness.HighValueSafeId, history1.CurrentLocationId);
+        Assert.True(history1.ChainVerification.IsIntact);
+        var back = await _harness.Db.ItemEvents.OfType<CustodyEvent>().AsNoTracking().Where(c => c.EvidenceItemId == item1).OrderBy(c => c.SequenceNumber).LastAsync();
+        Assert.Equal("COUNSEL, TEST B.", back.ReleasedBy.DisplayName);
+        Assert.Equal(_harness.CustodianUserId, back.ReceivedBy.UserId);
+        Assert.Equal(returnedAt, back.OccurredAtUtc);
+        Assert.Equal(_harness.Clock.UtcNow, back.RecordedAtUtc);
+        Assert.Equal(view.Items.Single(i => i.EvidenceItemId == item1).ReturnCustodyEventId, back.Id);
+
+        // The last item: the paper attestations are required now; then no location at all is
+        // allowed but flagged; the prior bin needs explicit confirmation.
+        var noAttest = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item2, ConfirmReturnToPriorLocation: true)], _harness.Clock.UtcNow, true, false));
+        Assert.Equal("SUSP-012", noAttest.RequirementId);
+        _harness.Db.ChangeTracker.Clear();
+        Assert.Equal(AccountabilityStatus.TemporarilyReleased, (await _harness.Db.EvidenceItems.AsNoTracking().SingleAsync(i => i.Id == item2)).AccountabilityStatus); // nothing written
+
+        var final = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item2, ConfirmReturnToPriorLocation: true)], _harness.Clock.UtcNow, true, true));
+        Assert.True(final.Succeeded, final.Error);
+        Assert.DoesNotContain(final.Warnings, w => w.Contains("no location", StringComparison.Ordinal));
+
+        _harness.Db.ChangeTracker.Clear();
+        view = (await _harness.Releases.GetAsync(release.Value))!;
+        Assert.Equal(TemporaryReleaseStatus.Closed, view.Status);
+        Assert.True(view.OriginalAnnotatedOnReturnAttested && view.FirstCopyChainAnnotatedOnReturnAttested);
+        Assert.Equal(_harness.ShelfBBin19Id, (await _harness.History.GetAsync(item2))!.CurrentLocationId);
+        var paper = (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!;
+        Assert.Equal(OriginalDisposition.HeldActive, paper.OriginalDisposition);
+        Assert.True(paper.SuspenseCopyFiledWithOriginal);
+        var containers = await _harness.PhysicalDocuments.GetContainersAsync(_harness.EvidenceRoomId);
+        Assert.Equal(1, containers.Single(c => c.Id == binder).VouchersFiled);
+        Assert.Equal(0, containers.Single(c => c.Id == adjudication).VouchersFiled);
+
+        // A closed release takes no more returns; an item back without a bin is flagged, not refused.
+        Assert.Equal("SUSP-012", (await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item1)], _harness.Clock.UtcNow, true, true))).RequirementId);
+    }
+
+    [Fact]
+    public async Task AnItemBackWithoutABinIsFlagged_AndAnInactivePriorBinIsRefused()
+    {
+        var (voucherId, item1, _, _, _, adjudication) = await ReadyAsync();
+        await PlaceAsync(item1, _harness.ShelfBBin14Id);
+        var release = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item1]));
+        Assert.True(release.Succeeded, release.Error);
+
+        (await _harness.Db.StorageLocations.SingleAsync(l => l.Id == _harness.ShelfBBin14Id)).Deactivate();
+        await _harness.Db.SaveChangesAsync();
+        _harness.Db.ChangeTracker.Clear();
+
+        var prior = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item1, ConfirmReturnToPriorLocation: true)], _harness.Clock.UtcNow, true, true));
+        Assert.Equal("LOC-004", prior.RequirementId);
+
+        var none = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(release.Value, [new ReturnedItem(item1)], _harness.Clock.UtcNow, true, true));
+        Assert.True(none.Succeeded, none.Error);
+        Assert.Contains(none.Warnings, w => w.Contains("no location recorded", StringComparison.Ordinal));
+        _harness.Db.ChangeTracker.Clear();
+        var history = (await _harness.History.GetAsync(item1))!;
+        Assert.Equal(AccountabilityStatus.InEvidenceRoom, history.AccountabilityStatus);
+        Assert.Equal(_harness.ShelfBBin14Id, history.CurrentLocationId); // history keeps the last known bin; no new one was recorded
+    }
+
+    [Fact]
+    public async Task AControlledSubstanceApparentChangeIsAnnotatedWithAnMfr_NotAfterALaboratoryRelease()
+    {
+        // AR 195-5 2-7d (SUSP-015).
+        var (voucherId, item1, item2, _, usacil, adjudication) = await ReadyAsync();
+        var trial = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item1]));
+        Assert.True(trial.Succeeded, trial.Error);
+        // The first copy is in ADJUDICATION (with the trial release); a laboratory copy release names that folder (2-7b).
+        var lab = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "USACIL (TEST)"), item2) with { PaperAccompanying = PaperCopyKind.AdditionalTemporaryReleaseCopy });
+        Assert.True(lab.Succeeded, lab.Error);
+        Assert.Equal(0, (await _harness.PhysicalDocuments.GetContainersAsync(_harness.EvidenceRoomId)).Single(c => c.Id == usacil).VouchersFiled);
+
+        var noMfr = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(trial.Value, [new ReturnedItem(item1, ApparentChange: new("Weight reads 1.9 g against 2.1 g recorded (TEST)", ""))], _harness.Clock.UtcNow, true, true));
+        Assert.Equal("SUSP-015", noMfr.RequirementId);
+
+        var afterLab = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(lab.Value, [new ReturnedItem(item2, ApparentChange: new("Sample consumed (TEST)", "MFR TEST-0002"))], _harness.Clock.UtcNow, true, true));
+        Assert.Equal("SUSP-015", afterLab.RequirementId);
+        Assert.Contains("other than for laboratory examination", afterLab.Error, StringComparison.Ordinal);
+
+        var annotated = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(trial.Value, [new ReturnedItem(item1, ApparentChange: new("Weight reads 1.9 g against 2.1 g recorded (TEST)", "MFR TEST-0003"))], _harness.Clock.UtcNow, true, true));
+        Assert.True(annotated.Succeeded, annotated.Error);
+        _harness.Db.ChangeTracker.Clear();
+        var custody = await _harness.Db.ItemEvents.OfType<CustodyEvent>().AsNoTracking().Where(c => c.EvidenceItemId == item1).OrderBy(c => c.SequenceNumber).LastAsync();
+        Assert.Contains("apparent change in controlled substance: Weight reads 1.9 g", custody.PurposeOfChangeOfCustody, StringComparison.Ordinal);
+        Assert.Contains("2-7d MFR: MFR TEST-0003", custody.Notes, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACopyComesBackOntoTheFirstCopy_AndTheLaboratoryReturnMayNameTheMailNumber()
+    {
+        // AR 195-5 2-7b (copies), 2-7e (mail returned from the USACIL: the number in Released By).
+        var (voucherId, item1, item2, binder, usacil, _) = await ReadyAsync();
+        var first = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "USACIL (TEST)"), item1));
+        Assert.True(first.Succeeded, first.Error);
+        var second = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "USACIL (TEST)"), item2) with { PaperAccompanying = PaperCopyKind.AdditionalTemporaryReleaseCopy });
+        Assert.True(second.Succeeded, second.Error);
+
+        var mail = new ReleaseRecipient(CustodyPartyKind.AccountableMailNumber, "RB 000 000 001 US", AccountableMailNumber: "RB 000 000 001 US", Carrier: "USPS registered");
+        var copyBack = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(second.Value, [new ReturnedItem(item2)], _harness.Clock.UtcNow, true, true, ReturnedBy: mail));
+        Assert.True(copyBack.Succeeded, copyBack.Error);
+        _harness.Db.ChangeTracker.Clear();
+        var paper = (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!;
+        Assert.Equal(0, paper.AdditionalCopiesOut);
+        Assert.Equal(OriginalDisposition.AccompanyingTemporaryRelease, paper.OriginalDisposition); // the original is still with item 1
+        Assert.Equal("USACIL", paper.FirstCopyContainerLabel);
+        var custody = await _harness.Db.ItemEvents.OfType<CustodyEvent>().AsNoTracking().Where(c => c.EvidenceItemId == item2).OrderBy(c => c.SequenceNumber).LastAsync();
+        Assert.Equal(CustodyPartyKind.AccountableMailNumber, custody.ReleasedBy.Kind);
+        Assert.Equal("RB 000 000 001 US", custody.ReleasedBy.AccountableMailNumber);
+
+        var originalBack = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(first.Value, [new ReturnedItem(item1)], _harness.Clock.UtcNow, true, true));
+        Assert.True(originalBack.Succeeded, originalBack.Error);
+        _harness.Db.ChangeTracker.Clear();
+        paper = (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!;
+        Assert.Equal(OriginalDisposition.HeldActive, paper.OriginalDisposition);
+        Assert.Null(paper.FirstCopyContainerLabel);
+        Assert.True(paper.SuspenseCopyFiledWithOriginal);
+        Assert.Equal(1, (await _harness.PhysicalDocuments.GetContainersAsync(_harness.EvidenceRoomId)).Single(c => c.Id == binder).VouchersFiled);
+
+        // A mail number cannot return evidence from a legal proceeding.
+        var (v2, i3, _, _, _, adj2) = await ReadyAsync("007-26", " (2)");
+        var trial = await _harness.Releases.ReleaseAsync(Request(v2, adj2, itemIds: [i3]));
+        var wrong = await _harness.Releases.ReturnAsync(new ReturnFromTemporaryReleaseRequest(trial.Value, [new ReturnedItem(i3)], _harness.Clock.UtcNow, true, true, ReturnedBy: mail));
+        Assert.Equal("COC-006", wrong.RequirementId);
+    }
+
+    [Fact]
+    public async Task ALaboratoryReleaseNamesItsLaboratory_NonUsacilNeedsCoordination_DftTakesACopy()
+    {
+        // AR 195-5 2-7c(1), 2-7c(2) (SUSP-013, SUSP-014).
+        var (voucherId, item1, item2, _, usacil, _) = await ReadyAsync();
+        var org = new ReleaseRecipient(CustodyPartyKind.Organization, "USACIL (TEST)");
+
+        var noLab = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, org, item1) with { Laboratory = null });
+        Assert.Equal("SUSP-013", noLab.RequirementId);
+
+        var other = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "State Crime Laboratory (TEST)"), item1) with { Laboratory = new LaboratoryDetails("State Crime Laboratory (TEST)") });
+        Assert.Equal("SUSP-013", other.RequirementId);
+        Assert.Contains("prior coordination with the USACIL", other.Error, StringComparison.Ordinal);
+
+        var dftOriginal = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "AFMES DFT"), item1) with { Laboratory = new LaboratoryDetails("AFMES DFT", CoordinatedWithUsacilAttested: true) });
+        Assert.Equal("SUSP-014", dftOriginal.RequirementId);
+
+        var dft = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "AFMES DFT"), item1) with
+        {
+            Laboratory = new LaboratoryDetails("AFMES DFT", CoordinatedWithUsacilAttested: true, ShippingDocumentReference: "GBL TEST-0001"),
+            PaperAccompanying = PaperCopyKind.AdditionalTemporaryReleaseCopy
+        });
+        Assert.True(dft.Succeeded, dft.Error);
+        Assert.Contains(dft.Warnings, w => w.Contains("2-7c(2)", StringComparison.Ordinal) && w.Contains("not returned", StringComparison.Ordinal));
+        Assert.Contains(dft.Warnings, w => w.Contains("2-7f", StringComparison.Ordinal));
+
+        _harness.Db.ChangeTracker.Clear();
+        var paper = (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!;
+        Assert.Equal(OriginalDisposition.HeldActive, paper.OriginalDisposition); // the original never left
+        Assert.Equal(1, paper.AdditionalCopiesOut);
+        var view = (await _harness.Releases.GetAsync(dft.Value))!;
+        Assert.Equal("AFMES DFT", view.LaboratoryName);
+        Assert.True(view.LaboratoryCoordinatedWithUsacilAttested);
+        Assert.Equal("GBL TEST-0001", view.ShippingDocumentReference);
+        var exam = await _harness.Db.ItemEvents.OfType<ExaminationEvent>().AsNoTracking().SingleAsync(e => e.EvidenceItemId == item1);
+        Assert.Equal("AFMES DFT", exam.Laboratory);
+
+        // The specimens are consumed: accounted for without return, with an MFR; the release closes.
+        var noMfr = await _harness.Releases.RecordNotReturnedAsync(new NotReturnedRequest(dft.Value, [item1], NotReturnedReason.ConsumedOrRetainedByLaboratory, _harness.Clock.UtcNow, "Consumed in toxicology (TEST)"));
+        Assert.Equal("SUSP-016", noMfr.RequirementId);
+        var consumed = await _harness.Releases.RecordNotReturnedAsync(new NotReturnedRequest(dft.Value, [item1], NotReturnedReason.ConsumedOrRetainedByLaboratory, _harness.Clock.UtcNow, "Consumed in toxicology (TEST)", "MFR TEST-0004"));
+        Assert.True(consumed.Succeeded, consumed.Error);
+        _harness.Db.ChangeTracker.Clear();
+        Assert.Equal(TemporaryReleaseStatus.Closed, (await _harness.Releases.GetAsync(dft.Value))!.Status);
+        Assert.Equal(AccountabilityStatus.DispositionPending, (await _harness.Db.EvidenceItems.AsNoTracking().SingleAsync(i => i.Id == item1)).AccountabilityStatus);
+        Assert.Equal(TemporaryReleaseItemStatus.NotReturnedAccountedFor, (await _harness.Db.TemporaryReleaseItems.AsNoTracking().SingleAsync(t => t.EvidenceItemId == item1)).Status);
+        // Item 2 was never released.
+        Assert.Equal(AccountabilityStatus.InEvidenceRoom, (await _harness.Db.EvidenceItems.AsNoTracking().SingleAsync(i => i.Id == item2)).AccountabilityStatus);
+    }
+
+    [Fact]
+    public async Task AnItemEnteredInTheRecordOfTrialIsFinalDisposition_TheReleaseCloses()
+    {
+        // AR 195-5 3-1a(4), 2-8e(4) (SUSP-016).
+        var (voucherId, item1, _, _, usacil, adjudication) = await ReadyAsync();
+        var trial = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item1]));
+        Assert.True(trial.Succeeded, trial.Error);
+
+        var wrongReason = await _harness.Releases.RecordNotReturnedAsync(new NotReturnedRequest(trial.Value, [item1], NotReturnedReason.ConsumedOrRetainedByLaboratory, _harness.Clock.UtcNow, "x", "MFR"));
+        Assert.Equal("SUSP-016", wrongReason.RequirementId);
+
+        var result = await _harness.Releases.RecordNotReturnedAsync(new NotReturnedRequest(trial.Value, [item1], NotReturnedReason.EnteredInRecordOfTrial, _harness.Clock.UtcNow, "US v. TEST, entered as prosecution exhibit (TEST)"));
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Contains(result.Warnings, w => w.Contains("2-4g(1)", StringComparison.Ordinal));
+        _harness.Db.ChangeTracker.Clear();
+        var view = (await _harness.Releases.GetAsync(trial.Value))!;
+        Assert.Equal(TemporaryReleaseStatus.Closed, view.Status);
+        Assert.Contains(view.Events, e => e.Kind == TemporaryReleaseEventKind.ItemAccountedForWithoutReturn);
+        var status = await _harness.Db.ItemEvents.OfType<StatusEvent>().AsNoTracking().Where(e => e.EvidenceItemId == item1).OrderBy(e => e.SequenceNumber).LastAsync();
+        Assert.Equal(AccountabilityStatus.DispositionPending, status.ToStatus);
+        Assert.Contains("record of trial", status.Reason, StringComparison.Ordinal);
+        Assert.Equal(0, (await _harness.PhysicalDocuments.GetContainersAsync(_harness.EvidenceRoomId)).Single(c => c.Id == usacil).VouchersFiled);
     }
 
     [Fact]

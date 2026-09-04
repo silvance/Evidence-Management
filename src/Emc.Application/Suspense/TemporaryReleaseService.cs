@@ -49,7 +49,13 @@ public sealed record TemporaryReleaseRequest(
     /// when the original is already out with another recipient, or several recipients are served
     /// at once, a COPY goes with each release and the first copy carries every chain.
     /// </summary>
-    PaperCopyKind PaperAccompanying = PaperCopyKind.Original);
+    PaperCopyKind PaperAccompanying = PaperCopyKind.Original,
+
+    /// <summary>Required for a USACIL-category release (2-7c).</summary>
+    LaboratoryDetails? Laboratory = null);
+
+/// <summary>AR 195-5 2-7c/2-7e/2-7f: which laboratory, whether a non-USACIL laboratory was coordinated with the USACIL, the DD Form 2922 reference, the shipping document.</summary>
+public sealed record LaboratoryDetails(string LaboratoryName, bool CoordinatedWithUsacilAttested = false, string? ExaminationRequestReference = null, string? ShippingDocumentReference = null);
 
 /// <summary>One recipient's share of a multi-recipient release (AR 195-5 2-7b, SUSP-008). A copy accompanies each.</summary>
 public sealed record RecipientReleasePart(
@@ -64,7 +70,53 @@ public sealed record RecipientReleasePart(
     bool IdentificationPresentedAttested,
     bool ObligationsInformedAttested,
     DateTimeOffset? ExpectedFollowUpLocal = null,
+    string? Notes = null,
+    LaboratoryDetails? Laboratory = null);
+
+/// <summary>
+/// AR 195-5 2-7d: a controlled substance returned after a temporary release other than for
+/// laboratory examination shows an apparent change: it is annotated in the Purpose of Change of
+/// Custody column and an MFR explaining it is prepared and attached to the DA Form 4137.
+/// </summary>
+public sealed record ControlledSubstanceApparentChange(string Annotation, string MfrReference);
+
+/// <summary>
+/// One item coming back. No location is assigned by default (LOC-008): the custodian either
+/// names the bin it goes to now, or explicitly confirms it goes back to the bin it was in.
+/// </summary>
+public sealed record ReturnedItem(int ItemId, int? StorageLocationId = null, bool ConfirmReturnToPriorLocation = false, ControlledSubstanceApparentChange? ApparentChange = null);
+
+/// <summary>
+/// AR 195-5 2-7b: evidence comes back. The custody event per item (returner -> custodian), the
+/// status back to the evidence room, the location only as the custodian says, the release's
+/// items marked returned, and - when nothing is left out - the paper: the original to the
+/// active file and the first copy filed with it, or the returned copy's chain onto the first
+/// copy. One unit of work. <paramref name="ReturnedBy"/> defaults to the release's recipient;
+/// for a laboratory return by mail the accountable mail number stands in Released By (2-7e).
+/// </summary>
+public sealed record ReturnFromTemporaryReleaseRequest(
+    int TemporaryReleaseId,
+    IReadOnlyList<ReturnedItem> Items,
+    DateTimeOffset ReturnedAtLocal,
+    bool OriginalAnnotatedByCustodianAndReturnerAttested,
+    bool FirstCopyChainAnnotatedAttested,
+    ReleaseRecipient? ReturnedBy = null,
+    int? ActiveFileContainerId = null,
+    int? SourceDocumentId = null,
     string? Notes = null);
+
+/// <summary>
+/// An item on a release that will not come back: entered in the record of trial (final
+/// disposition, 3-1a(4), 2-8e(4)) or consumed / retained by the laboratory (2-7c(2), with an
+/// MFR). The item moves to DispositionPending; the disposition itself is the 2-8/2-9 workflow.
+/// </summary>
+public sealed record NotReturnedRequest(
+    int TemporaryReleaseId,
+    IReadOnlyList<int> ItemIds,
+    NotReturnedReason Reason,
+    DateTimeOffset OccurredAtLocal,
+    string Narrative,
+    string? MfrReference = null);
 
 /// <summary>
 /// Items on one DA Form 4137 released to more than one agency or person at the same time
@@ -124,7 +176,13 @@ public sealed record TemporaryReleaseView(
     string? Notes,
     IReadOnlyList<TemporaryReleaseItemRow> Items,
     IReadOnlyList<TemporaryReleaseEventRow> Events,
-    IReadOnlyList<SuspenseContactRow> Contacts);
+    IReadOnlyList<SuspenseContactRow> Contacts,
+    string? LaboratoryName = null,
+    bool LaboratoryCoordinatedWithUsacilAttested = false,
+    string? ExaminationRequestReference = null,
+    string? ShippingDocumentReference = null,
+    bool OriginalAnnotatedOnReturnAttested = false,
+    bool FirstCopyChainAnnotatedOnReturnAttested = false);
 
 public interface ITemporaryReleaseService
 {
@@ -136,6 +194,12 @@ public interface ITemporaryReleaseService
 
     /// <summary>AR 195-5 2-7a: a contact with the holder. Append-only.</summary>
     Task<OperationResult> RecordContactAsync(RecordSuspenseContactRequest request, CancellationToken ct = default);
+
+    /// <summary>AR 195-5 2-7b: items come back. One unit of work.</summary>
+    Task<OperationResult> ReturnAsync(ReturnFromTemporaryReleaseRequest request, CancellationToken ct = default);
+
+    /// <summary>An item accounted for without returning (record of trial; consumed or retained by the laboratory).</summary>
+    Task<OperationResult> RecordNotReturnedAsync(NotReturnedRequest request, CancellationToken ct = default);
 
     Task<TemporaryReleaseView?> GetAsync(int releaseId, CancellationToken ct = default);
     Task<IReadOnlyList<TemporaryReleaseView>> GetForVoucherAsync(int voucherId, CancellationToken ct = default);
@@ -191,7 +255,7 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
 
         var part = new RecipientReleasePart(request.ItemIds, request.Category, request.ReceivedBy, request.Purpose, request.Destination,
             request.PhysicalInventoryPerformedAttested, request.Original4137ReceivedBySignedAttested, request.FirstCopyReceivedBySignedAttested,
-            request.IdentificationPresentedAttested, request.ObligationsInformedAttested, request.ExpectedFollowUpLocal, request.Notes);
+            request.IdentificationPresentedAttested, request.ObligationsInformedAttested, request.ExpectedFollowUpLocal, request.Notes, request.Laboratory);
 
         var staged = await StageAsync(context, part, request.PaperAccompanying, request.SuspenseFolderContainerId, request.ReleasedAtLocal, request.SourceDocumentId, ct);
         if (staged.Failure is not null)
@@ -471,12 +535,15 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
             part.PhysicalInventoryPerformedAttested, part.Original4137ReceivedBySignedAttested, part.FirstCopyReceivedBySignedAttested,
             part.IdentificationPresentedAttested, part.ObligationsInformedAttested);
 
+        var laboratory = part.Laboratory is null ? null
+            : new LaboratorySubmission(part.Laboratory.LaboratoryName, part.Laboratory.CoordinatedWithUsacilAttested, part.Laboratory.ExaminationRequestReference, part.Laboratory.ShippingDocumentReference);
+
         TemporaryRelease release;
         try
         {
             release = TemporaryRelease.Create(
                 voucher.Id, voucher.EvidenceRoomId, part.Category, context.ReleasedBy, recipient, part.Purpose, part.Destination,
-                releasedAtLocal, now, _currentUser.UserId, part.ExpectedFollowUpLocal, attestations, folder.Id, paperAccompanying, part.Notes);
+                releasedAtLocal, now, _currentUser.UserId, part.ExpectedFollowUpLocal, attestations, folder.Id, paperAccompanying, laboratory, part.Notes);
 
             _db.CustodyParties.Add(recipient);
             _db.TemporaryReleases.Add(release);
@@ -514,6 +581,18 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
                     occurredAtLocal: releasedAtLocal,
                     recordedAtUtc: now,
                     recordedByUserId: _currentUser.UserId), ct);
+
+                // AR 195-5 2-7c: a laboratory submission is on the item's own history too.
+                if (laboratory is not null)
+                {
+                    await _events.AppendAsync(item, new ExaminationEvent(
+                        laboratory: laboratory.LaboratoryName,
+                        occurredAtLocal: releasedAtLocal,
+                        recordedAtUtc: now,
+                        recordedByUserId: _currentUser.UserId,
+                        examinationRequestReference: laboratory.ExaminationRequestReference,
+                        notes: laboratory.IsUsacil ? null : "AR 195-5 2-7c(1): laboratory other than the USACIL, after prior coordination with the USACIL."), ct);
+                }
 
                 release.AddItem(item.Id, item.ItemNumber, custody);
             }
@@ -567,6 +646,351 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
         {
             yield return "AR 195-5 2-7b: a COPY accompanied this evidence. Note on the original and the first copy that copies have been made; record this release's chain of custody on the first copy.";
         }
+
+        if (release.Laboratory is { IsDft: true })
+        {
+            yield return "AR 195-5 2-7c(2): specimens submitted to the DFT are in most instances not returned. Coordinate with the DFT to confirm whether they will be; if not, an MFR explaining the circumstances is prepared and attached to the DA Form 4137, and the items are accounted for on this release without return.";
+        }
+
+        if (release.Laboratory?.ShippingDocumentReference is not null)
+        {
+            yield return "AR 195-5 2-7f: a copy of the shipping document stays attached to the suspense copy of the DA Form 4137 until the addressee acknowledges receipt or the evidence is returned.";
+        }
+    }
+
+    public async Task<OperationResult> ReturnAsync(ReturnFromTemporaryReleaseRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Items is null || request.Items.Count == 0)
+        {
+            return OperationResult.Failure("Name at least one item that came back.", "SUSP-012");
+        }
+
+        var release = await _db.TemporaryReleases
+            .Include(r => r.ReleasedBy).Include(r => r.ReceivedBy)
+            .Include(r => r.Items).Include(r => r.Events).Include(r => r.Contacts)
+            .FirstOrDefaultAsync(r => r.Id == request.TemporaryReleaseId, ct);
+        if (release is null)
+        {
+            return OperationResult.Failure("Temporary release not found.", "SUSP-012");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(EmcPermissions.ReturnFromTemporaryRelease, release.EvidenceRoomId, ct);
+        if (!decision.IsAllowed)
+        {
+            _audit.Record(AuditEventType.PermissionDenied, nameof(TemporaryRelease), release.Id.ToString(), reason: decision.Reason, succeeded: false);
+            await _db.SaveChangesAsync(ct);
+            return OperationResult.Failure(decision.Reason!, decision.RequirementId);
+        }
+
+        if (!release.IsOpen)
+        {
+            return OperationResult.Failure("This temporary release is closed.", "SUSP-012");
+        }
+
+        var voucher = await _db.EvidenceVouchers.Include(v => v.Items).ThenInclude(i => i.Events).Include(v => v.DocumentNumberAssignments)
+            .FirstAsync(v => v.Id == release.VoucherId, ct);
+
+        // The items: on this release, still out, each named once.
+        var itemIds = request.Items.Select(i => i.ItemId).ToList();
+        if (itemIds.Count != itemIds.Distinct().Count())
+        {
+            return OperationResult.Failure("An item is named twice.", "SUSP-012");
+        }
+
+        var returning = new List<(ReturnedItem Request, EvidenceItem Item)>();
+        foreach (var returned in request.Items)
+        {
+            var member = release.Items.FirstOrDefault(m => m.EvidenceItemId == returned.ItemId);
+            if (member is null || member.Status != TemporaryReleaseItemStatus.Out)
+            {
+                return OperationResult.Failure($"Item {returned.ItemId} is not out on this release.", "SUSP-012");
+            }
+
+            var item = voucher.Items.First(i => i.Id == returned.ItemId);
+            if (item.AccountabilityStatus != AccountabilityStatus.TemporarilyReleased)
+            {
+                return OperationResult.Failure($"Item {item.ItemNumber} is {item.AccountabilityStatus}, not on temporary release.", "SUSP-012");
+            }
+
+            if (returned.StorageLocationId is not null && returned.ConfirmReturnToPriorLocation)
+            {
+                return OperationResult.Failure($"Item {item.ItemNumber}: name a location OR confirm the prior one, not both.", "LOC-008");
+            }
+
+            // AR 195-5 2-7d: only after a release OTHER than for laboratory examination.
+            if (returned.ApparentChange is not null)
+            {
+                if (release.Category == SuspenseCategory.Usacil)
+                {
+                    return OperationResult.Failure(
+                        $"Item {item.ItemNumber}: AR 195-5 para 2-7d applies to controlled substances returned after a temporary release other than for laboratory examination. Consumption or change in examination is documented by the laboratory report, not by a 2-7d annotation.", "SUSP-015");
+                }
+
+                if (string.IsNullOrWhiteSpace(returned.ApparentChange.Annotation) || string.IsNullOrWhiteSpace(returned.ApparentChange.MfrReference))
+                {
+                    return OperationResult.Failure(
+                        $"Item {item.ItemNumber}: AR 195-5 para 2-7d: an apparent change in a controlled substance is annotated in the Purpose of Change of Custody column AND an MFR explaining it is prepared and attached to the DA Form 4137. Record the annotation and the MFR reference.", "SUSP-015");
+                }
+            }
+
+            returning.Add((returned, item));
+        }
+
+        // Where each item goes now - only as the custodian says (LOC-008).
+        var locations = new Dictionary<int, Emc.Domain.Storage.StorageLocation>();
+        foreach (var (returned, item) in returning)
+        {
+            int? locationId = returned.StorageLocationId ?? (returned.ConfirmReturnToPriorLocation ? item.CurrentLocationId : null);
+            if (returned.ConfirmReturnToPriorLocation && locationId is null)
+            {
+                return OperationResult.Failure($"Item {item.ItemNumber} had no recorded location before it left; name the location it goes to.", "LOC-008");
+            }
+
+            if (locationId is int lid)
+            {
+                var location = await _db.StorageLocations.Include(l => l.Parent).FirstOrDefaultAsync(l => l.Id == lid, ct);
+                if (location is null || location.EvidenceRoomId != release.EvidenceRoomId)
+                {
+                    return OperationResult.Failure($"Item {item.ItemNumber}: the storage location is not in this evidence room.", "LOC-004");
+                }
+
+                if (!location.IsActive)
+                {
+                    return OperationResult.Failure($"Item {item.ItemNumber}: that storage location is no longer in use{(returned.ConfirmReturnToPriorLocation ? " (it was the prior location)" : string.Empty)}; name another.", "LOC-004");
+                }
+
+                locations[item.Id] = location;
+            }
+        }
+
+        if (request.SourceDocumentId is int docId)
+        {
+            var docRoom = await _db.SourceDocuments.AsNoTracking().Where(d => d.Id == docId).Select(d => (int?)d.EvidenceRoomId).FirstOrDefaultAsync(ct);
+            if (docRoom is null || docRoom != release.EvidenceRoomId)
+            {
+                return OperationResult.Failure("The source document named is not in this evidence room.", "DOC-001");
+            }
+        }
+
+        var custodianUser = await _db.Users.FirstOrDefaultAsync(u => u.Id == _currentUser.UserId, ct);
+        if (custodianUser is null)
+        {
+            return OperationResult.Failure("The signed-in custodian has no user record.", "IAM-001");
+        }
+
+        // Who released it back: the recipient, unless the custodian says otherwise (2-7e: the
+        // laboratory's accountable mail number in Released By, for a laboratory return only).
+        CustodyParty returnedBy;
+        try
+        {
+            if (request.ReturnedBy is null)
+            {
+                returnedBy = release.ReceivedBy;
+            }
+            else
+            {
+                returnedBy = ToParty(request.ReturnedBy);
+                if (returnedBy.Kind == CustodyPartyKind.AccountableMailNumber && release.Category != SuspenseCategory.Usacil)
+                {
+                    return OperationResult.Failure("AR 195-5 para 2-7e: an accountable mail number stands in the Released By block for evidence returned from the USACIL. A person returns evidence from a legal proceeding.", "COC-006");
+                }
+
+                _db.CustodyParties.Add(returnedBy);
+            }
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        var custodian = CustodyParty.ForUser(custodianUser);
+        _db.CustodyParties.Add(custodian);
+        var now = _clock.UtcNow;
+        var warnings = new List<string>();
+
+        try
+        {
+            foreach (var (returned, item) in returning)
+            {
+                var purpose = "Returned from temporary release to the evidence custodian";
+                string? notes = $"Temporary release {release.Id} ({release.Category}); {(release.PaperAccompanying == PaperCopyKind.Original ? "original" : "copy")} DA Form 4137 returned.";
+                if (returned.ApparentChange is not null)
+                {
+                    purpose += $"; apparent change in controlled substance: {returned.ApparentChange.Annotation.Trim()}";
+                    notes += $" AR 195-5 2-7d MFR: {returned.ApparentChange.MfrReference.Trim()}.";
+                }
+
+                var custody = new CustodyEvent(
+                    releasedBy: returnedBy,
+                    receivedBy: custodian,
+                    purposeOfChangeOfCustody: purpose,
+                    occurredAtLocal: request.ReturnedAtLocal,
+                    recordedAtUtc: now,
+                    recordedByUserId: _currentUser.UserId,
+                    isScrcni: item.IsSealed,
+                    destination: null,
+                    agency: release.ReceivedBy.OrganizationOrAgency,
+                    notes: notes);
+                if (request.SourceDocumentId is int sourceDocId)
+                {
+                    custody.AttachSourceDocument(sourceDocId);
+                }
+
+                await _events.AppendAsync(item, custody, ct);
+
+                var from = item.AccountabilityStatus;
+                item.TransitionTo(AccountabilityStatus.InEvidenceRoom);
+                await _events.AppendAsync(item, new StatusEvent(from, AccountabilityStatus.InEvidenceRoom,
+                    $"Returned from temporary release by {returnedBy.DisplayName} (AR 195-5 2-7b).", request.ReturnedAtLocal, now, _currentUser.UserId), ct);
+
+                if (locations.TryGetValue(item.Id, out var location))
+                {
+                    await _events.AppendAsync(item, new LocationEvent(location.Id, location.FullPath, request.ReturnedAtLocal, now, _currentUser.UserId,
+                        returned.ConfirmReturnToPriorLocation ? "Returned to its prior location (confirmed by the custodian)" : "Placed on return from temporary release"), ct);
+                }
+                else
+                {
+                    warnings.Add($"Item {item.ItemNumber} is back in the evidence room with no location recorded. Record where it was placed (AR 195-5 2-4e).");
+                }
+
+                release.RecordItemReturned(item.Id, custody, request.ReturnedAtLocal, now, _currentUser.UserId, returned.ApparentChange is null ? null : $"2-7d apparent change annotated; MFR {returned.ApparentChange.MfrReference.Trim()}.");
+            }
+
+            // The paper, when the release is done (2-7b).
+            if (!release.IsOpen)
+            {
+                release.RecordPaperReturned(request.OriginalAnnotatedByCustodianAndReturnerAttested, request.FirstCopyChainAnnotatedAttested, now, _currentUser.UserId);
+
+                var paper = await _db.PhysicalVoucherDocuments.Include(d => d.Events).FirstAsync(d => d.VoucherId == release.VoucherId, ct);
+                var suspense = await _db.PhysicalFileContainers.FirstAsync(c => c.Id == release.SuspenseFolderContainerId, ct);
+                if (release.PaperAccompanying == PaperCopyKind.Original)
+                {
+                    var activeId = request.ActiveFileContainerId ?? paper.HomeActiveContainerId;
+                    var active = activeId is null ? null : await _db.PhysicalFileContainers.FirstOrDefaultAsync(c => c.Id == activeId, ct);
+                    if (active is null)
+                    {
+                        return OperationResult.Failure("AR 195-5 para 2-7b: name the active DA Form 4137 file the returned original goes into.", "FIL-005");
+                    }
+
+                    var assignment = voucher.CurrentDocumentNumberAssignment!;
+                    paper.ReturnOriginalToActiveFile(active, suspense, assignment.Sequence, assignment.CalendarYear, _currentUser.UserId, request.ReturnedAtLocal,
+                        $"Original returned by {returnedBy.DisplayName}, annotated; filed in {active.Label}.");
+                }
+                else
+                {
+                    paper.ReturnCopyFromEvidence(suspense, _currentUser.UserId, request.ReturnedAtLocal, $"Copy returned by {returnedBy.DisplayName}; chain recorded on the first copy.");
+                }
+            }
+            else
+            {
+                warnings.Add($"{release.ItemsOut} item(s) remain out on this release; the {(release.PaperAccompanying == PaperCopyKind.Original ? "original" : "copy")} stays with them and the first copy stays in the suspense folder.");
+            }
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        _audit.Record(AuditEventType.AccountabilityActionRecorded, nameof(TemporaryRelease), release.Id.ToString(),
+            newValue: $"{returning.Count} item(s) returned; release now {release.Status}", reason: "AR 195-5 2-7b return from temporary release");
+
+        var saved = await CommitAsync(ct);
+        return saved ?? OperationResult.Success([.. warnings]);
+    }
+
+    public async Task<OperationResult> RecordNotReturnedAsync(NotReturnedRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var release = await _db.TemporaryReleases
+            .Include(r => r.ReleasedBy).Include(r => r.ReceivedBy)
+            .Include(r => r.Items).Include(r => r.Events).Include(r => r.Contacts)
+            .FirstOrDefaultAsync(r => r.Id == request.TemporaryReleaseId, ct);
+        if (release is null)
+        {
+            return OperationResult.Failure("Temporary release not found.", "SUSP-016");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(EmcPermissions.ReturnFromTemporaryRelease, release.EvidenceRoomId, ct);
+        if (!decision.IsAllowed)
+        {
+            _audit.Record(AuditEventType.PermissionDenied, nameof(TemporaryRelease), release.Id.ToString(), reason: decision.Reason, succeeded: false);
+            await _db.SaveChangesAsync(ct);
+            return OperationResult.Failure(decision.Reason!, decision.RequirementId);
+        }
+
+        if (request.ItemIds is null || request.ItemIds.Count == 0 || string.IsNullOrWhiteSpace(request.Narrative))
+        {
+            return OperationResult.Failure("Name the item(s) and say what became of them.", "SUSP-016");
+        }
+
+        if (request.Reason == NotReturnedReason.ConsumedOrRetainedByLaboratory)
+        {
+            if (release.Category != SuspenseCategory.Usacil)
+            {
+                return OperationResult.Failure("Consumption or retention by a laboratory applies to a laboratory release.", "SUSP-016");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.MfrReference))
+            {
+                return OperationResult.Failure("AR 195-5 para 2-7c(2): an MFR explaining the circumstances is prepared and attached to the DA Form 4137. Record its reference.", "SUSP-016");
+            }
+        }
+
+        if (request.Reason == NotReturnedReason.EnteredInRecordOfTrial && release.Category != SuspenseCategory.Adjudication)
+        {
+            return OperationResult.Failure("Entry in the record of trial follows a release for legal proceedings (ADJUDICATION).", "SUSP-016");
+        }
+
+        var voucher = await _db.EvidenceVouchers.Include(v => v.Items).FirstAsync(v => v.Id == release.VoucherId, ct);
+        var now = _clock.UtcNow;
+        try
+        {
+            foreach (var itemId in request.ItemIds.Distinct())
+            {
+                var member = release.Items.FirstOrDefault(m => m.EvidenceItemId == itemId);
+                if (member is null || member.Status != TemporaryReleaseItemStatus.Out)
+                {
+                    return OperationResult.Failure($"Item {itemId} is not out on this release.", "SUSP-016");
+                }
+
+                var item = voucher.Items.First(i => i.Id == itemId);
+                var reason = request.Reason == NotReturnedReason.EnteredInRecordOfTrial
+                    ? $"Entered as a permanent part of the record of trial - final disposition (AR 195-5 3-1a(4), 2-8e(4)). {request.Narrative.Trim()}"
+                    : $"Consumed in examination or retained by the laboratory (AR 195-5 2-7c(2)); MFR {request.MfrReference!.Trim()}. {request.Narrative.Trim()}";
+
+                var from = item.AccountabilityStatus;
+                item.TransitionTo(AccountabilityStatus.DispositionPending);
+                await _events.AppendAsync(item, new StatusEvent(from, AccountabilityStatus.DispositionPending, reason, request.OccurredAtLocal, now, _currentUser.UserId), ct);
+                release.RecordItemAccountedForWithoutReturn(itemId, request.OccurredAtLocal, now, _currentUser.UserId, reason);
+            }
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        _audit.Record(AuditEventType.AccountabilityActionRecorded, nameof(TemporaryRelease), release.Id.ToString(),
+            newValue: $"{request.ItemIds.Count} item(s) accounted for without return: {request.Reason}; release now {release.Status}", reason: "SUSP-016");
+
+        var saved = await CommitAsync(ct);
+        if (saved is not null)
+        {
+            return saved;
+        }
+
+        var warnings = new List<string>
+        {
+            "The item(s) are now DispositionPending: the Final Disposal Action portion of the DA Form 4137 is completed through the disposition workflow (AR 195-5 2-8, 2-9), which this application does not yet perform."
+        };
+        if (!release.IsOpen && release.PaperAccompanying == PaperCopyKind.Original)
+        {
+            warnings.Add(request.Reason == NotReturnedReason.EnteredInRecordOfTrial
+                ? "AR 195-5 2-4g(1): the original DA Form 4137 is part of the record of trial; file a copy in the inactive file noting that, through the paper record."
+                : "The original DA Form 4137 went with the specimens; record what became of it through the paper record (AR 195-5 2-4g).");
+        }
+
+        return OperationResult.Success([.. warnings]);
     }
 
     public async Task<OperationResult> RecordContactAsync(RecordSuspenseContactRequest request, CancellationToken ct = default)
@@ -659,7 +1083,9 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
             r.Events.OrderBy(e => e.OccurredAtUtc).ThenBy(e => e.Id).Select(e => new TemporaryReleaseEventRow(e.Kind, e.OccurredAtUtc, e.RecordedAtUtc, names.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
                 e.EvidenceItemId is int eid ? r.Items.FirstOrDefault(i => i.EvidenceItemId == eid)?.ItemNumber : null, e.Narrative)).ToList(),
             r.Contacts.OrderBy(c => c.ContactedAtUtc).ThenBy(c => c.Id).Select(c => new SuspenseContactRow(c.ContactedAtLocal, c.RecordedAtUtc, names.GetValueOrDefault(c.RecordedByUserId, "(unknown user)"),
-                c.Method, c.ContactedPerson, c.Outcome, c.Narrative, c.NextFollowUpLocal)).ToList());
+                c.Method, c.ContactedPerson, c.Outcome, c.Narrative, c.NextFollowUpLocal)).ToList(),
+            r.Laboratory?.LaboratoryName, r.Laboratory?.CoordinatedWithUsacilAttested ?? false, r.Laboratory?.ExaminationRequestReference, r.Laboratory?.ShippingDocumentReference,
+            r.OriginalAnnotatedOnReturnAttested, r.FirstCopyChainAnnotatedOnReturnAttested);
     }
 
     private static CustodyParty ToParty(ReleaseRecipient recipient)

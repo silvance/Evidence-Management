@@ -42,6 +42,16 @@ public sealed class TemporaryReleaseConfiguration : IEntityTypeConfiguration<Tem
         });
         builder.Navigation(r => r.Attestations).IsRequired();
 
+        builder.OwnsOne(r => r.Laboratory, l =>
+        {
+            l.Property(x => x.LaboratoryName).HasColumnName("LaboratoryName").HasMaxLength(256);
+            l.Property(x => x.CoordinatedWithUsacilAttested).HasColumnName("LaboratoryCoordinatedWithUsacilAttested");
+            l.Property(x => x.ExaminationRequestReference).HasColumnName("ExaminationRequestReference").HasMaxLength(128);
+            l.Property(x => x.ShippingDocumentReference).HasColumnName("ShippingDocumentReference").HasMaxLength(128);
+            l.Ignore(x => x.IsUsacil);
+            l.Ignore(x => x.IsDft);
+        });
+
         builder.HasMany(r => r.Items).WithOne(i => i.Release).HasForeignKey(i => i.TemporaryReleaseId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(r => r.Events).WithOne(e => e.Release).HasForeignKey(e => e.TemporaryReleaseId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(r => r.Contacts).WithOne(c => c.Release).HasForeignKey(c => c.TemporaryReleaseId).OnDelete(DeleteBehavior.Restrict);
