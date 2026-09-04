@@ -77,7 +77,12 @@ public sealed record PhysicalDocumentView(
     DateTimeOffset? DestructionConfirmedAtUtc,
     VoucherClosureBasis ClosureBasis,
     IReadOnlyList<PhysicalDocumentEventRow> Events,
-    IReadOnlyList<FileContainerRow> RoomContainers);
+    IReadOnlyList<FileContainerRow> RoomContainers,
+
+    /// <summary>AR 195-5 2-7b copies: where the first copy is while copies are in use, how many copies are out, and whether the note was made.</summary>
+    string? FirstCopyContainerLabel = null,
+    int AdditionalCopiesOut = 0,
+    bool CopiesMadeNoted = false);
 
 public interface IPhysicalDocumentService
 {
@@ -225,7 +230,10 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
                     e.Kind, e.ResultingOriginalDisposition, e.ResultingRetainedPaperStatus, names.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
                     e.OccurredAtUtc, Label(e.ContainerId), e.Narrative))
                 .ToList(),
-            containers);
+            containers,
+            Label(document.FirstCopyContainerId),
+            document.AdditionalCopiesOut,
+            document.CopiesMadeNoted);
 
         string? Label(int? id) => id is null ? null : labels.GetValueOrDefault(id.Value, $"(container {id})");
     }

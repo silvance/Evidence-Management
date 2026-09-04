@@ -969,9 +969,15 @@ namespace Emc.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("AdditionalCopiesOut")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("CopiesMadeNoted")
+                        .HasColumnType("bit");
 
                     b.Property<int>("CopyReason")
                         .HasColumnType("int");
@@ -986,6 +992,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FirstCopyContainerId")
                         .HasColumnType("int");
 
                     b.Property<int?>("HomeActiveContainerId")
@@ -1011,6 +1020,8 @@ namespace Emc.Infrastructure.Migrations
                     b.HasIndex("CurrentContainerId");
 
                     b.HasIndex("EvidenceRoomId");
+
+                    b.HasIndex("FirstCopyContainerId");
 
                     b.HasIndex("HomeActiveContainerId");
 
@@ -1958,6 +1969,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<int>("PaperAccompanying")
+                        .HasColumnType("int");
+
                     b.Property<string>("Purpose")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -2567,6 +2581,11 @@ namespace Emc.Infrastructure.Migrations
                         .HasForeignKey("EvidenceRoomId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
+                        .WithMany()
+                        .HasForeignKey("FirstCopyContainerId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
                         .WithMany()

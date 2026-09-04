@@ -144,6 +144,90 @@ public class PhysicalDocumentTests
     }
 
     [Fact]
+    public void CopiesAreUsedWhenTheOriginalIsAlreadyOut_TheNoteIsMadeOnce_TheChainIsOnTheFirstCopy()
+    {
+        // AR 195-5 2-7b, SUSP-008 / FIL-015. Item 1 went to USACIL with the original; item 2 now
+        // goes to trial counsel: a copy accompanies it, the note is made, the first copy stays put.
+        var active = Active();
+        var usacil = Folder(PhysicalFileKind.SuspenseUsacil, 2);
+        var adjudication = Folder(PhysicalFileKind.SuspenseAdjudication, 3);
+        var d = Filed(active);
+        d.ReleaseOriginalWithEvidence(active, usacil, User, T0.AddDays(1));
+        Assert.Equal(usacil.Id, d.FirstCopyContainerId);
+
+        // The second recipient's copy is recorded against the folder holding the first copy, not a second folder.
+        var wrong = Assert.Throws<DomainRuleViolationException>(() => d.ReleaseCopyWithEvidence(adjudication, User, T0.AddDays(2)));
+        Assert.Equal("FIL-015", wrong.RequirementId);
+
+        d.ReleaseCopyWithEvidence(usacil, User, T0.AddDays(2), "Copy to trial counsel (TEST)");
+        d.ReleaseCopyWithEvidence(null, User, T0.AddDays(3), "Copy to a second counsel (TEST)");
+
+        Assert.Equal(2, d.AdditionalCopiesOut);
+        Assert.True(d.CopiesMadeNoted);
+        Assert.True(d.PaperShowsEvidenceOut);
+        Assert.Equal(OriginalDisposition.AccompanyingTemporaryRelease, d.OriginalDisposition);
+        Assert.Equal(1, usacil.FiledVoucherCount); // one first copy, however many copies are out
+        Assert.Single(d.Events, e => e.Kind == PhysicalDocumentEventKind.CopiesMadeNotedOnOriginalAndFirstCopy);
+        Assert.Equal(2, d.Events.Count(e => e.Kind == PhysicalDocumentEventKind.AdditionalCopyReleasedWithEvidence));
+
+        // The original comes back while copies are still out: the first copy stays in suspense.
+        d.ReturnOriginalToActiveFile(active, usacil, 7, 2026, User, T0.AddDays(10));
+        Assert.Equal(OriginalDisposition.HeldActive, d.OriginalDisposition);
+        Assert.False(d.SuspenseCopyFiledWithOriginal);
+        Assert.Equal(usacil.Id, d.FirstCopyContainerId);
+        Assert.Equal(1, usacil.FiledVoucherCount);
+        Assert.Equal(1, active.FiledVoucherCount);
+        Assert.True(d.PaperShowsEvidenceOut);
+
+        // While copies are out the original cannot be filed inactive, sent for approval, or released again as the original.
+        var inactive = Inactive(9, 2026, 9);
+        Assert.Equal("FIL-006", Assert.Throws<DomainRuleViolationException>(() => d.FileOriginalInactive(inactive, null, VoucherClosureBasis.AllItemsFinallyDisposed, User, T0.AddDays(11))).RequirementId);
+        Assert.Equal("FIL-015", Assert.Throws<DomainRuleViolationException>(() => d.ReleaseOriginalWithEvidence(active, adjudication, User, T0.AddDays(11))).RequirementId);
+
+        // The copies come back; the last one files the first copy with the original.
+        d.ReturnCopyFromEvidence(usacil, User, T0.AddDays(12));
+        Assert.Equal(1, d.AdditionalCopiesOut);
+        Assert.Equal(usacil.Id, d.FirstCopyContainerId);
+        Assert.Equal("FIL-015", Assert.Throws<DomainRuleViolationException>(() => d.ReturnCopyFromEvidence(null, User, T0.AddDays(13))).RequirementId); // the last one needs the folder
+        d.ReturnCopyFromEvidence(usacil, User, T0.AddDays(13));
+        Assert.Equal(0, d.AdditionalCopiesOut);
+        Assert.Null(d.FirstCopyContainerId);
+        Assert.True(d.SuspenseCopyFiledWithOriginal);
+        Assert.Equal(0, usacil.FiledVoucherCount);
+        Assert.False(d.PaperShowsEvidenceOut);
+        Assert.Equal("FIL-015", Assert.Throws<DomainRuleViolationException>(() => d.ReturnCopyFromEvidence(usacil, User, T0.AddDays(14))).RequirementId);
+    }
+
+    [Fact]
+    public void SeveralRecipientsAtOnce_TheOriginalStaysInTheBinder_TheFirstCopyGoesToSuspense_CopiesGoWithTheEvidence()
+    {
+        // AR 195-5 2-7b [DESIGN on where the original sits]: copies for each recipient; the
+        // original, noted, stays in its active file; the first copy carries every chain.
+        var active = Active();
+        var adjudication = Folder(PhysicalFileKind.SuspenseAdjudication, 3);
+        var pending = Folder(PhysicalFileKind.SuspensePendingDispositionApproval, 4);
+        var d = Filed(active);
+
+        Assert.Equal("FIL-015", Assert.Throws<DomainRuleViolationException>(() => d.ReleaseCopyWithEvidence(null, User, T0)).RequirementId); // the first copy needs its folder
+        Assert.Equal("FIL-005", Assert.Throws<DomainRuleViolationException>(() => d.ReleaseCopyWithEvidence(pending, User, T0)).RequirementId);
+
+        d.ReleaseCopyWithEvidence(adjudication, User, T0.AddDays(1), "Copy to counsel A (TEST)");
+        d.ReleaseCopyWithEvidence(adjudication, User, T0.AddDays(1), "Copy to counsel B (TEST)");
+
+        Assert.Equal(OriginalDisposition.HeldActive, d.OriginalDisposition);
+        Assert.Equal(RetainedPaperStatus.ActiveOriginal, d.RetainedPaperStatus);
+        Assert.Equal(active.Id, d.CurrentContainerId);
+        Assert.Equal(adjudication.Id, d.FirstCopyContainerId);
+        Assert.Equal(2, d.AdditionalCopiesOut);
+        Assert.True(d.CopiesMadeNoted);
+        Assert.Equal(1, active.FiledVoucherCount);
+        Assert.Equal(1, adjudication.FiledVoucherCount);
+        Assert.Contains(d.Events, e => e.Kind == PhysicalDocumentEventKind.FirstCopyFiledInSuspense && e.ContainerId == adjudication.Id);
+        Assert.False(d.OriginalIsOut);
+        Assert.True(d.PaperShowsEvidenceOut);
+    }
+
+    [Fact]
     public void TheSuspenseCopyGoesInTheUsacilOrAdjudicationFolder_NotThePendingDispositionFolder()
     {
         var active = Active();

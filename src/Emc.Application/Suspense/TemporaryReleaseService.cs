@@ -42,6 +42,42 @@ public sealed record TemporaryReleaseRequest(
     bool ObligationsInformedAttested,
     DateTimeOffset? ExpectedFollowUpLocal = null,
     int? SourceDocumentId = null,
+    string? Notes = null,
+
+    /// <summary>
+    /// AR 195-5 2-7b (SUSP-008). The ORIGINAL accompanies the evidence unless copies are in use:
+    /// when the original is already out with another recipient, or several recipients are served
+    /// at once, a COPY goes with each release and the first copy carries every chain.
+    /// </summary>
+    PaperCopyKind PaperAccompanying = PaperCopyKind.Original);
+
+/// <summary>One recipient's share of a multi-recipient release (AR 195-5 2-7b, SUSP-008). A copy accompanies each.</summary>
+public sealed record RecipientReleasePart(
+    IReadOnlyList<int> ItemIds,
+    SuspenseCategory Category,
+    ReleaseRecipient ReceivedBy,
+    string Purpose,
+    string? Destination,
+    bool PhysicalInventoryPerformedAttested,
+    bool Original4137ReceivedBySignedAttested,
+    bool FirstCopyReceivedBySignedAttested,
+    bool IdentificationPresentedAttested,
+    bool ObligationsInformedAttested,
+    DateTimeOffset? ExpectedFollowUpLocal = null,
+    string? Notes = null);
+
+/// <summary>
+/// Items on one DA Form 4137 released to more than one agency or person at the same time
+/// (AR 195-5 2-7b, SUSP-008): copies are used; the original stays in the active file, noted;
+/// the first copy goes to the suspense folder named and carries the chain of custody for all
+/// the evidence; each part becomes its own TemporaryRelease. One unit of work.
+/// </summary>
+public sealed record MultiRecipientReleaseRequest(
+    int VoucherId,
+    DateTimeOffset ReleasedAtLocal,
+    int FirstCopySuspenseFolderContainerId,
+    IReadOnlyList<RecipientReleasePart> Parts,
+    int? SourceDocumentId = null,
     string? Notes = null);
 
 public sealed record RecordSuspenseContactRequest(
@@ -64,6 +100,7 @@ public sealed record TemporaryReleaseView(
     int EvidenceRoomId,
     SuspenseCategory Category,
     TemporaryReleaseStatus Status,
+    PaperCopyKind PaperAccompanying,
     string ReleasedByDisplayName,
     string ReceivedByDisplayName,
     CustodyPartyKind ReceivedByKind,
@@ -93,6 +130,9 @@ public interface ITemporaryReleaseService
 {
     /// <summary>Records a temporary release atomically. Returns the release id.</summary>
     Task<OperationResult<int>> ReleaseAsync(TemporaryReleaseRequest request, CancellationToken ct = default);
+
+    /// <summary>Records releases to several recipients at once, with copies (2-7b, SUSP-008), atomically. Returns the release ids in part order.</summary>
+    Task<OperationResult<IReadOnlyList<int>>> ReleaseToMultipleAsync(MultiRecipientReleaseRequest request, CancellationToken ct = default);
 
     /// <summary>AR 195-5 2-7a: a contact with the holder. Append-only.</summary>
     Task<OperationResult> RecordContactAsync(RecordSuspenseContactRequest request, CancellationToken ct = default);
@@ -143,13 +183,112 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.ReceivedBy);
 
+        var context = await BeginAsync(request.VoucherId, request.SourceDocumentId, ct);
+        if (context.Failure is not null)
+        {
+            return OperationResult<int>.Failure(context.Failure.Error!, context.Failure.RequirementId);
+        }
+
+        var part = new RecipientReleasePart(request.ItemIds, request.Category, request.ReceivedBy, request.Purpose, request.Destination,
+            request.PhysicalInventoryPerformedAttested, request.Original4137ReceivedBySignedAttested, request.FirstCopyReceivedBySignedAttested,
+            request.IdentificationPresentedAttested, request.ObligationsInformedAttested, request.ExpectedFollowUpLocal, request.Notes);
+
+        var staged = await StageAsync(context, part, request.PaperAccompanying, request.SuspenseFolderContainerId, request.ReleasedAtLocal, request.SourceDocumentId, ct);
+        if (staged.Failure is not null)
+        {
+            return OperationResult<int>.Failure(staged.Failure.Error!, staged.Failure.RequirementId);
+        }
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded, nameof(TemporaryRelease), context.Voucher.DisplayIdentifier,
+            newValue: $"{request.Category}; {staged.Items.Count} item(s); recipient kind {staged.Release.ReceivedBy.Kind}; paper {request.PaperAccompanying}; suspense folder {staged.Release.SuspenseFolderContainerId}",
+            reason: "AR 195-5 2-7a/2-7b temporary release");
+
+        var saved = await CommitAsync(ct);
+        if (saved is not null)
+        {
+            return OperationResult<int>.Failure(saved.Error!, saved.RequirementId);
+        }
+
+        return OperationResult<int>.Success(staged.Release.Id, [.. Warnings(staged.Release)]);
+    }
+
+    public async Task<OperationResult<IReadOnlyList<int>>> ReleaseToMultipleAsync(MultiRecipientReleaseRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Parts is null || request.Parts.Count < 2)
+        {
+            return OperationResult<IReadOnlyList<int>>.Failure("AR 195-5 para 2-7b: a multi-recipient release names at least two recipients; a single recipient takes the original.", "SUSP-008");
+        }
+
+        var allItems = request.Parts.SelectMany(p => p.ItemIds ?? []).ToList();
+        if (allItems.Count != allItems.Distinct().Count())
+        {
+            return OperationResult<IReadOnlyList<int>>.Failure("An item is named for more than one recipient.", "SUSP-008");
+        }
+
+        var context = await BeginAsync(request.VoucherId, request.SourceDocumentId, ct);
+        if (context.Failure is not null)
+        {
+            return OperationResult<IReadOnlyList<int>>.Failure(context.Failure.Error!, context.Failure.RequirementId);
+        }
+
+        // Copies for every recipient: the original stays in the active file (2-7b, FIL-015).
+        if (context.Paper!.OriginalDisposition != OriginalDisposition.HeldActive)
+        {
+            return OperationResult<IReadOnlyList<int>>.Failure(
+                "AR 195-5 para 2-7b: releasing to several recipients at once uses copies while the original stays in the active file. The original is not in this room's active file.", "FIL-015");
+        }
+
+        var releases = new List<TemporaryRelease>();
+        foreach (var part in request.Parts)
+        {
+            var staged = await StageAsync(context, part, PaperCopyKind.AdditionalTemporaryReleaseCopy, request.FirstCopySuspenseFolderContainerId, request.ReleasedAtLocal, request.SourceDocumentId, ct);
+            if (staged.Failure is not null)
+            {
+                return OperationResult<IReadOnlyList<int>>.Failure(staged.Failure.Error!, staged.Failure.RequirementId);
+            }
+
+            releases.Add(staged.Release);
+        }
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded, nameof(TemporaryRelease), context.Voucher.DisplayIdentifier,
+            newValue: $"{request.Parts.Count} recipients at once with copies (2-7b); {allItems.Count} item(s); first copy in folder {request.FirstCopySuspenseFolderContainerId}",
+            reason: "AR 195-5 2-7b multi-recipient temporary release (SUSP-008)");
+
+        var saved = await CommitAsync(ct);
+        if (saved is not null)
+        {
+            return OperationResult<IReadOnlyList<int>>.Failure(saved.Error!, saved.RequirementId);
+        }
+
+        var warnings = releases.SelectMany(Warnings).Distinct().ToList();
+        warnings.Insert(0, "AR 195-5 2-7b: copies accompanied the evidence; the note that copies were made is recorded on the original and the first copy; the chain of custody for all the evidence is recorded on the first copy in the suspense folder.");
+        return OperationResult<IReadOnlyList<int>>.Success(releases.Select(r => r.Id).ToList(), [.. warnings]);
+    }
+
+    /// <summary>What every release path needs: the voucher (tracked), the authorization, the paper record, the custodian's party.</summary>
+    private sealed class ReleaseContext
+    {
+        public EvidenceVoucher Voucher { get; init; } = null!;
+        public PhysicalVoucherDocument? Paper { get; init; }
+        public CustodyParty ReleasedBy { get; init; } = null!;
+        public OperationResult? Failure { get; init; }
+        public HashSet<int> StagedItemIds { get; } = [];
+    }
+
+    private sealed record Staged(TemporaryRelease Release, IReadOnlyList<EvidenceItem> Items, OperationResult? Failure);
+
+    private async Task<ReleaseContext> BeginAsync(int voucherId, int? sourceDocumentId, CancellationToken ct)
+    {
         var voucher = await _db.EvidenceVouchers
             .Include(v => v.Items)
             .Include(v => v.DocumentNumberAssignments)
-            .FirstOrDefaultAsync(v => v.Id == request.VoucherId, ct);
+            .FirstOrDefaultAsync(v => v.Id == voucherId, ct);
         if (voucher is null)
         {
-            return OperationResult<int>.Failure("Voucher not found.", "VCH-001");
+            return new ReleaseContext { Failure = OperationResult.Failure("Voucher not found.", "VCH-001") };
         }
 
         var decision = await _authorization.AuthorizeAsync(EmcPermissions.ReleaseTemporarily, voucher.EvidenceRoomId, ct);
@@ -157,29 +296,76 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
         {
             _audit.Record(AuditEventType.PermissionDenied, nameof(TemporaryRelease), voucher.DisplayIdentifier, reason: decision.Reason, succeeded: false);
             await _db.SaveChangesAsync(ct);
-            return OperationResult<int>.Failure(decision.Reason!, decision.RequirementId);
+            return new ReleaseContext { Voucher = voucher, Failure = OperationResult.Failure(decision.Reason!, decision.RequirementId) };
         }
 
         if (!voucher.HasOfficialDocumentNumber)
         {
-            return OperationResult<int>.Failure(
-                "AR 195-5 para 2-7c(3): evidence is released to the evidence custodian for accountability before it goes anywhere. This voucher has not been received and numbered.", "SUSP-001");
+            return new ReleaseContext { Voucher = voucher, Failure = OperationResult.Failure(
+                "AR 195-5 para 2-7c(3): evidence is released to the evidence custodian for accountability before it goes anywhere. This voucher has not been received and numbered.", "SUSP-001") };
         }
 
-        // The items: on this voucher, on the current form, in the evidence room. Every one is
-        // checked before anything is written, so the answer is all-or-nothing.
-        if (request.ItemIds is null || request.ItemIds.Count == 0)
+        if (sourceDocumentId is int docId)
         {
-            return OperationResult<int>.Failure("Name at least one item to release.", "SUSP-001");
+            var docRoom = await _db.SourceDocuments.AsNoTracking().Where(d => d.Id == docId).Select(d => (int?)d.EvidenceRoomId).FirstOrDefaultAsync(ct);
+            if (docRoom is null || docRoom != voucher.EvidenceRoomId)
+            {
+                return new ReleaseContext { Voucher = voucher, Failure = OperationResult.Failure("The source document named is not in this evidence room.", "DOC-001") };
+            }
+        }
+
+        var paper = await _db.PhysicalVoucherDocuments.Include(d => d.Events).FirstOrDefaultAsync(d => d.VoucherId == voucher.Id, ct);
+        if (paper is null || paper.OriginalDisposition == OriginalDisposition.NotYetFiled)
+        {
+            return new ReleaseContext { Voucher = voucher, Failure = OperationResult.Failure(
+                "AR 195-5 paras 2-4f(2) and 2-7b: the ORIGINAL DA Form 4137 (or, when copies are in use, a copy) accompanies temporarily released evidence and the first copy goes in the suspense folder. "
+                + "This room's paper record does not show the original filed. Record the paper filing first.", "FIL-005") };
+        }
+
+        var custodianUser = await _db.Users.FirstOrDefaultAsync(u => u.Id == _currentUser.UserId, ct);
+        if (custodianUser is null)
+        {
+            return new ReleaseContext { Voucher = voucher, Failure = OperationResult.Failure("The signed-in custodian has no user record.", "IAM-001") };
+        }
+
+        var releasedBy = CustodyParty.ForUser(custodianUser);
+        _db.CustodyParties.Add(releasedBy);
+        return new ReleaseContext { Voucher = voucher, Paper = paper, ReleasedBy = releasedBy };
+    }
+
+    /// <summary>
+    /// Validates one recipient's release and stages every row it needs on the tracker. Nothing
+    /// is saved here; the caller commits once. Refusals leave the tracker with earlier staged
+    /// work that the caller then discards by not saving.
+    /// </summary>
+    private async Task<Staged> StageAsync(ReleaseContext context, RecipientReleasePart part, PaperCopyKind paperAccompanying, int suspenseFolderContainerId,
+        DateTimeOffset releasedAtLocal, int? sourceDocumentId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(part.ReceivedBy);
+        var voucher = context.Voucher;
+        var paper = context.Paper!;
+
+        static Staged Fail(string message, string requirementId) => new(null!, [], OperationResult.Failure(message, requirementId));
+
+        // The items: on this voucher, on the current form, in the evidence room, not already
+        // staged for another recipient in this unit of work.
+        if (part.ItemIds is null || part.ItemIds.Count == 0)
+        {
+            return Fail("Name at least one item to release.", "SUSP-001");
         }
 
         var items = new List<EvidenceItem>();
-        foreach (var itemId in request.ItemIds.Distinct())
+        foreach (var itemId in part.ItemIds.Distinct())
         {
             var item = voucher.Items.FirstOrDefault(i => i.Id == itemId);
             if (item is null || item.IsWithdrawnFromForm)
             {
-                return OperationResult<int>.Failure("An item named is not on this voucher's current form.", "SUSP-001");
+                return Fail("An item named is not on this voucher's current form.", "SUSP-001");
+            }
+
+            if (!context.StagedItemIds.Add(itemId))
+            {
+                return Fail("An item is named for more than one recipient.", "SUSP-008");
             }
 
             if (item.AccountabilityStatus != AccountabilityStatus.InEvidenceRoom)
@@ -193,120 +379,128 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
                     _ when AccountabilityStateMachine.IsBeforeCustodianReceipt(item.AccountabilityStatus) => "the custodian has not received it (2-4c)",
                     _ => $"it is {item.AccountabilityStatus}"
                 };
-                return OperationResult<int>.Failure($"AR 195-5 para 2-7a: item {item.ItemNumber} cannot be temporarily released: {why}.", "SUSP-001");
+                return Fail($"AR 195-5 para 2-7a: item {item.ItemNumber} cannot be temporarily released: {why}.", "SUSP-001");
             }
 
             items.Add(item);
         }
 
-        // An open release for an item is refused at the database too (UX_TemporaryReleaseItems_OneOpenPerItem).
         var itemIds = items.Select(i => i.Id).ToList();
         var alreadyOut = await _db.TemporaryReleaseItems.AsNoTracking()
             .AnyAsync(t => itemIds.Contains(t.EvidenceItemId) && t.Status == TemporaryReleaseItemStatus.Out, ct);
         if (alreadyOut)
         {
-            return OperationResult<int>.Failure("An item named is out on an open temporary release.", "SUSP-001");
+            return Fail("An item named is out on an open temporary release.", "SUSP-001");
         }
 
-        // The suspense folder: this room's, of the category's kind (2-4f(3)).
-        var folder = await _db.PhysicalFileContainers.FirstOrDefaultAsync(c => c.Id == request.SuspenseFolderContainerId, ct);
+        // The suspense folder: this room's; for the original path, of the category's kind (2-4f(3));
+        // for the copy path, the folder holding the first copy (or, when none is filed yet, the one
+        // to file it in - of the category's kind).
+        var folder = await _db.PhysicalFileContainers.FirstOrDefaultAsync(c => c.Id == suspenseFolderContainerId, ct);
         if (folder is null || folder.EvidenceRoomId != voucher.EvidenceRoomId)
         {
-            return OperationResult<int>.Failure("Suspense folder not found in this evidence room.", "FIL-001");
+            return Fail("Suspense folder not found in this evidence room.", "FIL-001");
         }
 
-        var expectedKind = request.Category switch
+        var expectedKind = part.Category switch
         {
             SuspenseCategory.Usacil => PhysicalFileKind.SuspenseUsacil,
             SuspenseCategory.Adjudication => PhysicalFileKind.SuspenseAdjudication,
             _ => PhysicalFileKind.SuspensePendingDispositionApproval
         };
-        if (folder.Kind != expectedKind)
-        {
-            return OperationResult<int>.Failure(
-                $"AR 195-5 para 2-4f(3): a {request.Category} release files its first copy in the {expectedKind} folder; \"{folder.Label}\" is a {folder.Kind} folder.", "FIL-005");
-        }
 
-        // The paper: the original must be filed in this room's active file so it can leave with
-        // the evidence (2-4f(2), 2-7b). A release whose paper is not on record is not recorded
-        // here either - the two are one act.
-        var paper = await _db.PhysicalVoucherDocuments.Include(d => d.Events).FirstOrDefaultAsync(d => d.VoucherId == voucher.Id, ct);
-        if (paper is null || paper.OriginalDisposition != OriginalDisposition.HeldActive || paper.HomeActiveContainerId is null)
+        PhysicalFileContainer? home = null;
+        if (paperAccompanying == PaperCopyKind.Original)
         {
-            return OperationResult<int>.Failure(
-                "AR 195-5 paras 2-4f(2) and 2-7b: the ORIGINAL DA Form 4137 accompanies temporarily released evidence and the first copy goes in the suspense folder. "
-                + "This room's paper record does not show the original filed in an active file; record the paper filing first, or, if the original is already out, "
-                + "record this release against the copy path (SUSP-008).", "FIL-005");
-        }
-
-        var home = await _db.PhysicalFileContainers.FirstOrDefaultAsync(c => c.Id == paper.HomeActiveContainerId, ct);
-        if (home is null)
-        {
-            return OperationResult<int>.Failure("The active file holding the original was not found.", "FIL-001");
-        }
-
-        // Optional companion copy that documents the release (a scan of the annotated form).
-        if (request.SourceDocumentId is int docId)
-        {
-            var docRoom = await _db.SourceDocuments.AsNoTracking().Where(d => d.Id == docId).Select(d => (int?)d.EvidenceRoomId).FirstOrDefaultAsync(ct);
-            if (docRoom is null || docRoom != voucher.EvidenceRoomId)
+            if (folder.Kind != expectedKind)
             {
-                return OperationResult<int>.Failure("The source document named is not in this evidence room.", "DOC-001");
+                return Fail($"AR 195-5 para 2-4f(3): a {part.Category} release files its first copy in the {expectedKind} folder; \"{folder.Label}\" is a {folder.Kind} folder.", "FIL-005");
+            }
+
+            if (paper.OriginalDisposition != OriginalDisposition.HeldActive || paper.HomeActiveContainerId is null)
+            {
+                return Fail(
+                    "AR 195-5 paras 2-4f(2) and 2-7b: the ORIGINAL DA Form 4137 accompanies temporarily released evidence. This room's paper record shows the original "
+                    + $"is {paper.OriginalDisposition}. If it is already out with another recipient, release a COPY with this evidence (2-7b, SUSP-008).", "FIL-005");
+            }
+
+            if (paper.AdditionalCopiesOut > 0 || paper.FirstCopyContainerId is not null)
+            {
+                return Fail("AR 195-5 para 2-7b: copies of this form are in use, so the original stays in the active file. Release a COPY with this evidence (SUSP-008).", "FIL-015");
+            }
+
+            home = await _db.PhysicalFileContainers.FirstOrDefaultAsync(c => c.Id == paper.HomeActiveContainerId, ct);
+            if (home is null)
+            {
+                return Fail("The active file holding the original was not found.", "FIL-001");
             }
         }
-
-        var custodianUser = await _db.Users.FirstOrDefaultAsync(u => u.Id == _currentUser.UserId, ct);
-        if (custodianUser is null)
+        else
         {
-            return OperationResult<int>.Failure("The signed-in custodian has no user record.", "IAM-001");
+            if (paper.OriginalDisposition is not (OriginalDisposition.HeldActive or OriginalDisposition.AccompanyingTemporaryRelease))
+            {
+                return Fail($"AR 195-5 para 2-7b: a copy accompanies evidence while the original is in the active file or out with another recipient. The original is {paper.OriginalDisposition}.", "FIL-015");
+            }
+
+            if (paper.FirstCopyContainerId is int firstCopyId)
+            {
+                if (folder.Id != firstCopyId)
+                {
+                    var holder = await _db.PhysicalFileContainers.AsNoTracking().Where(c => c.Id == firstCopyId).Select(c => c.Label).FirstOrDefaultAsync(ct);
+                    return Fail($"AR 195-5 para 2-7b: the chain of custody for all the evidence is recorded on the first copy, which is in \"{holder}\". Name that folder for this release.", "FIL-015");
+                }
+            }
+            else if (folder.Kind != expectedKind)
+            {
+                return Fail($"AR 195-5 para 2-4f(3): the first copy goes in the {expectedKind} folder for a {part.Category} release; \"{folder.Label}\" is a {folder.Kind} folder.", "FIL-005");
+            }
         }
 
         CustodyParty recipient;
         try
         {
-            recipient = ToParty(request.ReceivedBy);
+            recipient = ToParty(part.ReceivedBy);
         }
         catch (DomainRuleViolationException ex)
         {
-            return OperationResult<int>.Failure(ex.Message, ex.RequirementId);
+            return Fail(ex.Message, ex.RequirementId);
         }
 
-        var releasedBy = CustodyParty.ForUser(custodianUser);
         var now = _clock.UtcNow;
         var attestations = new PaperReleaseAttestations(
-            request.PhysicalInventoryPerformedAttested, request.Original4137ReceivedBySignedAttested, request.FirstCopyReceivedBySignedAttested,
-            request.IdentificationPresentedAttested, request.ObligationsInformedAttested);
+            part.PhysicalInventoryPerformedAttested, part.Original4137ReceivedBySignedAttested, part.FirstCopyReceivedBySignedAttested,
+            part.IdentificationPresentedAttested, part.ObligationsInformedAttested);
 
         TemporaryRelease release;
         try
         {
             release = TemporaryRelease.Create(
-                voucher.Id, voucher.EvidenceRoomId, request.Category, releasedBy, recipient, request.Purpose, request.Destination,
-                request.ReleasedAtLocal, now, _currentUser.UserId, request.ExpectedFollowUpLocal, attestations, folder.Id, request.Notes);
+                voucher.Id, voucher.EvidenceRoomId, part.Category, context.ReleasedBy, recipient, part.Purpose, part.Destination,
+                releasedAtLocal, now, _currentUser.UserId, part.ExpectedFollowUpLocal, attestations, folder.Id, paperAccompanying, part.Notes);
 
-            _db.CustodyParties.Add(releasedBy);
             _db.CustodyParties.Add(recipient);
             _db.TemporaryReleases.Add(release);
 
             var agency = recipient.OrganizationOrAgency ?? (recipient.Kind == CustodyPartyKind.Organization ? recipient.DisplayName : null);
+            var paperNote = paperAccompanying == PaperCopyKind.Original ? "original DA Form 4137 accompanies" : "copy of DA Form 4137 accompanies (2-7b)";
             foreach (var item in items.OrderBy(i => i.ItemNumber))
             {
                 // COC-003. OccurredAt is when the evidence left; RecordedAt is now. The chain
                 // carries the release's purpose; the item's own sealed state decides SCRCNI (2-3f).
                 var custody = new CustodyEvent(
-                    releasedBy: releasedBy,
+                    releasedBy: context.ReleasedBy,
                     receivedBy: recipient,
-                    purposeOfChangeOfCustody: request.Purpose,
-                    occurredAtLocal: request.ReleasedAtLocal,
+                    purposeOfChangeOfCustody: part.Purpose,
+                    occurredAtLocal: releasedAtLocal,
                     recordedAtUtc: now,
                     recordedByUserId: _currentUser.UserId,
                     isScrcni: item.IsSealed,
-                    destination: request.Destination,
+                    destination: part.Destination,
                     agency: agency,
-                    notes: $"Temporary release ({request.Category}).");
-                if (request.SourceDocumentId is int sourceDocumentId)
+                    notes: $"Temporary release ({part.Category}); {paperNote}.");
+                if (sourceDocumentId is int sourceDocId)
                 {
-                    custody.AttachSourceDocument(sourceDocumentId);
+                    custody.AttachSourceDocument(sourceDocId);
                 }
 
                 await _events.AppendAsync(item, custody, ct);
@@ -316,51 +510,63 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
                 await _events.AppendAsync(item, new StatusEvent(
                     fromStatus: from,
                     toStatus: AccountabilityStatus.TemporarilyReleased,
-                    reason: $"Temporarily released to {recipient.DisplayName} - {request.Purpose} (AR 195-5 2-7a, 2-7b).",
-                    occurredAtLocal: request.ReleasedAtLocal,
+                    reason: $"Temporarily released to {recipient.DisplayName} - {part.Purpose} (AR 195-5 2-7a, 2-7b).",
+                    occurredAtLocal: releasedAtLocal,
                     recordedAtUtc: now,
                     recordedByUserId: _currentUser.UserId), ct);
 
                 release.AddItem(item.Id, item.ItemNumber, custody);
             }
 
-            release.MarkReleased(_currentUser.UserId, now, request.Notes);
+            release.MarkReleased(_currentUser.UserId, now, part.Notes);
 
             // The paper, in the same unit of work (2-4f(2), 2-7b).
-            paper.ReleaseOriginalWithEvidence(home, folder, _currentUser.UserId, request.ReleasedAtLocal,
-                $"Original released with the evidence to {recipient.DisplayName}; first copy filed in {folder.Label}.");
+            if (paperAccompanying == PaperCopyKind.Original)
+            {
+                paper.ReleaseOriginalWithEvidence(home!, folder, _currentUser.UserId, releasedAtLocal,
+                    $"Original released with the evidence to {recipient.DisplayName}; first copy filed in {folder.Label}.");
+            }
+            else
+            {
+                paper.ReleaseCopyWithEvidence(folder, _currentUser.UserId, releasedAtLocal,
+                    $"Copy released with the evidence to {recipient.DisplayName} (2-7b); chain recorded on the first copy in {folder.Label}.");
+            }
         }
         catch (DomainRuleViolationException ex)
         {
-            return OperationResult<int>.Failure(ex.Message, ex.RequirementId);
+            return Fail(ex.Message, ex.RequirementId);
         }
 
-        _audit.Record(
-            AuditEventType.AccountabilityActionRecorded, nameof(TemporaryRelease), voucher.DisplayIdentifier,
-            newValue: $"{request.Category}; {items.Count} item(s); recipient kind {recipient.Kind}; suspense folder {folder.Id}",
-            reason: "AR 195-5 2-7a/2-7b temporary release");
+        return new Staged(release, items, null);
+    }
 
+    private async Task<OperationResult?> CommitAsync(CancellationToken ct)
+    {
         try
         {
             await _db.SaveChangesAsync(ct);
+            return null;
         }
         catch (DbUpdateException)
         {
             // The one-open-per-item index or a concurrency stamp: somebody else released, filed
             // or changed one of these rows first. Nothing was written.
-            return OperationResult<int>.Failure("Another change to this voucher, its items or its paper record happened first. Reload and try again.", "SEC-007");
+            return OperationResult.Failure("Another change to this voucher, its items or its paper record happened first. Reload and try again.", "SEC-007");
+        }
+    }
+
+    private static IEnumerable<string> Warnings(TemporaryRelease release)
+    {
+        yield return "The custodian maintains reasonable and adequate contact with the recipient until the evidence is returned (AR 195-5 2-7a). Record each contact on the release. The regulation sets no day limit; any threshold shown is a local management threshold.";
+        if (release.ReceivedBy.Kind == CustodyPartyKind.AccountableMailNumber)
+        {
+            yield return "AR 195-5 2-7e: the accountable mail number was entered in the Received By block; on receipt the USACIL records it in the Released By block. Confirm the laboratory's acknowledgement of receipt.";
         }
 
-        var warnings = new List<string>
+        if (release.PaperAccompanying == PaperCopyKind.AdditionalTemporaryReleaseCopy)
         {
-            "The custodian maintains reasonable and adequate contact with the recipient until the evidence is returned (AR 195-5 2-7a). Record each contact on the release. The regulation sets no day limit; any threshold shown is a local management threshold."
-        };
-        if (recipient.Kind == CustodyPartyKind.AccountableMailNumber)
-        {
-            warnings.Add("AR 195-5 2-7e: the accountable mail number was entered in the Received By block; on receipt the USACIL records it in the Released By block. Confirm the laboratory's acknowledgement of receipt.");
+            yield return "AR 195-5 2-7b: a COPY accompanied this evidence. Note on the original and the first copy that copies have been made; record this release's chain of custody on the first copy.";
         }
-
-        return OperationResult<int>.Success(release.Id, [.. warnings]);
     }
 
     public async Task<OperationResult> RecordContactAsync(RecordSuspenseContactRequest request, CancellationToken ct = default)
@@ -440,7 +646,7 @@ public sealed class TemporaryReleaseService : ITemporaryReleaseService
         var now = _clock.UtcNow;
 
         return new TemporaryReleaseView(
-            r.Id, r.VoucherId, voucher.DisplayIdentifier, r.EvidenceRoomId, r.Category, r.Status,
+            r.Id, r.VoucherId, voucher.DisplayIdentifier, r.EvidenceRoomId, r.Category, r.Status, r.PaperAccompanying,
             r.ReleasedBy.DisplayName, r.ReceivedBy.DisplayName, r.ReceivedBy.Kind, r.ReceivedBy.OrganizationOrAgency,
             r.Purpose, r.Destination, r.ReleasedAtLocal, r.RecordedAtUtc, names.GetValueOrDefault(r.RecordedByUserId, "(unknown user)"),
             r.ExpectedFollowUpLocal, folderLabel,

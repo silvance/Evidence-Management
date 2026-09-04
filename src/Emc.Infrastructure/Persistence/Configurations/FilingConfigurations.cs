@@ -50,6 +50,7 @@ public sealed class PhysicalVoucherDocumentConfiguration : IEntityTypeConfigurat
         builder.HasOne<EvidenceRoom>().WithMany().HasForeignKey(d => d.EvidenceRoomId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.CurrentContainerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.HomeActiveContainerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.FirstCopyContainerId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(d => d.CurrentContainerId);
 
         builder.HasMany(d => d.Events).WithOne(e => e.Document).HasForeignKey(e => e.DocumentId).OnDelete(DeleteBehavior.Restrict);
@@ -57,6 +58,7 @@ public sealed class PhysicalVoucherDocumentConfiguration : IEntityTypeConfigurat
         builder.Ignore(d => d.HoldsCopyOnly);
         builder.Ignore(d => d.OriginalIsOut);
         builder.Ignore(d => d.OriginalLeftThisRoom);
+        builder.Ignore(d => d.PaperShowsEvidenceOut);
         builder.Ignore(d => d.IsInactive);
         builder.Ignore(d => d.DestructionEligibleAtUtc);
     }

@@ -18,6 +18,7 @@ public sealed class TemporaryReleaseConfiguration : IEntityTypeConfiguration<Tem
         builder.HasKey(r => r.Id);
         builder.Property(r => r.Category).HasConversion<int>().IsRequired();
         builder.Property(r => r.Status).HasConversion<int>().IsRequired();
+        builder.Property(r => r.PaperAccompanying).HasConversion<int>().IsRequired();
         builder.Property(r => r.Purpose).HasMaxLength(1000).IsRequired();
         builder.Property(r => r.Destination).HasMaxLength(512);
         builder.Property(r => r.Notes).HasMaxLength(2000);

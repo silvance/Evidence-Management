@@ -233,6 +233,100 @@ public class TemporaryReleaseServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ASecondRecipientGetsACopyWhileTheOriginalIsOut()
+    {
+        // AR 195-5 2-7b, SUSP-008. Item 1 went to the laboratory with the original. Item 2 goes to
+        // trial counsel with a COPY; the chain is recorded on the first copy in the USACIL folder.
+        var (voucherId, item1, item2) = await AcceptedVoucherAsync();
+        var binder = await ContainerAsync(PhysicalFileKind.Active4137File, "ACTIVE 001-26 to 050-26", 1, 50);
+        var usacil = await ContainerAsync(PhysicalFileKind.SuspenseUsacil, "USACIL");
+        var adjudication = await ContainerAsync(PhysicalFileKind.SuspenseAdjudication, "ADJUDICATION");
+        await FileOriginalAsync(voucherId, binder);
+
+        var first = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, SuspenseCategory.Usacil, new ReleaseRecipient(CustodyPartyKind.Organization, "USACIL (TEST)"), item1));
+        Assert.True(first.Succeeded, first.Error);
+
+        // The copy path names the folder holding the first copy, not the category's folder.
+        var wrongFolder = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item2]) with { PaperAccompanying = PaperCopyKind.AdditionalTemporaryReleaseCopy });
+        Assert.False(wrongFolder.Succeeded);
+        Assert.Equal("FIL-015", wrongFolder.RequirementId);
+        Assert.Contains("USACIL", wrongFolder.Error, StringComparison.Ordinal);
+
+        var second = await _harness.Releases.ReleaseAsync(Request(voucherId, usacil, itemIds: [item2]) with { PaperAccompanying = PaperCopyKind.AdditionalTemporaryReleaseCopy });
+        Assert.True(second.Succeeded, second.Error);
+        Assert.Contains(second.Warnings, w => w.Contains("COPY accompanied", StringComparison.Ordinal));
+
+        _harness.Db.ChangeTracker.Clear();
+        var releases = await _harness.Releases.GetForVoucherAsync(voucherId);
+        Assert.Equal(2, releases.Count);
+        Assert.Contains(releases, r => r.PaperAccompanying == PaperCopyKind.Original && r.Category == SuspenseCategory.Usacil);
+        Assert.Contains(releases, r => r.PaperAccompanying == PaperCopyKind.AdditionalTemporaryReleaseCopy && r.Category == SuspenseCategory.Adjudication && r.SuspenseFolderLabel == "USACIL");
+
+        var paper = (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!;
+        Assert.Equal(OriginalDisposition.AccompanyingTemporaryRelease, paper.OriginalDisposition);
+        Assert.Equal(1, paper.AdditionalCopiesOut);
+        Assert.True(paper.CopiesMadeNoted);
+        Assert.Equal("USACIL", paper.FirstCopyContainerLabel);
+        Assert.Contains(paper.Events, e => e.Kind == PhysicalDocumentEventKind.CopiesMadeNotedOnOriginalAndFirstCopy);
+        Assert.Equal(1, (await _harness.PhysicalDocuments.GetContainersAsync(_harness.EvidenceRoomId)).Single(c => c.Id == usacil).VouchersFiled);
+
+        var custody = await _harness.Db.ItemEvents.OfType<CustodyEvent>().AsNoTracking().SingleAsync(c => c.EvidenceItemId == item2);
+        Assert.Contains("copy of DA Form 4137 accompanies", custody.Notes, StringComparison.Ordinal);
+        Assert.Equal(AccountabilityStatus.TemporarilyReleased, (await _harness.Db.EvidenceItems.AsNoTracking().SingleAsync(i => i.Id == item2)).AccountabilityStatus);
+    }
+
+    [Fact]
+    public async Task TwoRecipientsAtOnceUseCopies_TheOriginalStaysInTheBinder_AllOrNothing()
+    {
+        // AR 195-5 2-7b, SUSP-008: one request, two recipients, two releases, copies for both,
+        // the original in its binder with the note, the first copy in the suspense folder.
+        var (voucherId, item1, item2) = await AcceptedVoucherAsync();
+        var binder = await ContainerAsync(PhysicalFileKind.Active4137File, "ACTIVE 001-26 to 050-26", 1, 50);
+        var adjudication = await ContainerAsync(PhysicalFileKind.SuspenseAdjudication, "ADJUDICATION");
+        await FileOriginalAsync(voucherId, binder);
+
+        RecipientReleasePart Part(int itemId, string name) => new([itemId], SuspenseCategory.Adjudication, new ReleaseRecipient(CustodyPartyKind.ExternalPerson, name, "CPT", "OSJA, Fort Test", true),
+            "Presentation at trial, US v. TEST", "Fort Test courtroom", true, true, true, true, true);
+
+        // One recipient is not a multi-recipient release; an item twice is refused; a foreign item fails the whole request.
+        Assert.Equal("SUSP-008", (await _harness.Releases.ReleaseToMultipleAsync(new MultiRecipientReleaseRequest(voucherId, _harness.Clock.UtcNow, adjudication, [Part(item1, "COUNSEL, TEST A.")]))).RequirementId);
+        Assert.Equal("SUSP-008", (await _harness.Releases.ReleaseToMultipleAsync(new MultiRecipientReleaseRequest(voucherId, _harness.Clock.UtcNow, adjudication, [Part(item1, "COUNSEL, TEST A."), Part(item1, "COUNSEL, TEST B.")]))).RequirementId);
+        var (_, foreignItem, _) = await AcceptedVoucherAsync("006-26");
+        var partial = await _harness.Releases.ReleaseToMultipleAsync(new MultiRecipientReleaseRequest(voucherId, _harness.Clock.UtcNow, adjudication, [Part(item1, "COUNSEL, TEST A."), Part(foreignItem, "COUNSEL, TEST B.")]));
+        Assert.False(partial.Succeeded);
+        _harness.Db.ChangeTracker.Clear();
+        Assert.Empty(_harness.Db.TemporaryReleases);
+        Assert.Equal(AccountabilityStatus.InEvidenceRoom, (await _harness.Db.EvidenceItems.AsNoTracking().SingleAsync(i => i.Id == item1)).AccountabilityStatus);
+        Assert.Equal(0, (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!.AdditionalCopiesOut);
+
+        var result = await _harness.Releases.ReleaseToMultipleAsync(new MultiRecipientReleaseRequest(voucherId, _harness.Clock.UtcNow.AddHours(-1), adjudication,
+            [Part(item1, "COUNSEL, TEST A."), Part(item2, "COUNSEL, TEST B.")], null, "Two counsel, one form (TEST)"));
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(2, result.Value!.Count);
+        Assert.Contains(result.Warnings, w => w.Contains("copies were made", StringComparison.Ordinal));
+
+        _harness.Db.ChangeTracker.Clear();
+        var releases = await _harness.Releases.GetForVoucherAsync(voucherId);
+        Assert.Equal(2, releases.Count);
+        Assert.All(releases, r => { Assert.Equal(PaperCopyKind.AdditionalTemporaryReleaseCopy, r.PaperAccompanying); Assert.Equal(TemporaryReleaseStatus.Open, r.Status); Assert.Single(r.Items); });
+        Assert.Equal(new[] { "COUNSEL, TEST A.", "COUNSEL, TEST B." }, releases.Select(r => r.ReceivedByDisplayName).OrderBy(n => n).ToArray());
+
+        var paper = (await _harness.PhysicalDocuments.GetForVoucherAsync(voucherId))!;
+        Assert.Equal(OriginalDisposition.HeldActive, paper.OriginalDisposition);
+        Assert.Equal(RetainedPaperStatus.ActiveOriginal, paper.RetainedPaperStatus);
+        Assert.Equal("ADJUDICATION", paper.FirstCopyContainerLabel);
+        Assert.Equal(2, paper.AdditionalCopiesOut);
+        Assert.True(paper.CopiesMadeNoted);
+        var containers = await _harness.PhysicalDocuments.GetContainersAsync(_harness.EvidenceRoomId);
+        Assert.Equal(1, containers.Single(c => c.Id == binder).VouchersFiled);
+        Assert.Equal(1, containers.Single(c => c.Id == adjudication).VouchersFiled);
+
+        // The original cannot go out as the original while copies are in use.
+        var original = await _harness.Releases.ReleaseAsync(Request(voucherId, adjudication, itemIds: [item1]));
+        Assert.Equal("SUSP-001", original.RequirementId); // item 1 is out; and for a fresh item the paper rule would answer FIL-015
+    }
+
+    [Fact]
     public async Task ContactsAreAppendOnly_AndDaysOutIsACount()
     {
         var (voucherId, item1, _) = await AcceptedVoucherAsync();

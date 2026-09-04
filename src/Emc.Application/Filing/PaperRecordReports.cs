@@ -76,14 +76,15 @@ public sealed class PhysicalDigitalConsistencyService : IPhysicalDigitalConsiste
             advisories.Add(new("PDC-001", "2-4d, 2-4f(1)", "The voucher is accepted but the paper record does not say where the original DA Form 4137 is filed. Record its filing in the active file."));
         }
 
-        if (anyReleased && original is OriginalDisposition.HeldActive or OriginalDisposition.FiledInactive)
+        var copiesOut = paper?.AdditionalCopiesOut > 0;
+        if (anyReleased && !copiesOut && original is OriginalDisposition.HeldActive or OriginalDisposition.FiledInactive)
         {
             advisories.Add(new("PDC-002", "2-7b, 2-4f(2)", "An item is on temporary release, but the paper record says the original DA Form 4137 is in the file. The original accompanies the evidence and the first copy goes to the suspense folder; record the release of the original, or check the item's state."));
         }
 
-        if (!anyReleased && original == OriginalDisposition.AccompanyingTemporaryRelease)
+        if (!anyReleased && (original == OriginalDisposition.AccompanyingTemporaryRelease || copiesOut))
         {
-            advisories.Add(new("PDC-003", "2-7b, 2-4f(2)", "The paper record says the original DA Form 4137 is out with the evidence, but no item on this voucher is on temporary release. Record the return of the original, or check the items' states."));
+            advisories.Add(new("PDC-003", "2-7b, 2-4f(2)", "The paper record says the original DA Form 4137 (or a copy of it) is out with the evidence, but no item on this voucher is on temporary release. Record the return, or check the items' states."));
         }
 
         if (basis is VoucherClosureBasis.AllItemsFinallyDisposed or VoucherClosureBasis.AllItemsReliefGranted or VoucherClosureBasis.MixedDisposedAndReliefGranted

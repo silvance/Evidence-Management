@@ -103,7 +103,35 @@ public enum PhysicalDocumentEventKind
     Note = 13,
 
     /// <summary>AR 195-5 2-7b - on return, the first (suspense) copy, chain of custody annotated, is filed with the original.</summary>
-    SuspenseCopyFiledWithOriginal = 14
+    SuspenseCopyFiledWithOriginal = 14,
+
+    /// <summary>AR 195-5 2-7b - "A note will be made on the original and first copy that copies have been made."</summary>
+    CopiesMadeNotedOnOriginalAndFirstCopy = 15,
+
+    /// <summary>AR 195-5 2-7b - a copy accompanies evidence released to a further person or agency.</summary>
+    AdditionalCopyReleasedWithEvidence = 16,
+
+    /// <summary>AR 195-5 2-7b - a copy came back; its chain of custody is recorded on the first copy.</summary>
+    AdditionalCopyReturnedChainRecordedOnFirstCopy = 17,
+
+    /// <summary>AR 195-5 2-7b - the first copy went to the suspense folder while the original stayed in the active file (copies in use).</summary>
+    FirstCopyFiledInSuspense = 18
+}
+
+/// <summary>
+/// Which piece of paper AR 195-5 2-7b is talking about. The ORIGINAL accompanies a temporary
+/// release; the FIRST COPY goes to the suspense folder and carries the chain of custody for all
+/// evidence when copies are in use; ADDITIONAL copies accompany evidence released to further
+/// recipients "when items on the same DA Form 4137 must be temporarily released to more than
+/// one agency or person at the same time"; a retained copy is what an inactive file holds when
+/// the original is gone (2-4g, 2-7g).
+/// </summary>
+public enum PaperCopyKind
+{
+    Original = 1,
+    FirstCopy = 2,
+    AdditionalTemporaryReleaseCopy = 3,
+    InactiveRetainedCopy = 4
 }
 
 /// <summary>
@@ -128,7 +156,13 @@ public enum PhysicalDocumentEventKind
 /// "eligible" and "destroyed" are different states (FIL-006, FIL-009). EMC's digital records are
 /// retained regardless (DEC-07).
 ///
-/// Requirements: FIL-004 .. FIL-014, SUSP-007 (paper portion), RET-007 (paper portion).
+/// COPIES (2-7b, FIL-015). When evidence from one form goes to more than one recipient, copies
+/// accompany the evidence; the original and first copy are noted "copies have been made"; the
+/// first copy stays in the suspense folder carrying the chain of custody for all evidence until
+/// the last copy is back. <see cref="FirstCopyContainerId"/>, <see cref="AdditionalCopiesOut"/>
+/// and <see cref="CopiesMadeNoted"/> hold that state.
+///
+/// Requirements: FIL-004 .. FIL-015, SUSP-007, SUSP-008 (paper portion), RET-007 (paper portion).
 /// </summary>
 public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 {
@@ -165,6 +199,15 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
     /// <summary>AR 195-5 2-7b - the returned first copy, chain of custody annotated, is filed with the original.</summary>
     public bool SuspenseCopyFiledWithOriginal { get; private set; }
 
+    /// <summary>The suspense folder holding the FIRST COPY now; null when no first copy is in suspense (not made, or filed with the original).</summary>
+    public int? FirstCopyContainerId { get; private set; }
+
+    /// <summary>AR 195-5 2-7b - copies accompanying evidence released to further recipients, still out.</summary>
+    public int AdditionalCopiesOut { get; private set; }
+
+    /// <summary>AR 195-5 2-7b - the note "copies have been made" is on the original and the first copy.</summary>
+    public bool CopiesMadeNoted { get; private set; }
+
     /// <summary>When this room's paper record became inactive. The 2-4h clock starts here.</summary>
     public DateTimeOffset? InactiveSinceUtc { get; private set; }
 
@@ -180,6 +223,10 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 
     public bool OriginalIsOut
         => OriginalDisposition is OriginalDisposition.AccompanyingTemporaryRelease or OriginalDisposition.SentForDispositionApproval;
+
+    /// <summary>The paper shows evidence out of the room: the original accompanies a release, or copies do (2-7b).</summary>
+    public bool PaperShowsEvidenceOut
+        => OriginalDisposition == OriginalDisposition.AccompanyingTemporaryRelease || AdditionalCopiesOut > 0;
 
     /// <summary>The original left this room for good (2-7g, 2-4g).</summary>
     public bool OriginalLeftThisRoom
@@ -245,15 +292,112 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 
         RequireOriginal("FIL-005", "release the original with the evidence", OriginalDisposition.HeldActive);
         RequireHome(homeActiveFile);
+        if (AdditionalCopiesOut > 0 || FirstCopyContainerId is not null)
+        {
+            throw new DomainRuleViolationException(
+                "FIL-015",
+                "AR 195-5 para 2-7b: copies are in use for this form (a copy is out, or the first copy is already in the suspense folder), "
+                + "so the original stays in the active file and a further release takes another copy. Release a copy with the evidence.");
+        }
+
         suspenseFolder.RecordFiled();
         homeActiveFile.RecordRemoved();
 
         OriginalDisposition = OriginalDisposition.AccompanyingTemporaryRelease;
         RetainedPaperStatus = RetainedPaperStatus.SuspenseCopy;
         CurrentContainerId = suspenseFolder.Id;
+        FirstCopyContainerId = suspenseFolder.Id;
         SuspenseCopyFiledWithOriginal = false;
         Add(PhysicalDocumentEventKind.OriginalAccompaniesTemporaryRelease, userId, at, null, narrative);
         Add(PhysicalDocumentEventKind.SuspenseCopyRetained, userId, at, suspenseFolder.Id, null);
+    }
+
+    /// <summary>
+    /// AR 195-5 2-7b: "When items on the same DA Form 4137 must be temporarily released to more
+    /// than one agency or person at the same time, copies will be used and processed as above. A
+    /// note will be made on the original and first copy that copies have been made. The chain of
+    /// custody for all evidence will be recorded on the first copy."
+    ///
+    /// Two situations, one method. The ORIGINAL IS ALREADY OUT with a first recipient: the first
+    /// copy is in the suspense folder; a further copy goes with this evidence; the note is made.
+    /// The ORIGINAL IS IN THE ACTIVE FILE and several recipients are served at once: the original
+    /// stays, the first copy goes to the suspense folder named (USACIL or ADJUDICATION), and a
+    /// copy accompanies each release [DESIGN: the regulation does not say where the original sits
+    /// in this case; keeping it in its binder, annotated, is the reading adopted - FIL-015].
+    /// The first copy is where every chain is recorded, so it stays put until the last copy is
+    /// back.
+    /// </summary>
+    public void ReleaseCopyWithEvidence(PhysicalFileContainer? suspenseFolderForFirstCopy, int userId, DateTimeOffset at, string? narrative = null)
+    {
+        RequireOriginal("FIL-015", "release a copy with the evidence", OriginalDisposition.HeldActive, OriginalDisposition.AccompanyingTemporaryRelease);
+
+        if (FirstCopyContainerId is null)
+        {
+            if (suspenseFolderForFirstCopy is null)
+            {
+                throw new DomainRuleViolationException(
+                    "FIL-015", "AR 195-5 para 2-7b: the first copy goes to the proper suspense folder. Name the USACIL or ADJUDICATION folder for it.");
+            }
+
+            RequireSameRoom(suspenseFolderForFirstCopy);
+            if (suspenseFolderForFirstCopy.Kind is not (PhysicalFileKind.SuspenseUsacil or PhysicalFileKind.SuspenseAdjudication))
+            {
+                throw new DomainRuleViolationException(
+                    "FIL-005", "AR 195-5 para 2-4f(3): the first copy for evidence on temporary release goes in the USACIL or ADJUDICATION folder.");
+            }
+
+            suspenseFolderForFirstCopy.RecordFiled();
+            FirstCopyContainerId = suspenseFolderForFirstCopy.Id;
+            Add(PhysicalDocumentEventKind.FirstCopyFiledInSuspense, userId, at, suspenseFolderForFirstCopy.Id,
+                "AR 195-5 2-7b: original stays in the active file; the first copy carries the chain of custody for all evidence while copies are out.");
+        }
+        else if (suspenseFolderForFirstCopy is not null && suspenseFolderForFirstCopy.Id != FirstCopyContainerId)
+        {
+            throw new DomainRuleViolationException(
+                "FIL-015",
+                $"AR 195-5 para 2-7b: the chain of custody for all evidence is recorded on the first copy, which is in another suspense folder (container {FirstCopyContainerId}). A further release does not file a second suspense copy.");
+        }
+
+        if (!CopiesMadeNoted)
+        {
+            CopiesMadeNoted = true;
+            Add(PhysicalDocumentEventKind.CopiesMadeNotedOnOriginalAndFirstCopy, userId, at, null,
+                "AR 195-5 2-7b: noted on the original and the first copy that copies have been made.");
+        }
+
+        AdditionalCopiesOut++;
+        Add(PhysicalDocumentEventKind.AdditionalCopyReleasedWithEvidence, userId, at, null, narrative);
+    }
+
+    /// <summary>
+    /// AR 195-5 2-7b: a copy came back with its evidence; its chain of custody is recorded on the
+    /// first copy. When it was the last copy out and the original is in the active file, the
+    /// first copy is filed with the original and leaves the suspense folder.
+    /// </summary>
+    public void ReturnCopyFromEvidence(PhysicalFileContainer? firstCopyFolder, int userId, DateTimeOffset at, string? narrative = null)
+    {
+        if (AdditionalCopiesOut <= 0)
+        {
+            throw new DomainRuleViolationException("FIL-015", "No copy of this form is out with evidence.");
+        }
+
+        // Decided before anything changes, so a refusal leaves the record as it was.
+        var filesFirstCopyWithOriginal = AdditionalCopiesOut == 1 && OriginalDisposition == OriginalDisposition.HeldActive && FirstCopyContainerId is not null;
+        if (filesFirstCopyWithOriginal && (firstCopyFolder is null || firstCopyFolder.Id != FirstCopyContainerId))
+        {
+            throw new DomainRuleViolationException("FIL-015", "The last copy is back: name the suspense folder holding the first copy so it can be filed with the original.");
+        }
+
+        AdditionalCopiesOut--;
+        Add(PhysicalDocumentEventKind.AdditionalCopyReturnedChainRecordedOnFirstCopy, userId, at, null, narrative);
+
+        if (filesFirstCopyWithOriginal)
+        {
+            firstCopyFolder!.RecordRemoved();
+            FirstCopyContainerId = null;
+            SuspenseCopyFiledWithOriginal = true;
+            Add(PhysicalDocumentEventKind.SuspenseCopyFiledWithOriginal, userId, at, HomeActiveContainerId, "AR 195-5 2-7b: first copy, chain of custody annotated, filed with the original.");
+        }
     }
 
     /// <summary>
@@ -269,14 +413,25 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         RequireCurrent(suspenseFolder);
         activeFile.AssertCoversDocumentNumber(sequence, calendarYear);
         activeFile.RecordFiled();
-        suspenseFolder.RecordRemoved();
 
         OriginalDisposition = OriginalDisposition.HeldActive;
         RetainedPaperStatus = RetainedPaperStatus.ActiveOriginal;
         CurrentContainerId = activeFile.Id;
         HomeActiveContainerId = activeFile.Id;
-        SuspenseCopyFiledWithOriginal = true;
         Add(PhysicalDocumentEventKind.OriginalReturnedToActiveFile, userId, at, activeFile.Id, narrative);
+
+        if (AdditionalCopiesOut > 0)
+        {
+            // Copies are still out: the first copy stays in suspense, carrying every chain (2-7b).
+            SuspenseCopyFiledWithOriginal = false;
+            Add(PhysicalDocumentEventKind.Note, userId, at, suspenseFolder.Id,
+                $"AR 195-5 2-7b: {AdditionalCopiesOut} copy/copies still out; the first copy stays in the suspense folder until the last copy is back.");
+            return;
+        }
+
+        suspenseFolder.RecordRemoved();
+        FirstCopyContainerId = null;
+        SuspenseCopyFiledWithOriginal = true;
         Add(PhysicalDocumentEventKind.SuspenseCopyFiledWithOriginal, userId, at, activeFile.Id, "AR 195-5 2-7b: first copy, chain of custody annotated, filed with the original.");
     }
 
@@ -286,12 +441,18 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         RequireContainer(pendingFolder, PhysicalFileKind.SuspensePendingDispositionApproval);
         RequireOriginal("FIL-005", "send the original for disposition approval", OriginalDisposition.HeldActive);
         RequireHome(homeActiveFile);
+        if (AdditionalCopiesOut > 0 || FirstCopyContainerId is not null)
+        {
+            throw new DomainRuleViolationException("FIL-015", "AR 195-5 para 2-7b: copies of this form are out with evidence; the original stays until the last copy is back.");
+        }
+
         pendingFolder.RecordFiled();
         homeActiveFile.RecordRemoved();
 
         OriginalDisposition = OriginalDisposition.SentForDispositionApproval;
         RetainedPaperStatus = RetainedPaperStatus.SuspenseCopy;
         CurrentContainerId = pendingFolder.Id;
+        FirstCopyContainerId = pendingFolder.Id;
         SuspenseCopyFiledWithOriginal = false;
         Add(PhysicalDocumentEventKind.OriginalSentForDispositionApproval, userId, at, null, narrative);
         Add(PhysicalDocumentEventKind.SuspenseCopyRetained, userId, at, pendingFolder.Id, null);
@@ -310,6 +471,7 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         RequireContainer(inactiveFile, PhysicalFileKind.Inactive4137File);
         RequireOriginal("FIL-006", "file the original as inactive",
             OriginalDisposition.HeldActive, OriginalDisposition.SentForDispositionApproval, OriginalDisposition.NotYetFiled);
+        RequireNoCopiesOut("FIL-006");
 
         switch (closureBasis)
         {
@@ -345,6 +507,7 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         RetainedPaperStatus = RetainedPaperStatus.InactiveOriginal;
         CurrentContainerId = inactiveFile.Id;
         HomeActiveContainerId = null;
+        FirstCopyContainerId = null;
         InactiveSinceUtc = AccountabilityTime.Normalize(inactiveAt);
         Add(PhysicalDocumentEventKind.OriginalFiledInactive, userId, inactiveAt, inactiveFile.Id,
             closureBasis == VoucherClosureBasis.AllItemsFinallyDisposed ? narrative : $"Closure basis {closureBasis} (AR 195-5 3-3c where relief was granted). {narrative}".Trim());
@@ -360,6 +523,7 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         RequireContainer(inactiveFile, PhysicalFileKind.Inactive4137File);
         RequireOriginal("FIL-007", "transfer the original to the gaining evidence room",
             OriginalDisposition.HeldActive, OriginalDisposition.NotYetFiled);
+        RequireNoCopiesOut("FIL-007");
         if (closureBasis != VoucherClosureBasis.AllItemsPermanentlyTransferred)
         {
             throw new DomainRuleViolationException(
@@ -384,6 +548,7 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         CopyReason = CopyRetentionReason.OriginalTransferredToGainingRoom;
         CurrentContainerId = inactiveFile.Id;
         HomeActiveContainerId = null;
+        FirstCopyContainerId = null;
         InactiveSinceUtc = AccountabilityTime.Normalize(at);
         Add(PhysicalDocumentEventKind.OriginalTransferredToGainingRoom, userId, at, null, $"To {gaining}. {narrative}".Trim());
         Add(PhysicalDocumentEventKind.SendingRoomCopyFiledInactive, userId, at, inactiveFile.Id, null);
@@ -431,6 +596,7 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         CopyReason = reason;
         CurrentContainerId = inactiveFile.Id;
         HomeActiveContainerId = null;
+        FirstCopyContainerId = null;
         InactiveSinceUtc = AccountabilityTime.Normalize(at);
 
         var kind = reason switch
@@ -495,6 +661,14 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 
     private void Add(PhysicalDocumentEventKind kind, int userId, DateTimeOffset at, int? containerId, string? narrative)
         => _events.Add(new PhysicalVoucherDocumentEvent(this, kind, OriginalDisposition, RetainedPaperStatus, userId, at, containerId, narrative));
+
+    private void RequireNoCopiesOut(string requirementId)
+    {
+        if (AdditionalCopiesOut > 0)
+        {
+            throw new DomainRuleViolationException(requirementId, $"AR 195-5 para 2-7b: {AdditionalCopiesOut} copy/copies of this form are out with evidence. Record their return first.");
+        }
+    }
 
     private void RequireContainer(PhysicalFileContainer container, PhysicalFileKind kind)
     {

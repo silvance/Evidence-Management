@@ -575,6 +575,9 @@ namespace Emc.Infrastructure.Migrations
                     HomeActiveContainerId = table.Column<int>(type: "int", nullable: true),
                     CopyReason = table.Column<int>(type: "int", nullable: false),
                     SuspenseCopyFiledWithOriginal = table.Column<bool>(type: "bit", nullable: false),
+                    FirstCopyContainerId = table.Column<int>(type: "int", nullable: true),
+                    AdditionalCopiesOut = table.Column<int>(type: "int", nullable: false),
+                    CopiesMadeNoted = table.Column<bool>(type: "bit", nullable: false),
                     InactiveSinceUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     DestructionConfirmedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     DestructionConfirmedByUserId = table.Column<int>(type: "int", nullable: true),
@@ -598,6 +601,12 @@ namespace Emc.Infrastructure.Migrations
                     table.ForeignKey(
                         name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_CurrentContainerId",
                         column: x => x.CurrentContainerId,
+                        principalTable: "PhysicalFileContainers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_FirstCopyContainerId",
+                        column: x => x.FirstCopyContainerId,
                         principalTable: "PhysicalFileContainers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -682,6 +691,7 @@ namespace Emc.Infrastructure.Migrations
                     IdentificationPresentedAttested = table.Column<bool>(type: "bit", nullable: false),
                     ObligationsInformedAttested = table.Column<bool>(type: "bit", nullable: false),
                     SuspenseFolderContainerId = table.Column<int>(type: "int", nullable: false),
+                    PaperAccompanying = table.Column<int>(type: "int", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
                     ClosedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -1681,6 +1691,11 @@ namespace Emc.Infrastructure.Migrations
                 name: "IX_PhysicalVoucherDocuments_EvidenceRoomId",
                 table: "PhysicalVoucherDocuments",
                 column: "EvidenceRoomId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_FirstCopyContainerId",
+                table: "PhysicalVoucherDocuments",
+                column: "FirstCopyContainerId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PhysicalVoucherDocuments_HomeActiveContainerId",

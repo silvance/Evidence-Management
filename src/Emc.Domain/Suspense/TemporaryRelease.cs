@@ -1,5 +1,6 @@
 using Emc.Domain.Common;
 using Emc.Domain.Events;
+using Emc.Domain.Filing;
 
 namespace Emc.Domain.Suspense;
 
@@ -90,8 +91,14 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         int voucherId, int evidenceRoomId, SuspenseCategory category,
         CustodyParty releasedBy, CustodyParty receivedBy,
         string purpose, string? destination, DateTimeOffset releasedAtLocal, DateTimeOffset recordedAtUtc, int recordedByUserId,
-        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, string? notes)
+        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, PaperCopyKind paperAccompanying, string? notes)
     {
+        if (paperAccompanying is not (PaperCopyKind.Original or PaperCopyKind.AdditionalTemporaryReleaseCopy))
+        {
+            throw new DomainRuleViolationException("SUSP-008", "AR 195-5 para 2-7b: the original or a copy accompanies temporarily released evidence.");
+        }
+
+        PaperAccompanying = paperAccompanying;
         VoucherId = Guard.Positive(voucherId, "SUSP-001", "Voucher");
         EvidenceRoomId = Guard.Positive(evidenceRoomId, "SUSP-001", "Evidence room");
         Category = category;
@@ -123,7 +130,7 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         int voucherId, int evidenceRoomId, SuspenseCategory category,
         CustodyParty releasedBy, CustodyParty receivedBy,
         string purpose, string? destination, DateTimeOffset releasedAtLocal, DateTimeOffset recordedAtUtc, int recordedByUserId,
-        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, string? notes = null)
+        DateTimeOffset? expectedFollowUpLocal, PaperReleaseAttestations attestations, int suspenseFolderContainerId, PaperCopyKind paperAccompanying = PaperCopyKind.Original, string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(releasedBy);
         ArgumentNullException.ThrowIfNull(receivedBy);
@@ -166,7 +173,7 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
         }
 
         return new TemporaryRelease(voucherId, evidenceRoomId, category, releasedBy, receivedBy, purpose, destination, releasedAtLocal, recordedAtUtc, recordedByUserId,
-            expectedFollowUpLocal, attestations, suspenseFolderContainerId, notes);
+            expectedFollowUpLocal, attestations, suspenseFolderContainerId, paperAccompanying, notes);
     }
 
     public int VoucherId { get; private set; }
@@ -196,8 +203,11 @@ public sealed class TemporaryRelease : Entity, IConcurrencyStamped
 
     public PaperReleaseAttestations Attestations { get; private set; } = null!;
 
-    /// <summary>The 2-4f(3) folder the first copy went into. The folder's kind must match the category.</summary>
+    /// <summary>The 2-4f(3) folder holding the first copy - the folder where this release's chain is recorded.</summary>
     public int SuspenseFolderContainerId { get; private set; }
+
+    /// <summary>AR 195-5 2-7b: the ORIGINAL went with this evidence, or a COPY did (a further recipient, or several at once - SUSP-008).</summary>
+    public PaperCopyKind PaperAccompanying { get; private set; }
 
     public string? Notes { get; private set; }
     public TemporaryReleaseStatus Status { get; private set; }
