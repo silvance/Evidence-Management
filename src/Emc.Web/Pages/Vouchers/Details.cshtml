@@ -1,6 +1,9 @@
 @page "{id:int}"
 @using Emc.Application.Filing
+@using Emc.Application.Suspense
+@using Emc.Domain.Events
 @using Emc.Domain.Filing
+@using Emc.Domain.Suspense
 @model Emc.Web.Pages.Vouchers.DetailsModel
 @{
     ViewData["Title"] = Model.DisplayIdentifier;
@@ -520,6 +523,131 @@
                     <textarea asp-for="Physical.Narrative"></textarea>
                 </div>
                 <button type="submit">Record</button>
+            </form>
+        }
+    </div>
+}
+
+@if (Model.HasOfficialDocumentNumber)
+{
+    <div class="panel">
+        <h2>Temporary releases (AR 195-5 paras 2-7a, 2-7b)</h2>
+        <p class="regulatory-note">
+            Evidence leaves the room only for permanent disposal or an authorized temporary release. A release records the custody
+            change on each item, the item's state, and the paper (the original or a copy with the evidence; the first copy in the
+            suspense folder) in one step. The custodian keeps <strong>reasonable and adequate contact</strong> with the holder (para 2-7a);
+            the regulation sets <strong>no number of days</strong>. Any threshold shown is a local management threshold.
+            <a asp-page="/Suspense/Dashboard" asp-route-roomId="@Model.EvidenceRoomId">Suspense dashboard</a>.
+        </p>
+        @if (Model.Releases.Count == 0)
+        {
+            <p class="hint">No temporary release recorded for this voucher.</p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>Release</th><th>Folder</th><th>To</th><th>Paper</th><th>Released</th><th>Days out</th><th>Items out</th><th>Last contact</th><th>Status</th></tr></thead>
+                <tbody>
+                @foreach (var r in Model.Releases)
+                {
+                    <tr>
+                        <td><a asp-page="/Releases/Details" asp-route-id="@r.Id">@r.Id</a></td>
+                        <td>@r.Category — @r.SuspenseFolderLabel</td>
+                        <td>@r.ReceivedByDisplayName @(r.LaboratoryName is null ? "" : $"({r.LaboratoryName})")</td>
+                        <td>@(r.PaperAccompanying == PaperCopyKind.Original ? "original" : "copy (2-7b)")</td>
+                        <td>@r.ReleasedAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td>
+                        <td class="numeric">@r.DaysOut</td>
+                        <td class="numeric">@r.ItemsOut</td>
+                        <td>@(r.LastContactAtUtc?.ToString("dd MMM yy").ToUpperInvariant() ?? "—")</td>
+                        <td>@r.Status</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        @if (Model.CanRelease && Model.PhysicalDocument is { } paperForRelease)
+        {
+            <h3>Release evidence temporarily</h3>
+            <form method="post" asp-page-handler="Release" asp-route-id="@Model.VoucherId">
+                <div class="form-row">
+                    <label>Items released</label>
+                    @foreach (var item in Model.Items.Where(i => i.AccountabilityStatus == AccountabilityStatus.InEvidenceRoom))
+                    {
+                        <label><input type="checkbox" name="Release.ItemIds" value="@item.Id" /> @item.ItemNumber — @item.DescriptionForForm</label>
+                    }
+                </div>
+                <div class="form-row">
+                    <label asp-for="Release.Category">Suspense folder (para 2-4f(3))</label>
+                    <select asp-for="Release.Category">
+                        <option value="@SuspenseCategory.Usacil">USACIL — laboratory examination</option>
+                        <option value="@SuspenseCategory.Adjudication">ADJUDICATION — trial, grand jury, Art. 32 hearing</option>
+                    </select>
+                    <span class="hint">PENDING DISPOSITION APPROVAL is not a release of evidence: the original goes out for approval and the evidence stays. Record that on the paper record above.</span>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Release.SuspenseFolderContainerId">Folder holding the first copy</label>
+                    <select asp-for="Release.SuspenseFolderContainerId">
+                        @foreach (var c in paperForRelease.RoomContainers.Where(c => c.IsActive && c.Kind is PhysicalFileKind.SuspenseUsacil or PhysicalFileKind.SuspenseAdjudication))
+                        {
+                            <option value="@c.Id">@c.Kind — @c.Label (@c.VouchersFiled filed)</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label asp-for="Release.PaperAccompanying">Paper accompanying the evidence (para 2-7b)</label>
+                    <select asp-for="Release.PaperAccompanying">
+                        <option value="@PaperCopyKind.Original">The ORIGINAL DA Form 4137</option>
+                        <option value="@PaperCopyKind.AdditionalTemporaryReleaseCopy">A COPY — the original is out with another recipient, or several recipients are served at once</option>
+                    </select>
+                    @if (paperForRelease.AdditionalCopiesOut > 0 || paperForRelease.FirstCopyContainerLabel is not null)
+                    {
+                        <span class="hint">Copies are in use for this form (first copy in @paperForRelease.FirstCopyContainerLabel; @paperForRelease.AdditionalCopiesOut copy/copies out): a further release takes a copy.</span>
+                    }
+                </div>
+                <div class="form-row">
+                    <label asp-for="Release.RecipientKind">Recipient</label>
+                    <select asp-for="Release.RecipientKind">
+                        <option value="@CustodyPartyKind.ExternalPerson">A person (trial counsel, prosecutor, investigating officer)</option>
+                        <option value="@CustodyPartyKind.Organization">An organization or agency</option>
+                        <option value="@CustodyPartyKind.AccountableMailNumber">Registered or other accountable mail to the USACIL (para 2-7e)</option>
+                    </select>
+                </div>
+                <div class="form-row"><label asp-for="Release.RecipientName">Name (as written in Received By)</label><input asp-for="Release.RecipientName" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Release.RecipientTitleOrGrade">Grade or title</label><input asp-for="Release.RecipientTitleOrGrade" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Release.RecipientOrganization">Organization or agency</label><input asp-for="Release.RecipientOrganization" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Release.AccountableMailNumber">Accountable mail number (mail only)</label><input asp-for="Release.AccountableMailNumber" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Release.Carrier">Carrier / mail class</label><input asp-for="Release.Carrier" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Release.Purpose">Purpose of change of custody (para 2-3f)</label><input asp-for="Release.Purpose" autocomplete="off" /><span asp-validation-for="Release.Purpose" class="field-validation-error"></span></div>
+                <div class="form-row"><label asp-for="Release.Destination">Destination</label><input asp-for="Release.Destination" autocomplete="off" /></div>
+                <div class="form-row">
+                    <label asp-for="Release.ReleasedAtLocal">Released (evidence-room local)</label>
+                    <input asp-for="Release.ReleasedAtLocal" type="datetime-local" />
+                    <select asp-for="Release.AmbiguousTimeChoice">
+                        <option value="Unspecified">Not in the repeated DST hour</option>
+                        <option value="Earlier">First occurrence</option>
+                        <option value="Later">Second occurrence</option>
+                    </select>
+                </div>
+                <div class="form-row"><label asp-for="Release.ExpectedFollowUpLocal">Next follow-up (local management date; not a regulatory deadline)</label><input asp-for="Release.ExpectedFollowUpLocal" type="datetime-local" /></div>
+                <fieldset>
+                    <legend>Laboratory submission (USACIL folder only; paras 2-7c, 2-7e, 2-7f)</legend>
+                    <div class="form-row"><label asp-for="Release.LaboratoryName">Laboratory</label><input asp-for="Release.LaboratoryName" autocomplete="off" placeholder="USACIL" /></div>
+                    <div class="form-row"><label><input asp-for="Release.CoordinatedWithUsacilAttested" /> A laboratory other than the USACIL: prior coordination with the USACIL was made (para 2-7c(1))</label></div>
+                    <div class="form-row"><label asp-for="Release.ExaminationRequestReference">DD Form 2922 reference</label><input asp-for="Release.ExaminationRequestReference" autocomplete="off" /></div>
+                    <div class="form-row"><label asp-for="Release.ShippingDocumentReference">Shipping document (GBL) reference (para 2-7f)</label><input asp-for="Release.ShippingDocumentReference" autocomplete="off" /></div>
+                    <p class="hint">Specimens to the DFT go with a COPY, never the original (para 2-7c(2)); choose "a copy" above.</p>
+                </fieldset>
+                <fieldset>
+                    <legend>What the paper shows (para 2-7b) — records that these acts occurred; not signatures</legend>
+                    <div class="form-row"><label><input asp-for="Release.PhysicalInventoryPerformedAttested" /> The recipient physically inventoried the evidence</label></div>
+                    <div class="form-row"><label><input asp-for="Release.Original4137ReceivedBySignedAttested" /> The recipient signed the Received By column on the ORIGINAL DA Form 4137</label></div>
+                    <div class="form-row"><label><input asp-for="Release.FirstCopyReceivedBySignedAttested" /> The recipient signed the Received By column on the FIRST COPY</label></div>
+                    <div class="form-row"><label><input asp-for="Release.IdentificationPresentedAttested" /> The recipient presented appropriate identification</label></div>
+                    <div class="form-row"><label><input asp-for="Release.ObligationsInformedAttested" /> The recipient was informed that the evidence must be safeguarded, the chain of custody maintained, and the evidence returned as soon as it is no longer needed</label></div>
+                    <p class="hint">For accountable mail to the USACIL none of these is made at the counter: the mail number stands in the Received By block (para 2-7e).</p>
+                </fieldset>
+                <div class="form-row"><label asp-for="Release.Notes">Notes</label><textarea asp-for="Release.Notes"></textarea></div>
+                <button type="submit">Record temporary release</button>
             </form>
         }
     </div>

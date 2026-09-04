@@ -31,6 +31,7 @@ public class HistoryModel : PageModel
     private readonly IClock _clock;
 
     private readonly IEvidenceRoomTimeService _time;
+    private readonly ICustodyEventService _custody;
 
     public HistoryModel(
         IEmcDbContext db,
@@ -39,8 +40,10 @@ public class HistoryModel : PageModel
         IEvidenceIntakeService intake,
         IEmcPageAuthorization authorization,
         IClock clock,
-        IEvidenceRoomTimeService time)
+        IEvidenceRoomTimeService time,
+        ICustodyEventService custody)
     {
+        _custody = custody;
         _db = db;
         _reads = reads;
         _history = history;
@@ -71,7 +74,12 @@ public class HistoryModel : PageModel
     public IReadOnlyCollection<string> LocationReferenceFieldNames { get; private set; } = [];
     public bool CanAssignLocation { get; private set; }
     public bool CanRecordCorrection { get; private set; }
+    public bool CanRecordCustody { get; private set; }
+    public IReadOnlyList<UserOption> Users { get; private set; } = [];
     public PageMessages Messages { get; } = new();
+
+    [BindProperty]
+    public CustodyInput Custody { get; set; } = new();
 
     [BindProperty]
     public LocationInput Location { get; set; } = new();
@@ -79,11 +87,27 @@ public class HistoryModel : PageModel
     [BindProperty]
     public CorrectionInput Correction { get; set; } = new();
 
-    public async Task<IActionResult> OnGetAsync(int id, int? sourceDocumentId = null, int? correctedEventId = null, string? fieldName = null, string? correctedValue = null)
+    public async Task<IActionResult> OnGetAsync(int id, int? sourceDocumentId = null, int? correctedEventId = null, string? fieldName = null, string? correctedValue = null,
+        int? findingId = null, string? custodyDate = null, string? releasedByName = null, string? receivedByName = null, string? purpose = null)
     {
         if (!await LoadAsync(id))
         {
             return NotFound();
+        }
+
+        // Reconciliation hands a custody row over here (REC-010). The reading is shown as a
+        // default the custodian confirms or changes; nothing is recorded until they do.
+        if (findingId is not null)
+        {
+            Custody.SourceDocumentId = sourceDocumentId;
+            Custody.ReconciliationFindingId = findingId;
+            Custody.ReleasedByName = releasedByName;
+            Custody.ReceivedByName = receivedByName;
+            Custody.Purpose = purpose;
+            if (custodyDate is not null && DateTime.TryParseExact(custodyDate, ["dd MMM yy", "dd MMM yyyy", "yyyy-MM-dd"], System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed))
+            {
+                Custody.OccurredAtLocal = parsed;
+            }
         }
 
         // Reconciliation hands over here with the scan as provenance and the difference prefilled
@@ -141,6 +165,49 @@ public class HistoryModel : PageModel
 
         TempData["Success"] = "Evidence-room location recorded. The previous location is retained.";
         return RedirectToPage(new { id });
+    }
+
+    /// <summary>REC-010 / COC-002: a change of custody the paper shows, recorded by the custodian with the paper's date; no status change, no release.</summary>
+    public async Task<IActionResult> OnPostRecordCustodyAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        if (!IsValidForPrefix(nameof(Custody)))
+        {
+            return Page();
+        }
+
+        var occurred = await _time.ResolveLocalAsync(EvidenceRoomId, Custody.OccurredAtLocal, Custody.AmbiguousTimeChoice);
+        if (!occurred.Succeeded)
+        {
+            Messages.Error = occurred.Error;
+            Messages.RequirementId = occurred.RequirementId;
+            return Page();
+        }
+
+        var result = await _custody.RecordHistoricalCustodyEventAsync(new RecordHistoricalCustodyEventRequest(
+            id,
+            Party(Custody.ReleasedByKind, Custody.ReleasedByName, Custody.ReleasedByUserId, Custody.ReleasedByTitleOrGrade, Custody.ReleasedByOrganization, Custody.ReleasedByMailNumber),
+            Party(Custody.ReceivedByKind, Custody.ReceivedByName, Custody.ReceivedByUserId, Custody.ReceivedByTitleOrGrade, Custody.ReceivedByOrganization, Custody.ReceivedByMailNumber),
+            Custody.Purpose ?? string.Empty, occurred.Value!.Value, Custody.IsScrcni, Custody.Destination, Custody.Agency, Custody.Notes,
+            Custody.SourceDocumentId, Custody.ReconciliationFindingId));
+
+        if (!result.Succeeded)
+        {
+            Messages.Error = result.Error;
+            Messages.RequirementId = result.RequirementId;
+            return Page();
+        }
+
+        TempData["Success"] = "Change of custody recorded on the item's chain as of the date the paper shows.";
+        TempData["Warnings"] = System.Text.Json.JsonSerializer.Serialize(result.Warnings.ToList());
+        return RedirectToPage(new { id });
+
+        static CustodyPartyInput Party(CustodyPartyKind kind, string? name, int? userId, string? title, string? organization, string? mail)
+            => new(kind, name, userId, title, organization, IdentificationVerified: true, mail);
     }
 
     public async Task<IActionResult> OnPostRecordCorrectionAsync(int id)
@@ -250,6 +317,10 @@ public class HistoryModel : PageModel
             (await _authorization.CheckAsync(EmcPermissions.RecordCorrection, evidenceRoomId))
             .IsAllowed;
 
+        CanRecordCustody =
+            (await _authorization.CheckAsync(EmcPermissions.RecordCustodyEvent, evidenceRoomId))
+            .IsAllowed;
+
         var locations = await _db.StorageLocations
             .AsNoTracking()
             .Include(l => l.Parent)
@@ -269,6 +340,12 @@ public class HistoryModel : PageModel
             .OrderBy(u => u.DisplayName)
             .Select(u => new UserOption(u.Id, u.DisplayName))
             .ToListAsync();
+        Users = Supervisors;
+
+        if (Custody.OccurredAtLocal == default)
+        {
+            Custody.OccurredAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
+        }
 
         CorrectableFieldsByEvent = View.History
             .Where(r => r.Kind != ItemEventKind.Correction)
@@ -321,6 +398,37 @@ public class HistoryModel : PageModel
 
         [StringLength(4000)]
         public string? Notes { get; set; }
+    }
+
+    /// <summary>A custody row the paper shows (REC-010). Parties are named here, never taken from a reading.</summary>
+    public sealed class CustodyInput
+    {
+        public CustodyPartyKind ReleasedByKind { get; set; } = CustodyPartyKind.InternalUser;
+        public int? ReleasedByUserId { get; set; }
+        [StringLength(512)] public string? ReleasedByName { get; set; }
+        [StringLength(128)] public string? ReleasedByTitleOrGrade { get; set; }
+        [StringLength(256)] public string? ReleasedByOrganization { get; set; }
+        [StringLength(128)] public string? ReleasedByMailNumber { get; set; }
+
+        public CustodyPartyKind ReceivedByKind { get; set; } = CustodyPartyKind.ExternalPerson;
+        public int? ReceivedByUserId { get; set; }
+        [StringLength(512)] public string? ReceivedByName { get; set; }
+        [StringLength(128)] public string? ReceivedByTitleOrGrade { get; set; }
+        [StringLength(256)] public string? ReceivedByOrganization { get; set; }
+        [StringLength(128)] public string? ReceivedByMailNumber { get; set; }
+
+        [Required(ErrorMessage = "State the purpose (the Purpose of Change of Custody column).")]
+        [StringLength(1000)]
+        public string? Purpose { get; set; }
+
+        public DateTime OccurredAtLocal { get; set; }
+        public AmbiguousLocalTimeChoice AmbiguousTimeChoice { get; set; }
+        public bool IsScrcni { get; set; }
+        [StringLength(512)] public string? Destination { get; set; }
+        [StringLength(256)] public string? Agency { get; set; }
+        [StringLength(4000)] public string? Notes { get; set; }
+        public int? SourceDocumentId { get; set; }
+        public int? ReconciliationFindingId { get; set; }
     }
 
     public sealed class CorrectionInput

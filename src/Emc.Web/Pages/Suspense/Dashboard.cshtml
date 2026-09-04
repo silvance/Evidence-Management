@@ -1,0 +1,81 @@
+@page "/Suspense/Dashboard/{roomId:int}"
+@using Emc.Application.Suspense
+@using Emc.Domain.Filing
+@model Emc.Web.Pages.Suspense.DashboardModel
+@{
+    ViewData["Title"] = "Suspense dashboard";
+    var v = Model.View!;
+}
+
+<h1>Suspense — evidence room @v.EvidenceRoomId</h1>
+
+<p class="regulatory-note">
+    <strong>[REG] AR 195-5 2-4f(3):</strong> the USACIL, ADJUDICATION and PENDING DISPOSITION APPROVAL suspense folders.
+    <strong>[REG] 2-7a:</strong> the custodian maintains reasonable and adequate contact with whoever holds released evidence.
+    <strong>[REG] 2-7b, 3-1a(4):</strong> evidence is not released for an excessive period — a judgement the inspector makes.
+    <strong>The regulation sets no number of days.</strong> "Days out" is a count. The flag below reads
+    <em>exceeds local review threshold (@v.LocalReviewThresholdDays days)</em> — a <strong>[LOCAL]</strong> management threshold from the system
+    configuration, never an AR 195-5 deadline. As of @v.AsOfUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z.
+    <a asp-page="/Filing/Retention" asp-route-roomId="@v.EvidenceRoomId">Paper files and retention</a>.
+</p>
+
+<div class="panel">
+    <p><strong>@v.OpenReleases</strong> open release(s); <strong>@v.PendingDispositionApproval.Count</strong> original(s) out for disposition approval;
+        <strong>@v.ExceedingLocalThreshold</strong> exceeding the local review threshold; <strong>@v.FollowUpsDue</strong> follow-up(s) due.</p>
+</div>
+
+@if (v.Advisories.Count > 0)
+{
+    <div class="panel">
+        <h2>Release records and the companion record — advisories</h2>
+        <p class="hint">Cross-checks between the release records, the item states, the chain of custody, the paper record and the folders. Advisory only: nothing here changes a state.</p>
+        <ul>
+        @foreach (var a in v.Advisories)
+        {
+            <li><strong>[@a.Code]</strong> <span class="hint">AR 195-5 @a.Regulation</span> @if (a.VoucherId is not null) { <a asp-page="/Vouchers/Details" asp-route-id="@a.VoucherId">@a.VoucherIdentifier</a> } — @a.Message</li>
+        }
+        </ul>
+    </div>
+}
+
+@{
+    async Task Table(string title, IReadOnlyList<SuspenseRow> rows, bool releases)
+    {
+        <div class="panel">
+            <h2>@title (@rows.Count)</h2>
+            @if (rows.Count == 0) { <p class="hint">Nothing out.</p> }
+            else
+            {
+                <table>
+                    <thead><tr><th>Voucher</th>@if (releases) { <th>Release</th> }<th>Held by</th><th>Paper</th><th>Out since</th><th>Days out</th><th>Items</th>@if (releases) { <th>Last contact</th><th>Next follow-up</th> }<th>Folder</th><th>Local review</th></tr></thead>
+                    <tbody>
+                    @foreach (var r in rows)
+                    {
+                        <tr class="@(r.ExceedsLocalReviewThreshold || r.FollowUpDue ? "ocr-field--outstanding" : "")">
+                            <td><a asp-page="/Vouchers/Details" asp-route-id="@r.VoucherId">@r.VoucherIdentifier</a></td>
+                            @if (releases) { <td><a asp-page="/Releases/Details" asp-route-id="@r.ReleaseId">@r.ReleaseId</a></td> }
+                            <td>@r.HeldBy@(r.LaboratoryName is null ? "" : $" ({r.LaboratoryName})")</td>
+                            <td>@(r.PaperAccompanying == PaperCopyKind.Original ? "original" : "copy")</td>
+                            <td>@r.OutSinceLocal.ToString("dd MMM yy").ToUpperInvariant()</td>
+                            <td class="numeric">@r.DaysOut</td>
+                            <td>@(releases ? $"{r.ItemsOut} out: {r.ItemNumbers}" : r.ItemNumbers)</td>
+                            @if (releases)
+                            {
+                                <td>@(r.LastContactAtUtc is null ? "none" : $"{r.LastContactAtUtc.Value.ToString("dd MMM yy").ToUpperInvariant()} ({r.DaysSinceLastContact} d ago)")</td>
+                                <td>@(r.ExpectedFollowUpLocal?.ToString("dd MMM yy").ToUpperInvariant() ?? "—")@(r.FollowUpDue ? " — due" : "")</td>
+                            }
+                            <td>@r.SuspenseFolderLabel</td>
+                            <td>@(r.ExceedsLocalReviewThreshold ? $"⚑ exceeds local review threshold ({v.LocalReviewThresholdDays})" : "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+}
+
+@{ await Table("USACIL — evidence at the laboratory (AR 195-5 2-4f(3)(a), 2-7c)", v.Usacil, true); }
+@{ await Table("ADJUDICATION — evidence out for legal proceedings (AR 195-5 2-4f(3)(b))", v.Adjudication, true); }
+@{ await Table("PENDING DISPOSITION APPROVAL — originals with trial counsel / prosecutor; the evidence is in the room (AR 195-5 2-4f(3)(c))", v.PendingDispositionApproval, false); }
+@{ await Table("Closed in the last 30 days", v.RecentlyClosed, true); }

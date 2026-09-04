@@ -394,13 +394,23 @@ EMC therefore shows **days out** and applies **locally configured review thresho
 local management thresholds:
 
 ```
-017-26   USACIL                   Out      94 days     ⚑ exceeds local review threshold (60)
-021-26   ADJUDICATION             Out      61 days     ⚑ exceeds local review threshold (45)
-034-26   DISPOSITION APPROVAL     Pending  23 days
+017-26   USACIL                          Out      94 days     ⚑ exceeds local review threshold (60)
+021-26   ADJUDICATION                    Out      61 days     ⚑ exceeds local review threshold (60)
+034-26   PENDING DISPOSITION APPROVAL    Paper    23 days
 ```
 
-The flag reads *"exceeds local review threshold"* — never *"exceeds AR 195-5 deadline."*
-`SuspenseContact` rows are the record that 2-7a's contact obligation was met.
+The flag reads *"exceeds local review threshold"* — never *"exceeds AR 195-5 deadline."* There is
+one threshold for the room (`SystemConfiguration.LocalSuspenseReviewThresholdDays`, default 60),
+not one per folder: the regulation names no number for any of them, so EMC invents none. The
+PENDING DISPOSITION APPROVAL row is a **paper** state — the original DA Form 4137 is out with trial
+counsel for approval and the evidence is still in the room (2-4f(3)(c)) — and comes from
+`PhysicalVoucherDocument`, not from a `TemporaryRelease`. `SuspenseContact` rows are the record
+that 2-7a's contact obligation was met; the custodian's own next follow-up date on a release or a
+contact is a local management date and is shown as due, never as overdue.
+
+The dashboard also carries the SUSP-017 advisories (SCV-001..008): release records checked against
+item states, the chain of custody, the paper record and the folders. They are read-only findings
+for a person; none of them changes a state.
 
 **The one real deadline in this area is elsewhere: 3-3a's 5 working days** to resolve
 apparently-missing evidence before an inquiry is initiated. That one is regulatory, is modelled on

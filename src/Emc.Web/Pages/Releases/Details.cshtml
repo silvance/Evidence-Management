@@ -1,0 +1,161 @@
+@page "/Releases/Details/{id:int}"
+@using Emc.Application.Suspense
+@using Emc.Domain.Events
+@using Emc.Domain.Filing
+@using Emc.Domain.Suspense
+@model Emc.Web.Pages.Releases.DetailsModel
+@{
+    ViewData["Title"] = "Temporary release";
+    var v = Model.View!;
+    var itemsOut = v.Items.Where(i => i.Status == TemporaryReleaseItemStatus.Out).ToList();
+}
+
+<h1>Temporary release @v.Id — voucher <a asp-page="/Vouchers/Details" asp-route-id="@v.VoucherId">@v.VoucherIdentifier</a></h1>
+<partial name="_Messages" model="Model.Messages" />
+
+<p class="regulatory-note">
+    <strong>AR 195-5 para 2-7a:</strong> the evidence custodian maintains reasonable and adequate contact with the person or agency that receipted for
+    the evidence, so that it is returned as soon as it is no longer needed. The regulation sets <strong>no number of days</strong>; "days out" is a
+    count, and any threshold on the <a asp-page="/Suspense/Dashboard" asp-route-roomId="@v.EvidenceRoomId">suspense dashboard</a> is a local
+    management threshold. Every attestation below records that a paper act occurred; none is a signature.
+</p>
+
+<div class="panel">
+    <table>
+        <tbody>
+            <tr><th>Status</th><td>@v.Status @(v.ClosedAtUtc is { } c ? $"(closed {c.ToString("dd MMM yy HH:mm").ToUpperInvariant()}Z)" : "")</td></tr>
+            <tr><th>Suspense folder</th><td>@v.Category — @v.SuspenseFolderLabel (para 2-4f(3))</td></tr>
+            <tr><th>Released to</th><td>@v.ReceivedByDisplayName (@v.ReceivedByKind)@(v.ReceivedByOrganization is null ? "" : $", {v.ReceivedByOrganization}")</td></tr>
+            <tr><th>Released by</th><td>@v.ReleasedByDisplayName</td></tr>
+            <tr><th>Purpose</th><td>@v.Purpose@(v.Destination is null ? "" : $" — {v.Destination}")</td></tr>
+            <tr><th>Released</th><td>@v.ReleasedAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant() (recorded @v.RecordedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z by @v.RecordedByName)</td></tr>
+            <tr><th>Days out</th><td>@v.DaysOut (a count; not a deadline)</td></tr>
+            <tr><th>Paper with the evidence</th><td>@(v.PaperAccompanying == PaperCopyKind.Original ? "the ORIGINAL DA Form 4137" : "a COPY (para 2-7b; the chain is recorded on the first copy)")</td></tr>
+            @if (v.LaboratoryName is not null)
+            {
+                <tr><th>Laboratory</th><td>@v.LaboratoryName@(v.LaboratoryCoordinatedWithUsacilAttested ? " — coordination with the USACIL attested (para 2-7c(1))" : "")@(v.ExaminationRequestReference is null ? "" : $"; DD 2922 {v.ExaminationRequestReference}")@(v.ShippingDocumentReference is null ? "" : $"; shipping document {v.ShippingDocumentReference} (para 2-7f)")</td></tr>
+            }
+            <tr><th>Paper attestations at release (para 2-7b)</th><td>
+                inventoried: @(v.PhysicalInventoryPerformedAttested ? "yes" : "—"); Received By on the original: @(v.Original4137ReceivedBySignedAttested ? "yes" : "—");
+                on the first copy: @(v.FirstCopyReceivedBySignedAttested ? "yes" : "—"); identification presented: @(v.IdentificationPresentedAttested ? "yes" : "—");
+                obligations explained: @(v.ObligationsInformedAttested ? "yes" : "—")
+            </td></tr>
+            @if (v.OriginalAnnotatedOnReturnAttested)
+            {
+                <tr><th>Paper attestations at return (para 2-7b)</th><td>original annotated by the custodian and the returner; first copy's chain annotated</td></tr>
+            }
+            <tr><th>Next follow-up (local)</th><td>@(v.ExpectedFollowUpLocal?.ToString("dd MMM yy").ToUpperInvariant() ?? "—")</td></tr>
+            @if (v.Notes is not null) { <tr><th>Notes</th><td>@v.Notes</td></tr> }
+        </tbody>
+    </table>
+</div>
+
+<div class="panel">
+    <h2>Items</h2>
+    <table>
+        <thead><tr><th>#</th><th>Description</th><th>Status</th><th>Returned</th></tr></thead>
+        <tbody>
+        @foreach (var i in v.Items)
+        {
+            <tr><td>@i.ItemNumber</td><td>@i.DescriptionForForm <a asp-page="/Items/History" asp-route-id="@i.EvidenceItemId">history</a></td><td>@i.Status</td><td>@(i.ReturnedAtUtc?.ToString("dd MMM yy HH:mm").ToUpperInvariant() is { } r ? r + "Z" : "—")</td></tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="panel">
+    <h2>Contact history (para 2-7a)</h2>
+    @if (v.Contacts.Count == 0) { <p class="hint">No contact recorded yet.</p> }
+    else
+    {
+        <table>
+            <thead><tr><th>When</th><th>How</th><th>Whom</th><th>Outcome</th><th>Narrative</th><th>Next follow-up</th><th>Recorded by</th></tr></thead>
+            <tbody>
+            @foreach (var ct in v.Contacts)
+            {
+                <tr><td>@ct.ContactedAtLocal.ToString("dd MMM yy HH:mm").ToUpperInvariant()</td><td>@ct.Method</td><td>@ct.ContactedPerson</td><td>@ct.Outcome</td><td>@(ct.Narrative ?? "—")</td><td>@(ct.NextFollowUpLocal?.ToString("dd MMM yy").ToUpperInvariant() ?? "—")</td><td>@ct.RecordedByName</td></tr>
+            }
+            </tbody>
+        </table>
+    }
+    @if (Model.CanRecordContact)
+    {
+        <form method="post" asp-page-handler="Contact" asp-route-id="@v.Id">
+            <div class="form-row"><label asp-for="Contact.ContactedAtLocal">When (evidence-room local)</label><input asp-for="Contact.ContactedAtLocal" type="datetime-local" />
+                <select asp-for="Contact.AmbiguousTimeChoice"><option value="Unspecified">Not in the repeated DST hour</option><option value="Earlier">First occurrence</option><option value="Later">Second occurrence</option></select></div>
+            <div class="form-row"><label asp-for="Contact.Method">How</label><select asp-for="Contact.Method" asp-items="Html.GetEnumSelectList<ContactMethod>()"></select></div>
+            <div class="form-row"><label asp-for="Contact.ContactedPerson">Person or office contacted</label><input asp-for="Contact.ContactedPerson" autocomplete="off" /><span asp-validation-for="Contact.ContactedPerson" class="field-validation-error"></span></div>
+            <div class="form-row"><label asp-for="Contact.Outcome">Outcome</label><select asp-for="Contact.Outcome" asp-items="Html.GetEnumSelectList<ContactOutcome>()"></select></div>
+            <div class="form-row"><label asp-for="Contact.Narrative">Narrative</label><textarea asp-for="Contact.Narrative"></textarea></div>
+            <div class="form-row"><label asp-for="Contact.NextFollowUpLocal">Next follow-up (local management date)</label><input asp-for="Contact.NextFollowUpLocal" type="datetime-local" /></div>
+            <button type="submit">Record contact</button>
+        </form>
+    }
+</div>
+
+@if (Model.CanReturn && itemsOut.Count > 0)
+{
+    <div class="panel">
+        <h2>Return of evidence (para 2-7b)</h2>
+        <p class="hint">No storage location is assigned automatically (para 2-4e): for each item, name the bin it goes to now, or confirm it goes back to the bin it was in, or leave both and record the bin later.</p>
+        <form method="post" asp-page-handler="Return" asp-route-id="@v.Id">
+            @foreach (var i in itemsOut)
+            {
+                <fieldset>
+                    <legend><label><input type="checkbox" name="Return.ItemIds" value="@i.EvidenceItemId" /> Item @i.ItemNumber — @i.DescriptionForForm</label></legend>
+                    <div class="form-row"><label>Location now</label>
+                        <select name="Return.Locations[@i.EvidenceItemId]"><option value="0">— none recorded now —</option>@foreach (var l in Model.Locations) { <option value="@l.Id">@l.Path</option> }</select></div>
+                    <div class="form-row"><label><input type="checkbox" name="Return.ConfirmPrior[@i.EvidenceItemId]" value="true" /> Returned to the bin it was in before release (explicit confirmation)</label></div>
+                    <div class="form-row"><label>Controlled substance — apparent change (para 2-7d; not after laboratory examination)</label><input type="text" name="Return.ApparentChange[@i.EvidenceItemId]" maxlength="1000" autocomplete="off" /></div>
+                    <div class="form-row"><label>MFR reference for the apparent change (required with it)</label><input type="text" name="Return.ApparentChangeMfr[@i.EvidenceItemId]" maxlength="256" autocomplete="off" /></div>
+                </fieldset>
+            }
+            <div class="form-row"><label asp-for="Return.ReturnedAtLocal">Returned (evidence-room local)</label><input asp-for="Return.ReturnedAtLocal" type="datetime-local" />
+                <select asp-for="Return.AmbiguousTimeChoice"><option value="Unspecified">Not in the repeated DST hour</option><option value="Earlier">First occurrence</option><option value="Later">Second occurrence</option></select></div>
+            @if (v.Category == SuspenseCategory.Usacil)
+            {
+                <div class="form-row"><label asp-for="Return.ReturnMailNumber">Returned by accountable mail — number (para 2-7e; the USACIL records it in Released By)</label><input asp-for="Return.ReturnMailNumber" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Return.ReturnCarrier">Carrier / mail class</label><input asp-for="Return.ReturnCarrier" autocomplete="off" /></div>
+            }
+            <fieldset>
+                <legend>What the paper shows on return (para 2-7b) — records that these acts occurred; not signatures. Required when the last item comes back.</legend>
+                <div class="form-row"><label><input asp-for="Return.OriginalAnnotatedByCustodianAndReturnerAttested" /> The original DA Form 4137 was properly annotated by the custodian and the person returning the evidence</label></div>
+                <div class="form-row"><label><input asp-for="Return.FirstCopyChainAnnotatedAttested" /> The first (suspense) copy's chain of custody was properly annotated</label></div>
+                @if (v.PaperAccompanying == PaperCopyKind.Original)
+                {
+                    <div class="form-row"><label asp-for="Return.ActiveFileContainerId">Active file the original returns to</label>
+                        <select asp-for="Return.ActiveFileContainerId"><option value="0">— its home binder —</option>@foreach (var c in Model.ActiveFiles) { <option value="@c.Id">@c.Label (@c.VouchersFiled filed)</option> }</select></div>
+                }
+            </fieldset>
+            <div class="form-row"><label asp-for="Return.Notes">Notes</label><textarea asp-for="Return.Notes"></textarea></div>
+            <button type="submit">Record return</button>
+        </form>
+    </div>
+
+    <div class="panel">
+        <h2>Accounted for without return</h2>
+        <p class="hint">Entered as a permanent part of the record of trial (final disposition; para 3-1a(4), 2-8e(4)) or consumed / retained by the laboratory (para 2-7c(2), with an MFR). The item becomes pending disposition; the disposition itself is the 2-8/2-9 workflow.</p>
+        <form method="post" asp-page-handler="NotReturned" asp-route-id="@v.Id">
+            <div class="form-row"><label>Items</label>@foreach (var i in itemsOut) { <label><input type="checkbox" name="NotReturned.ItemIds" value="@i.EvidenceItemId" /> @i.ItemNumber — @i.DescriptionForForm</label> }</div>
+            <div class="form-row"><label asp-for="NotReturned.Reason">Reason</label><select asp-for="NotReturned.Reason" asp-items="Html.GetEnumSelectList<NotReturnedReason>()"></select></div>
+            <div class="form-row"><label asp-for="NotReturned.OccurredAtLocal">When (evidence-room local)</label><input asp-for="NotReturned.OccurredAtLocal" type="datetime-local" />
+                <select asp-for="NotReturned.AmbiguousTimeChoice"><option value="Unspecified">Not in the repeated DST hour</option><option value="Earlier">First occurrence</option><option value="Later">Second occurrence</option></select></div>
+            <div class="form-row"><label asp-for="NotReturned.Narrative">What became of it</label><textarea asp-for="NotReturned.Narrative"></textarea><span asp-validation-for="NotReturned.Narrative" class="field-validation-error"></span></div>
+            <div class="form-row"><label asp-for="NotReturned.MfrReference">MFR reference (required for laboratory consumption / retention)</label><input asp-for="NotReturned.MfrReference" autocomplete="off" /></div>
+            <button type="submit">Record</button>
+        </form>
+    </div>
+}
+
+<div class="panel">
+    <h2>Events (append-only)</h2>
+    <table>
+        <thead><tr><th>Event</th><th>Item</th><th>Occurred</th><th>Recorded</th><th>By</th><th>Narrative</th></tr></thead>
+        <tbody>
+        @foreach (var e in v.Events)
+        {
+            <tr><td>@e.Kind</td><td>@(e.ItemNumber?.ToString() ?? "—")</td><td>@e.OccurredAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td><td>@e.RecordedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td><td>@e.RecordedByName</td><td>@(e.Narrative ?? "—")</td></tr>
+        }
+        </tbody>
+    </table>
+</div>

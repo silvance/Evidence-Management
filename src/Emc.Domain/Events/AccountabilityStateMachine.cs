@@ -13,7 +13,7 @@ namespace Emc.Domain.Events;
 ///   TemporaryStorage       4-3a         secured during non-duty hours
 ///   AwaitingCustodian      2-4a         due to the custodian NLT the first working day
 ///   InEvidenceRoom         2-4c         accepted; document number assigned
-///   TemporarilyReleased    2-7a         out for lab, adjudication or disposition approval
+///   TemporarilyReleased    2-7a         out for laboratory examination or adjudication (2-7b); disposition approval sends the ORIGINAL form out, not the evidence (2-4f(3)(c))
 ///   DispositionPending     2-8          awaiting authority
 ///   Disposed               2-9          terminal
 ///   DiscrepancyReview      3-3a         cannot be located; 5-working-day resolution period

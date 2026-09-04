@@ -58,6 +58,24 @@ else
                             {
                                 <div><a asp-page="/Items/History" asp-route-id="@d.EvidenceItemId" asp-route-sourceDocumentId="@v.SourceDocumentId" asp-route-correctedValue="@d.DocumentValue">Record the 1-7c(3) correction on the item's history</a></div>
                             }
+                            @if (d.AwaitsCustodyRecording)
+                            {
+                                var parts = (d.DocumentValue ?? string.Empty).Split(" | ");
+                                string? Part(int i) => parts.Length > i && parts[i] != "—" ? parts[i] : null;
+                                @if (d.CustodyItemId is not null)
+                                {
+                                    <div><a asp-page="/Items/History" asp-route-id="@d.CustodyItemId" asp-route-sourceDocumentId="@v.SourceDocumentId" asp-route-findingId="@f.Id"
+                                            asp-route-custodyDate="@Part(1)" asp-route-releasedByName="@Part(2)" asp-route-receivedByName="@Part(3)" asp-route-purpose="@Part(4)">Record this custody row on item @d.ItemNumber's history (REC-010)</a></div>
+                                }
+                                else
+                                {
+                                    <div class="hint">Awaiting recording through the custody workflow (REC-010): the row names item(s) "@Part(0)"; open the item's history page to record it.</div>
+                                }
+                            }
+                            else if (d.RecordedCustodyEventId is not null)
+                            {
+                                <div class="hint">Recorded on the item's chain as custody event @d.RecordedCustodyEventId.</div>
+                            }
                         }
                         @if (v.CanDecide)
                         {

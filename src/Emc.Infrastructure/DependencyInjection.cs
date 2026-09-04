@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<Emc.Application.Filing.IPhysicalDigitalConsistencyService, Emc.Application.Filing.PhysicalDigitalConsistencyService>();
         services.AddScoped<Emc.Application.Filing.IRetentionDashboardService, Emc.Application.Filing.RetentionDashboardService>();
         services.AddScoped<Emc.Application.Suspense.ITemporaryReleaseService, Emc.Application.Suspense.TemporaryReleaseService>();
+        services.AddScoped<Emc.Application.Suspense.ISuspenseDashboardService, Emc.Application.Suspense.SuspenseDashboardService>();
 
         // Source documents: immutable filesystem store outside the web root and the
         // receipt/view/download service. NO rasterizer is registered here: the web process never

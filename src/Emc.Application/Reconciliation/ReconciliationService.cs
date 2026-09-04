@@ -60,7 +60,10 @@ public sealed record ReconciliationDifference(
     IReadOnlyList<string>? ConflictingValues = null,
 
     /// <summary>For a custody row decided "record missing historical event": the custody event a person then recorded from that finding, if any (REC-010).</summary>
-    int? RecordedCustodyEventId = null)
+    int? RecordedCustodyEventId = null,
+
+    /// <summary>For a custody row: the one form line its item-number column names, when it names exactly one and the companion has it. The hand-off target for REC-010.</summary>
+    int? CustodyItemId = null)
 {
     /// <summary>Resolved only by a finding on THIS run, THIS kind, THIS item, and THESE two values (REC-008).</summary>
     public bool IsResolved => LatestFinding is not null;
@@ -545,7 +548,8 @@ public sealed class ReconciliationService : IReconciliationService
                 conflicted ? DifferenceApplicability.Conflicted : DifferenceApplicability.CustodyWorkflow,
                 $"Chain of custody row {k} on the form: item(s) | date | released by | received by | purpose. A row the companion lacks is recorded by the custodian through the custody workflow (REC-010), never from the scan by itself.",
                 latestCustodyFinding, conflicted ? parts.SelectMany(p => p.Conflicts ?? []).ToList() : null,
-                latestCustodyFinding is not null && recordedFromFindings.TryGetValue(latestCustodyFinding.Id, out var recordedEventId) ? recordedEventId : null));
+                latestCustodyFinding is not null && recordedFromFindings.TryGetValue(latestCustodyFinding.Id, out var recordedEventId) ? recordedEventId : null,
+                int.TryParse((parts[0].Value ?? string.Empty).Trim(), out var custodyItemNumber) && lines.TryGetValue(custodyItemNumber, out var custodyLine) ? custodyLine.Id : null));
         }
 
         // Disposition blocks.

@@ -5,7 +5,10 @@ using Emc.Application.Cases;
 using Emc.Application.Filing;
 using Emc.Domain.Filing;
 using Emc.Application.Reads;
+using Emc.Application.Suspense;
 using Emc.Application.Time;
+using Emc.Domain.Events;
+using Emc.Domain.Suspense;
 using Emc.Domain.Cases;
 using Emc.Domain.Common;
 using Emc.Web.Security;
@@ -32,6 +35,7 @@ public class DetailsModel : PageModel
     private readonly IPhysicalDocumentService _physical;
     private readonly IPhysicalDigitalConsistencyService _consistency;
     private readonly Emc.Application.Documents.ISourceDocumentService _documents;
+    private readonly ITemporaryReleaseService _releases;
 
     public DetailsModel(
         IEvidenceReadService reads,
@@ -41,8 +45,10 @@ public class DetailsModel : PageModel
         IEvidenceRoomTimeService time,
         IPhysicalDocumentService physical,
         IPhysicalDigitalConsistencyService consistency,
-        Emc.Application.Documents.ISourceDocumentService documents)
+        Emc.Application.Documents.ISourceDocumentService documents,
+        ITemporaryReleaseService releases)
     {
+        _releases = releases;
         _physical = physical;
         _consistency = consistency;
         _documents = documents;
@@ -129,6 +135,13 @@ public class DetailsModel : PageModel
     /// <summary>AR 195-5 2-3g - what each earlier submission of the form contained (VCH-025).</summary>
     public IReadOnlyList<FormRevisionRow> FormRevisions { get; private set; } = [];
     public bool CanWithdrawLine { get; private set; }
+
+    /// <summary>AR 195-5 2-7a, 2-7b - temporary releases of this voucher's items, open and closed.</summary>
+    public IReadOnlyList<TemporaryReleaseView> Releases { get; private set; } = [];
+    public bool CanRelease { get; private set; }
+
+    [BindProperty]
+    public ReleaseInput Release { get; set; } = new();
 
     public async Task<IActionResult> OnGetAsync(int id)
         => await LoadAsync(id) ? Page() : NotFound();
@@ -250,6 +263,57 @@ public class DetailsModel : PageModel
 
         return Respond(id, result.Succeeded, result.Error, result.RequirementId,
             result.Warnings, "Physical DA Form 4137 record updated.");
+    }
+
+    /// <summary>AR 195-5 2-7a, 2-7b: one recipient, the items ticked, the paper and the five attestations - one unit of work.</summary>
+    public async Task<IActionResult> OnPostReleaseAsync(int id)
+    {
+        if (!await LoadAsync(id))
+        {
+            return NotFound();
+        }
+
+        if (!IsValidForPrefix(nameof(Release)))
+        {
+            return Page();
+        }
+
+        var released = await _time.ResolveLocalAsync(EvidenceRoomId, Release.ReleasedAtLocal, Release.AmbiguousTimeChoice);
+        if (!released.Succeeded)
+        {
+            Messages.Error = released.Error;
+            Messages.RequirementId = released.RequirementId;
+            return Page();
+        }
+
+        DateTimeOffset? followUp = null;
+        if (Release.ExpectedFollowUpLocal is { } f)
+        {
+            var resolved = await _time.ResolveLocalAsync(EvidenceRoomId, f);
+            if (!resolved.Succeeded)
+            {
+                Messages.Error = resolved.Error;
+                Messages.RequirementId = resolved.RequirementId;
+                return Page();
+            }
+
+            followUp = resolved.Value;
+        }
+
+        var recipient = new ReleaseRecipient(Release.RecipientKind, Release.RecipientName ?? string.Empty, Release.RecipientTitleOrGrade, Release.RecipientOrganization,
+            Release.IdentificationPresentedAttested, Release.AccountableMailNumber, Release.Carrier);
+        LaboratoryDetails? laboratory = Release.Category == SuspenseCategory.Usacil
+            ? new LaboratoryDetails(Release.LaboratoryName ?? "USACIL", Release.CoordinatedWithUsacilAttested, Release.ExaminationRequestReference, Release.ShippingDocumentReference)
+            : null;
+
+        var result = await _releases.ReleaseAsync(new TemporaryReleaseRequest(
+            id, Release.ItemIds ?? [], Release.Category, recipient, Release.Purpose ?? string.Empty, Release.Destination, released.Value!.Value,
+            Release.SuspenseFolderContainerId, Release.PhysicalInventoryPerformedAttested, Release.Original4137ReceivedBySignedAttested,
+            Release.FirstCopyReceivedBySignedAttested, Release.IdentificationPresentedAttested, Release.ObligationsInformedAttested,
+            followUp, null, Release.Notes, Release.PaperAccompanying, laboratory));
+
+        return Respond(id, result.Succeeded, result.Error, result.RequirementId, result.Warnings,
+            result.Succeeded ? $"Temporary release {result.Value} recorded: custody events on each item, the item states, and the paper - together." : string.Empty);
     }
 
     public async Task<IActionResult> OnPostWithdrawLineAsync(int id)
@@ -458,6 +522,16 @@ public class DetailsModel : PageModel
         {
             Physical.OccurredAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
         }
+
+        Releases = await _releases.GetForVoucherAsync(id);
+        CanRelease = view.HasOfficialDocumentNumber
+            && view.Items.Any(i => i.AccountabilityStatus == AccountabilityStatus.InEvidenceRoom)
+            && (await _authorization.CheckAsync(EmcPermissions.ReleaseTemporarily, view.EvidenceRoomId)).IsAllowed;
+        if (Release.ReleasedAtLocal == default)
+        {
+            Release.ReleasedAtLocal = (await _time.NowInRoomAsync(EvidenceRoomId)).DateTime;
+        }
+
         AuthorizationWarnings = numberDecision.Warnings ?? [];
 
         if (TempData[SuccessKey] is string success)
@@ -539,6 +613,61 @@ public class DetailsModel : PageModel
 
         [StringLength(256)]
         public string? GainingEvidenceRoom { get; set; }
+    }
+
+    /// <summary>The release form. Every attestation is a record that a paper act occurred, never a signature (AUD-013).</summary>
+    public sealed class ReleaseInput
+    {
+        public List<int>? ItemIds { get; set; }
+        public SuspenseCategory Category { get; set; } = SuspenseCategory.Adjudication;
+        public CustodyPartyKind RecipientKind { get; set; } = CustodyPartyKind.ExternalPerson;
+
+        [StringLength(512)]
+        public string? RecipientName { get; set; }
+
+        [StringLength(128)]
+        public string? RecipientTitleOrGrade { get; set; }
+
+        [StringLength(256)]
+        public string? RecipientOrganization { get; set; }
+
+        [StringLength(128)]
+        public string? AccountableMailNumber { get; set; }
+
+        [StringLength(128)]
+        public string? Carrier { get; set; }
+
+        [Required(ErrorMessage = "State the purpose (the Purpose of Change of Custody column).")]
+        [StringLength(1000)]
+        public string? Purpose { get; set; }
+
+        [StringLength(512)]
+        public string? Destination { get; set; }
+
+        public DateTime ReleasedAtLocal { get; set; }
+        public AmbiguousLocalTimeChoice AmbiguousTimeChoice { get; set; }
+        public DateTime? ExpectedFollowUpLocal { get; set; }
+        public int SuspenseFolderContainerId { get; set; }
+        public PaperCopyKind PaperAccompanying { get; set; } = PaperCopyKind.Original;
+
+        public bool PhysicalInventoryPerformedAttested { get; set; }
+        public bool Original4137ReceivedBySignedAttested { get; set; }
+        public bool FirstCopyReceivedBySignedAttested { get; set; }
+        public bool IdentificationPresentedAttested { get; set; }
+        public bool ObligationsInformedAttested { get; set; }
+
+        [StringLength(256)]
+        public string? LaboratoryName { get; set; }
+        public bool CoordinatedWithUsacilAttested { get; set; }
+
+        [StringLength(128)]
+        public string? ExaminationRequestReference { get; set; }
+
+        [StringLength(128)]
+        public string? ShippingDocumentReference { get; set; }
+
+        [StringLength(2000)]
+        public string? Notes { get; set; }
     }
 
     public sealed class WithdrawLineInput

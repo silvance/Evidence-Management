@@ -45,7 +45,19 @@ public sealed class PhysicalDigitalConsistencyService : IPhysicalDigitalConsiste
 
         var paper = await _db.PhysicalVoucherDocuments.AsNoTracking().FirstOrDefaultAsync(p => p.VoucherId == voucherId, ct);
         var scans = await _db.SourceDocuments.AsNoTracking().Where(d => d.VoucherId == voucherId).ToListAsync(ct);
-        return Compute(voucher, paper, scans, _clock.UtcNow);
+        var advisories = Compute(voucher, paper, scans, _clock.UtcNow).ToList();
+
+        // The release records for this voucher (SUSP-017), through the same cross-check the
+        // suspense dashboard runs for the room.
+        var releases = await _db.TemporaryReleases.AsNoTracking().Include(r => r.ReceivedBy).Include(r => r.Items).Where(r => r.VoucherId == voucherId).ToListAsync(ct);
+        var containers = await _db.PhysicalFileContainers.AsNoTracking().Where(c => c.EvidenceRoomId == voucher.EvidenceRoomId).ToListAsync(ct);
+        var withEvents = await _db.EvidenceVouchers.AsNoTracking().Include(v => v.Items).ThenInclude(i => i.Events).Include(v => v.DocumentNumberAssignments).FirstAsync(v => v.Id == voucherId, ct);
+        foreach (var a in Emc.Application.Suspense.SuspenseDashboardService.Advisories(releases, [withEvents], paper is null ? [] : [paper], containers))
+        {
+            advisories.Add(new(a.Code, a.Regulation, a.Message));
+        }
+
+        return advisories;
     }
 
     internal static IReadOnlyList<PaperConsistencyAdvisory> Compute(Emc.Domain.Cases.EvidenceVoucher voucher, PhysicalVoucherDocument? paper, IReadOnlyList<SourceDocument> scans, DateTimeOffset now)

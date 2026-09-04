@@ -235,6 +235,53 @@ else
     </div>
 }
 
+
+@if (Model.CanRecordCustody)
+{
+    <div class="panel">
+        <h2>Record a change of custody the paper shows (AR 195-5 para 2-3f)</h2>
+        <p class="regulatory-note">
+            For a chain-of-custody row that is on the DA Form 4137 and not yet in this companion — a hand receipt between agents, a release to the
+            custodian. Recorded as of the date the paper shows; the entry time is kept separately. Not for a temporary release (record that on the
+            voucher page, which also writes the custody event) and not a correction: bringing the companion up to the paper needs no para 1-7c(3) MFR.
+        </p>
+        <form method="post" asp-page-handler="RecordCustody" asp-route-id="@view.ItemId">
+            <input type="hidden" asp-for="Custody.SourceDocumentId" />
+            <input type="hidden" asp-for="Custody.ReconciliationFindingId" />
+            @if (Model.Custody.ReconciliationFindingId is not null)
+            {
+                <p class="hint">Provenance: source document @Model.Custody.SourceDocumentId, reconciliation finding @Model.Custody.ReconciliationFindingId. The values below are the verified reading, offered as defaults for you to confirm or change.</p>
+            }
+            <fieldset>
+                <legend>Released by</legend>
+                <div class="form-row"><label asp-for="Custody.ReleasedByKind">Kind</label><select asp-for="Custody.ReleasedByKind" asp-items="Html.GetEnumSelectList<Emc.Domain.Common.CustodyPartyKind>()"></select></div>
+                <div class="form-row"><label asp-for="Custody.ReleasedByUserId">EMC user (internal user)</label><select asp-for="Custody.ReleasedByUserId"><option value="">—</option>@foreach (var u in Model.Users) { <option value="@u.Id">@u.DisplayName</option> }</select></div>
+                <div class="form-row"><label asp-for="Custody.ReleasedByName">Name as written</label><input asp-for="Custody.ReleasedByName" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Custody.ReleasedByTitleOrGrade">Grade or title</label><input asp-for="Custody.ReleasedByTitleOrGrade" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Custody.ReleasedByOrganization">Organization</label><input asp-for="Custody.ReleasedByOrganization" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Custody.ReleasedByMailNumber">Accountable mail number</label><input asp-for="Custody.ReleasedByMailNumber" autocomplete="off" /></div>
+            </fieldset>
+            <fieldset>
+                <legend>Received by</legend>
+                <div class="form-row"><label asp-for="Custody.ReceivedByKind">Kind</label><select asp-for="Custody.ReceivedByKind" asp-items="Html.GetEnumSelectList<Emc.Domain.Common.CustodyPartyKind>()"></select></div>
+                <div class="form-row"><label asp-for="Custody.ReceivedByUserId">EMC user (internal user)</label><select asp-for="Custody.ReceivedByUserId"><option value="">—</option>@foreach (var u in Model.Users) { <option value="@u.Id">@u.DisplayName</option> }</select></div>
+                <div class="form-row"><label asp-for="Custody.ReceivedByName">Name as written</label><input asp-for="Custody.ReceivedByName" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Custody.ReceivedByTitleOrGrade">Grade or title</label><input asp-for="Custody.ReceivedByTitleOrGrade" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Custody.ReceivedByOrganization">Organization</label><input asp-for="Custody.ReceivedByOrganization" autocomplete="off" /></div>
+                <div class="form-row"><label asp-for="Custody.ReceivedByMailNumber">Accountable mail number</label><input asp-for="Custody.ReceivedByMailNumber" autocomplete="off" /></div>
+            </fieldset>
+            <div class="form-row"><label asp-for="Custody.Purpose">Purpose of change of custody</label><input asp-for="Custody.Purpose" autocomplete="off" /><span asp-validation-for="Custody.Purpose" class="field-validation-error"></span></div>
+            <div class="form-row"><label asp-for="Custody.OccurredAtLocal">When it happened (the paper's date; evidence-room local)</label><input asp-for="Custody.OccurredAtLocal" type="datetime-local" />
+                <select asp-for="Custody.AmbiguousTimeChoice"><option value="Unspecified">Not in the repeated DST hour</option><option value="Earlier">First occurrence</option><option value="Later">Second occurrence</option></select></div>
+            <div class="form-row"><label><input asp-for="Custody.IsScrcni" /> SCRCNI — sealed container received, contents not inventoried (para 2-3e)</label></div>
+            <div class="form-row"><label asp-for="Custody.Destination">Destination</label><input asp-for="Custody.Destination" autocomplete="off" /></div>
+            <div class="form-row"><label asp-for="Custody.Agency">Agency</label><input asp-for="Custody.Agency" autocomplete="off" /></div>
+            <div class="form-row"><label asp-for="Custody.Notes">Notes</label><textarea asp-for="Custody.Notes"></textarea></div>
+            <button type="submit">Record change of custody</button>
+        </form>
+    </div>
+}
+
 @if (Model.CanRecordCorrection)
 {
     <div class="panel">

@@ -12,7 +12,7 @@
     place) is filed, and the retention clock: <strong>[REG] AR 195-5 2-4h</strong> — the inactive file is disposed of three years after the
     document became inactive, by the month-and-year label; the case's status plays no part. Eligibility is computed from the inactive date; destruction
     is confirmed by a person on the voucher page. <strong>[DESIGN] DEC-07:</strong> nothing digital is ever destroyed.
-    As of @v.AsOfUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z. <a asp-page="/Filing/Containers" asp-route-roomId="@v.EvidenceRoomId">Folders and binders</a>.</p>
+    As of @v.AsOfUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z. <a asp-page="/Filing/Containers" asp-route-roomId="@v.EvidenceRoomId">Folders and binders</a> · <a asp-page="/Suspense/Dashboard" asp-route-roomId="@v.EvidenceRoomId">Suspense dashboard</a>.</p>
 
 @{
     async Task Table(string title, IReadOnlyList<RetentionRow> rows, bool showRetention)

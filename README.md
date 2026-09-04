@@ -128,9 +128,11 @@ destroying the original. Every action is audit logged.
 
 ## Designed, specified, and deliberately not yet built
 
-Scanned-form ingestion and local OCR, reconciliation, DA Form 4137 generation, disposition,
-inspections and inventories, long-term retention, digital-forensic metadata, and the suspense
-dashboard. All are specified in the traceability matrix and modelled in the domain document.
+DA Form 4137 generation, disposition, inspections and inventories, long-term retention, and
+digital-forensic metadata. All are specified in the traceability matrix and modelled in the domain
+document. Scanned-form ingestion with local OCR, reconciliation, the paper DA Form 4137 record,
+temporary release with its chain of custody, suspense and return, and the suspense dashboard are
+built (see the traceability matrix for what each covers and what it deliberately does not).
 
 The slice exists to prove the event and correction model, because every one of those subsystems
 is built on top of it.
