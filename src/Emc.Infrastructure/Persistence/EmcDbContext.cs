@@ -38,6 +38,9 @@ public sealed class EmcDbContext : DbContext, IEmcDbContext
     public DbSet<Emc.Domain.Ocr.OcrJob> OcrJobs => Set<Emc.Domain.Ocr.OcrJob>();
     public DbSet<Emc.Domain.Ocr.OcrRun> OcrRuns => Set<Emc.Domain.Ocr.OcrRun>();
     public DbSet<Emc.Domain.Reconciliation.ReconciliationFinding> ReconciliationFindings => Set<Emc.Domain.Reconciliation.ReconciliationFinding>();
+    public DbSet<Emc.Domain.Suspense.TemporaryRelease> TemporaryReleases => Set<Emc.Domain.Suspense.TemporaryRelease>();
+    public DbSet<Emc.Domain.Suspense.TemporaryReleaseItem> TemporaryReleaseItems => Set<Emc.Domain.Suspense.TemporaryReleaseItem>();
+    public DbSet<Emc.Domain.Suspense.SuspenseContact> SuspenseContacts => Set<Emc.Domain.Suspense.SuspenseContact>();
     public DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments
         => Set<OfficialDocumentNumberAssignment>();
     public DbSet<EvidenceItem> EvidenceItems => Set<EvidenceItem>();

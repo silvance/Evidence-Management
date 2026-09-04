@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260904014816_AppendOnlyTriggers")]
-    partial class AppendOnlyTriggers
+    [Migration("20260904020313_InitialEvidenceModel")]
+    partial class InitialEvidenceModel
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1879,6 +1879,224 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("StorageLocations", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Suspense.SuspenseContact", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("ContactedAtLocal")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ContactedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ContactedPerson")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("Method")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Narrative")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset?>("NextFollowUpLocal")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TemporaryReleaseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("TemporaryReleaseId", "ContactedAtUtc");
+
+                    b.ToTable("SuspenseContacts", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryRelease", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ClosedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Destination")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ExpectedFollowUpLocal")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ReceivedByPartyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ReleasedAtLocal")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReleasedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("ReleasedByPartyId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SuspenseFolderContainerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedByPartyId");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("ReleasedByPartyId");
+
+                    b.HasIndex("SuspenseFolderContainerId");
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("EvidenceRoomId", "Status", "ReleasedAtUtc");
+
+                    b.ToTable("TemporaryReleases", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryReleaseEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("EvidenceItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Narrative")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TemporaryReleaseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceItemId");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("TemporaryReleaseId", "OccurredAtUtc");
+
+                    b.ToTable("TemporaryReleaseEvents", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryReleaseItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("EvidenceItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ItemNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReleaseCustodyEventId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReturnCustodyEventId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ReturnedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TemporaryReleaseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceItemId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TemporaryReleaseItems_OneOpenPerItem")
+                        .HasFilter("Status = 1");
+
+                    b.HasIndex("ReleaseCustodyEventId");
+
+                    b.HasIndex("ReturnCustodyEventId");
+
+                    b.HasIndex("TemporaryReleaseId", "EvidenceItemId")
+                        .IsUnique();
+
+                    b.ToTable("TemporaryReleaseItems", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Events.CorrectionEvent", b =>
                 {
                     b.HasBaseType("Emc.Domain.Events.ItemEvent");
@@ -2612,6 +2830,156 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("Emc.Domain.Suspense.SuspenseContact", b =>
+                {
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Suspense.TemporaryRelease", "Release")
+                        .WithMany("Contacts")
+                        .HasForeignKey("TemporaryReleaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Release");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryRelease", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Events.CustodyParty", "ReceivedBy")
+                        .WithMany()
+                        .HasForeignKey("ReceivedByPartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Events.CustodyParty", "ReleasedBy")
+                        .WithMany()
+                        .HasForeignKey("ReleasedByPartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
+                        .WithMany()
+                        .HasForeignKey("SuspenseFolderContainerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Cases.EvidenceVoucher", null)
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.OwnsOne("Emc.Domain.Suspense.PaperReleaseAttestations", "Attestations", b1 =>
+                        {
+                            b1.Property<int>("TemporaryReleaseId")
+                                .HasColumnType("int");
+
+                            b1.Property<bool>("FirstCopyReceivedBySignedAttested")
+                                .HasColumnType("bit")
+                                .HasColumnName("FirstCopyReceivedBySignedAttested");
+
+                            b1.Property<bool>("IdentificationPresentedAttested")
+                                .HasColumnType("bit")
+                                .HasColumnName("IdentificationPresentedAttested");
+
+                            b1.Property<bool>("ObligationsInformedAttested")
+                                .HasColumnType("bit")
+                                .HasColumnName("ObligationsInformedAttested");
+
+                            b1.Property<bool>("Original4137ReceivedBySignedAttested")
+                                .HasColumnType("bit")
+                                .HasColumnName("Original4137ReceivedBySignedAttested");
+
+                            b1.Property<bool>("PhysicalInventoryPerformedAttested")
+                                .HasColumnType("bit")
+                                .HasColumnName("PhysicalInventoryPerformedAttested");
+
+                            b1.HasKey("TemporaryReleaseId");
+
+                            b1.ToTable("TemporaryReleases");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TemporaryReleaseId");
+                        });
+
+                    b.Navigation("Attestations")
+                        .IsRequired();
+
+                    b.Navigation("ReceivedBy");
+
+                    b.Navigation("ReleasedBy");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryReleaseEvent", b =>
+                {
+                    b.HasOne("Emc.Domain.Cases.EvidenceItem", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Suspense.TemporaryRelease", "Release")
+                        .WithMany("Events")
+                        .HasForeignKey("TemporaryReleaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Release");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryReleaseItem", b =>
+                {
+                    b.HasOne("Emc.Domain.Cases.EvidenceItem", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Events.CustodyEvent", "ReleaseCustodyEvent")
+                        .WithMany()
+                        .HasForeignKey("ReleaseCustodyEventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Events.CustodyEvent", "ReturnCustodyEvent")
+                        .WithMany()
+                        .HasForeignKey("ReturnCustodyEventId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Emc.Domain.Suspense.TemporaryRelease", "Release")
+                        .WithMany("Items")
+                        .HasForeignKey("TemporaryReleaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Release");
+
+                    b.Navigation("ReleaseCustodyEvent");
+
+                    b.Navigation("ReturnCustodyEvent");
+                });
+
             modelBuilder.Entity("Emc.Domain.Events.CorrectionEvent", b =>
                 {
                     b.HasOne("Emc.Domain.Events.ItemEvent", "CorrectedEvent")
@@ -2688,6 +3056,15 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Fields");
 
                     b.Navigation("Pages");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Suspense.TemporaryRelease", b =>
+                {
+                    b.Navigation("Contacts");
+
+                    b.Navigation("Events");
+
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

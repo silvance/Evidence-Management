@@ -88,7 +88,9 @@ public class SqlServerReleaseValidationTests
             "TR_ExtractedFields_AppendOnly_Update", "TR_ExtractedFields_AppendOnly_Delete",
             "TR_FieldVerifications_AppendOnly_Update", "TR_FieldVerifications_AppendOnly_Delete",
             "TR_OcrRunPages_AppendOnly_Update", "TR_OcrRunPages_AppendOnly_Delete",
-            "TR_ReconciliationFindings_AppendOnly_Update", "TR_ReconciliationFindings_AppendOnly_Delete"
+            "TR_ReconciliationFindings_AppendOnly_Update", "TR_ReconciliationFindings_AppendOnly_Delete",
+            "TR_TemporaryReleaseEvents_AppendOnly_Update", "TR_TemporaryReleaseEvents_AppendOnly_Delete",
+            "TR_SuspenseContacts_AppendOnly_Update", "TR_SuspenseContacts_AppendOnly_Delete"
         })
         {
             var count = harness.Scalar<int>(
@@ -102,7 +104,7 @@ public class SqlServerReleaseValidationTests
     {
         using var harness = SqlServerHarness.Create();
 
-        foreach (var name in new[] { "UX_CustodianAppointments_OneOpenPerType", "UX_OcrJobs_OneOpenPerDocument", "UX_DocumentRenderJobs_OneOpenPerDocument" })
+        foreach (var name in new[] { "UX_CustodianAppointments_OneOpenPerType", "UX_OcrJobs_OneOpenPerDocument", "UX_DocumentRenderJobs_OneOpenPerDocument", "UX_TemporaryReleaseItems_OneOpenPerItem" })
         {
             var filtered = harness.Scalar<int>(
                 $"SELECT COUNT(*) FROM sys.indexes WHERE name = N'{name}' AND has_filter = 1 AND is_unique = 1");

@@ -132,6 +132,12 @@ public class SliceTestHarness : IDisposable
     public IItemHistoryService History
         => new ItemHistoryService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
 
+    public Filing.IPhysicalDocumentService PhysicalDocuments
+        => new Filing.PhysicalDocumentService(Db, Authorization, CurrentUser, Audit, Clock);
+
+    public Suspense.ITemporaryReleaseService Releases
+        => new Suspense.TemporaryReleaseService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
+
     /// <summary>Signs in as an agent in this harness's evidence room (AR 195-5 2-3b).</summary>
     public void SignInAsAgent()
         => CurrentUser.SignIn(AgentUserId, "SA SMITH, JOHN A.", EvidenceRoomId, EmcRoles.Agent);

@@ -69,6 +69,12 @@ public sealed class CustodyEventConfiguration : IEntityTypeConfiguration<Custody
             .HasForeignKey(e => e.ReleasedByPartyId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Both parties travel with the event on every read: the canonical hash covers their
+        // display names (AUD-008), so a chain verified over events loaded without them would
+        // report tampering that never happened, and the history view would show no holder.
+        builder.Navigation(e => e.ReleasedBy).AutoInclude();
+        builder.Navigation(e => e.ReceivedBy).AutoInclude();
+
         builder.HasOne(e => e.ReceivedBy)
             .WithMany()
             .HasForeignKey(e => e.ReceivedByPartyId)

@@ -659,6 +659,76 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "TemporaryReleases",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    VoucherId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    Category = table.Column<int>(type: "int", nullable: false),
+                    ReleasedByPartyId = table.Column<int>(type: "int", nullable: false),
+                    ReceivedByPartyId = table.Column<int>(type: "int", nullable: false),
+                    Purpose = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
+                    Destination = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    ReleasedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ReleasedAtLocal = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
+                    ExpectedFollowUpLocal = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    PhysicalInventoryPerformedAttested = table.Column<bool>(type: "bit", nullable: false),
+                    Original4137ReceivedBySignedAttested = table.Column<bool>(type: "bit", nullable: false),
+                    FirstCopyReceivedBySignedAttested = table.Column<bool>(type: "bit", nullable: false),
+                    IdentificationPresentedAttested = table.Column<bool>(type: "bit", nullable: false),
+                    ObligationsInformedAttested = table.Column<bool>(type: "bit", nullable: false),
+                    SuspenseFolderContainerId = table.Column<int>(type: "int", nullable: false),
+                    Notes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    ClosedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TemporaryReleases", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleases_CustodyParties_ReceivedByPartyId",
+                        column: x => x.ReceivedByPartyId,
+                        principalTable: "CustodyParties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleases_CustodyParties_ReleasedByPartyId",
+                        column: x => x.ReleasedByPartyId,
+                        principalTable: "CustodyParties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleases_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleases_EvidenceVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "EvidenceVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleases_PhysicalFileContainers_SuspenseFolderContainerId",
+                        column: x => x.SuspenseFolderContainerId,
+                        principalTable: "PhysicalFileContainers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleases_Users_RecordedByUserId",
+                        column: x => x.RecordedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "VoucherFormRevisions",
                 columns: table => new
                 {
@@ -877,6 +947,77 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "SuspenseContacts",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TemporaryReleaseId = table.Column<int>(type: "int", nullable: false),
+                    ContactedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ContactedAtLocal = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
+                    Method = table.Column<int>(type: "int", nullable: false),
+                    ContactedPerson = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    Outcome = table.Column<int>(type: "int", nullable: false),
+                    Narrative = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    NextFollowUpLocal = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SuspenseContacts", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SuspenseContacts_TemporaryReleases_TemporaryReleaseId",
+                        column: x => x.TemporaryReleaseId,
+                        principalTable: "TemporaryReleases",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SuspenseContacts_Users_RecordedByUserId",
+                        column: x => x.RecordedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TemporaryReleaseEvents",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TemporaryReleaseId = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    OccurredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceItemId = table.Column<int>(type: "int", nullable: true),
+                    Narrative = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TemporaryReleaseEvents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseEvents_EvidenceItems_EvidenceItemId",
+                        column: x => x.EvidenceItemId,
+                        principalTable: "EvidenceItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseEvents_TemporaryReleases_TemporaryReleaseId",
+                        column: x => x.TemporaryReleaseId,
+                        principalTable: "TemporaryReleases",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseEvents_Users_RecordedByUserId",
+                        column: x => x.RecordedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "VoucherFormRevisionLines",
                 columns: table => new
                 {
@@ -905,6 +1046,49 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_VoucherFormRevisionLines_VoucherFormRevisions_RevisionId",
                         column: x => x.RevisionId,
                         principalTable: "VoucherFormRevisions",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TemporaryReleaseItems",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TemporaryReleaseId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceItemId = table.Column<int>(type: "int", nullable: false),
+                    ItemNumber = table.Column<int>(type: "int", nullable: false),
+                    ReleaseCustodyEventId = table.Column<int>(type: "int", nullable: false),
+                    ReturnCustodyEventId = table.Column<int>(type: "int", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    ReturnedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TemporaryReleaseItems", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_EvidenceItems_EvidenceItemId",
+                        column: x => x.EvidenceItemId,
+                        principalTable: "EvidenceItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_ItemEvents_ReleaseCustodyEventId",
+                        column: x => x.ReleaseCustodyEventId,
+                        principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_ItemEvents_ReturnCustodyEventId",
+                        column: x => x.ReturnCustodyEventId,
+                        principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_TemporaryReleases_TemporaryReleaseId",
+                        column: x => x.TemporaryReleaseId,
+                        principalTable: "TemporaryReleases",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -1616,10 +1800,88 @@ namespace Emc.Infrastructure.Migrations
                 column: "ParentId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_SuspenseContacts_RecordedByUserId",
+                table: "SuspenseContacts",
+                column: "RecordedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SuspenseContacts_TemporaryReleaseId_ContactedAtUtc",
+                table: "SuspenseContacts",
+                columns: new[] { "TemporaryReleaseId", "ContactedAtUtc" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_TemporaryIdentifierCounters_EvidenceRoomId_Date",
                 table: "TemporaryIdentifierCounters",
                 columns: new[] { "EvidenceRoomId", "Date" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleaseEvents_EvidenceItemId",
+                table: "TemporaryReleaseEvents",
+                column: "EvidenceItemId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleaseEvents_RecordedByUserId",
+                table: "TemporaryReleaseEvents",
+                column: "RecordedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleaseEvents_TemporaryReleaseId_OccurredAtUtc",
+                table: "TemporaryReleaseEvents",
+                columns: new[] { "TemporaryReleaseId", "OccurredAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleaseItems_ReleaseCustodyEventId",
+                table: "TemporaryReleaseItems",
+                column: "ReleaseCustodyEventId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleaseItems_ReturnCustodyEventId",
+                table: "TemporaryReleaseItems",
+                column: "ReturnCustodyEventId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleaseItems_TemporaryReleaseId_EvidenceItemId",
+                table: "TemporaryReleaseItems",
+                columns: new[] { "TemporaryReleaseId", "EvidenceItemId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_TemporaryReleaseItems_OneOpenPerItem",
+                table: "TemporaryReleaseItems",
+                column: "EvidenceItemId",
+                unique: true,
+                filter: "Status = 1");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleases_EvidenceRoomId_Status_ReleasedAtUtc",
+                table: "TemporaryReleases",
+                columns: new[] { "EvidenceRoomId", "Status", "ReleasedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleases_ReceivedByPartyId",
+                table: "TemporaryReleases",
+                column: "ReceivedByPartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleases_RecordedByUserId",
+                table: "TemporaryReleases",
+                column: "RecordedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleases_ReleasedByPartyId",
+                table: "TemporaryReleases",
+                column: "ReleasedByPartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleases_SuspenseFolderContainerId",
+                table: "TemporaryReleases",
+                column: "SuspenseFolderContainerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TemporaryReleases_VoucherId",
+                table: "TemporaryReleases",
+                column: "VoucherId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_ActiveDirectorySid",
@@ -1677,9 +1939,6 @@ namespace Emc.Infrastructure.Migrations
                 name: "FieldVerifications");
 
             migrationBuilder.DropTable(
-                name: "ItemEvents");
-
-            migrationBuilder.DropTable(
                 name: "OcrRunPages");
 
             migrationBuilder.DropTable(
@@ -1701,10 +1960,19 @@ namespace Emc.Infrastructure.Migrations
                 name: "StorageLocations");
 
             migrationBuilder.DropTable(
+                name: "SuspenseContacts");
+
+            migrationBuilder.DropTable(
                 name: "SystemConfigurations");
 
             migrationBuilder.DropTable(
                 name: "TemporaryIdentifierCounters");
+
+            migrationBuilder.DropTable(
+                name: "TemporaryReleaseEvents");
+
+            migrationBuilder.DropTable(
+                name: "TemporaryReleaseItems");
 
             migrationBuilder.DropTable(
                 name: "VoucherFormRevisionLines");
@@ -1714,9 +1982,6 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "ExtractedFields");
-
-            migrationBuilder.DropTable(
-                name: "CustodyParties");
 
             migrationBuilder.DropTable(
                 name: "EvidenceRoomNumberingPolicies");
@@ -1731,13 +1996,22 @@ namespace Emc.Infrastructure.Migrations
                 name: "Roles");
 
             migrationBuilder.DropTable(
-                name: "EvidenceItems");
+                name: "ItemEvents");
+
+            migrationBuilder.DropTable(
+                name: "TemporaryReleases");
 
             migrationBuilder.DropTable(
                 name: "VoucherFormRevisions");
 
             migrationBuilder.DropTable(
                 name: "OcrRuns");
+
+            migrationBuilder.DropTable(
+                name: "EvidenceItems");
+
+            migrationBuilder.DropTable(
+                name: "CustodyParties");
 
             migrationBuilder.DropTable(
                 name: "PhysicalFileContainers");

@@ -386,6 +386,50 @@ public static class AppendOnlyTriggers
         END;
         """;
 
+    public const string CreateTemporaryReleaseEventsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_TemporaryReleaseEvents_AppendOnly_Update
+        ON dbo.TemporaryReleaseEvents
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50031, 'TemporaryReleaseEvents is append-only and cannot be modified.', 1;
+        END;
+        """;
+
+    public const string CreateTemporaryReleaseEventsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_TemporaryReleaseEvents_AppendOnly_Delete
+        ON dbo.TemporaryReleaseEvents
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50032, 'TemporaryReleaseEvents is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
+    public const string CreateSuspenseContactsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_SuspenseContacts_AppendOnly_Update
+        ON dbo.SuspenseContacts
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50033, 'SuspenseContacts is append-only and cannot be modified. A contact is the record that AR 195-5 2-7a was met (SUSP-005).', 1;
+        END;
+        """;
+
+    public const string CreateSuspenseContactsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_SuspenseContacts_AppendOnly_Delete
+        ON dbo.SuspenseContacts
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50034, 'SuspenseContacts is append-only and cannot be deleted.', 1;
+        END;
+        """;
+
     public static IReadOnlyList<string> All =>
     [
         CreateItemEventsUpdateTrigger,
@@ -417,7 +461,11 @@ public static class AppendOnlyTriggers
         CreateOcrRunPagesUpdateTrigger,
         CreateOcrRunPagesDeleteTrigger,
         CreateReconciliationFindingsUpdateTrigger,
-        CreateReconciliationFindingsDeleteTrigger
+        CreateReconciliationFindingsDeleteTrigger,
+        CreateTemporaryReleaseEventsUpdateTrigger,
+        CreateTemporaryReleaseEventsDeleteTrigger,
+        CreateSuspenseContactsUpdateTrigger,
+        CreateSuspenseContactsDeleteTrigger
     ];
 
     public static IReadOnlyList<string> DropAll =>
@@ -451,6 +499,10 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_OcrRunPages_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_ReconciliationFindings_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_ReconciliationFindings_AppendOnly_Delete;"
+        "DROP TRIGGER IF EXISTS TR_ReconciliationFindings_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_TemporaryReleaseEvents_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_TemporaryReleaseEvents_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_SuspenseContacts_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_SuspenseContacts_AppendOnly_Delete;"
     ];
 }

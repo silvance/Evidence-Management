@@ -37,6 +37,9 @@ public interface IEmcDbContext
     DbSet<Emc.Domain.Ocr.OcrJob> OcrJobs { get; }
     DbSet<Emc.Domain.Ocr.OcrRun> OcrRuns { get; }
     DbSet<Emc.Domain.Reconciliation.ReconciliationFinding> ReconciliationFindings { get; }
+    DbSet<Emc.Domain.Suspense.TemporaryRelease> TemporaryReleases { get; }
+    DbSet<Emc.Domain.Suspense.TemporaryReleaseItem> TemporaryReleaseItems { get; }
+    DbSet<Emc.Domain.Suspense.SuspenseContact> SuspenseContacts { get; }
     DbSet<OfficialDocumentNumberAssignment> DocumentNumberAssignments { get; }
     DbSet<EvidenceItem> EvidenceItems { get; }
     DbSet<ItemEvent> ItemEvents { get; }
