@@ -1279,14 +1279,16 @@ namespace Emc.Infrastructure.Migrations
                 column: "RequestedByUserId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_DocumentRenderJobs_SourceDocumentId",
-                table: "DocumentRenderJobs",
-                column: "SourceDocumentId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_DocumentRenderJobs_Status_RequestedAtUtc",
                 table: "DocumentRenderJobs",
                 columns: new[] { "Status", "RequestedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_DocumentRenderJobs_OneOpenPerDocument",
+                table: "DocumentRenderJobs",
+                column: "SourceDocumentId",
+                unique: true,
+                filter: "Status IN (1, 2)");
 
             migrationBuilder.CreateIndex(
                 name: "IX_DocumentRenderPages_RenderRunId_PageNumber",
@@ -1406,14 +1408,16 @@ namespace Emc.Infrastructure.Migrations
                 column: "RequestedByUserId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_OcrJobs_SourceDocumentId",
-                table: "OcrJobs",
-                column: "SourceDocumentId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_OcrJobs_Status_RequestedAtUtc",
                 table: "OcrJobs",
                 columns: new[] { "Status", "RequestedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_OcrJobs_OneOpenPerDocument",
+                table: "OcrJobs",
+                column: "SourceDocumentId",
+                unique: true,
+                filter: "Status IN (1, 2)");
 
             migrationBuilder.CreateIndex(
                 name: "IX_OcrRunPages_OcrRunId_PageNumber",

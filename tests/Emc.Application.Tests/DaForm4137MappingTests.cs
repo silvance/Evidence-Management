@@ -27,7 +27,7 @@ public class DaForm4137MappingTests : IDisposable
 
     private TesseractProcessOcrEngine Engine() => new(Options.Create(new OcrOptions
     {
-        EnginePath = TesseractFactAttribute.EnginePath!, TessdataPath = TesseractFactAttribute.TessdataPath!, WorkRoot = _work
+        EnginePath = TesseractFactAttribute.EnginePath!, TessdataPath = TesseractFactAttribute.TessdataPath!, WorkRoot = _work, RequireApprovedArtifactHashes = false
     }));
 
     /// <summary>Renders every page, optionally distorts the raster, preprocesses, recognizes.</summary>

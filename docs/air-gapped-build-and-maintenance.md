@@ -194,10 +194,20 @@ through **the same bundle**, under `artifacts/<kind>/`, with the same discipline
 3. On import, the verifier checks every artifact's hash, kind, licence and approval, and warns
    when a bundle carries no engine or no model — OCR cannot be installed from such a bundle.
 4. The engine is installed from `artifacts/ocr-engine/`; the models are copied to the folder
-   named by `Ocr:TessdataPath`. `Emc.OcrWorker` reads the engine's version from the installed
-   binary and the models' hashes from disk at start, refuses to start if either is missing, and
-   records engine version, model identifiers and preprocessing version on every OCR run. No
-   component of EMC fetches a model at run time; there is nowhere for it to fetch one from.
+   named by `Ocr:TessdataPath`. The reviewer also records, under the engine entry's
+   `installedFiles`, the SHA-256 of the **installed** `tesseract.exe` (install the engine in
+   staging and hash what the installer put on disk): the bundle carries the installer, the
+   worker verifies the binary. `scripts/deploy/Set-EmcOcrWorkerConfig.ps1` copies that hash and
+   the two model hashes from the manifest into `Ocr:ApprovedArtifactHashes`; at start
+   `Emc.OcrWorker` hashes every installed artifact against that list and refuses to run on a
+   mismatch, a missing entry or an empty list (OCR-017), before executing the binary for its
+   version. Engine version, model identifiers and preprocessing version are recorded on every
+   OCR run. No component of EMC fetches a model at run time; there is nowhere for it to fetch
+   one from.
+5. The worker itself is deployed as a Windows Service by `scripts/deploy/Install-EmcOcrWorker.ps1`
+   (`docs/ocr-worker-deployment.md`). Its only added package, `Microsoft.Extensions.Hosting.WindowsServices`,
+   is a NuGet package pinned in `Emc.OcrWorker.csproj` and covered by its lock file, so it
+   travels in the bundle like every other package.
 
 Rendering (PDFium, SkiaSharp) arrives as NuGet packages and is covered by the lock files; it is
 listed above only because the manifest's `pdf-rasterizer` and `native-runtime` kinds exist for

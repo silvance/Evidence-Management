@@ -17,7 +17,14 @@
       "reviewStatus": "approved",
       "reviewedBy": "staging reviewer (name or role)",
       "reviewedUtc": "2026-01-01T00:00:00Z",
-      "reviewNotes": "Authenticode signature verified; hash matches the publisher's published checksum."
+      "reviewNotes": "Authenticode signature verified; hash matches the publisher's published checksum.",
+      "installedFiles": [
+        {
+          "$comment": "OCR-017. The installer is what the bundle carries; the worker verifies what the installer PUT ON DISK. Install the engine in staging, hash the installed binary, record it here; scripts/deploy/Set-EmcOcrWorkerConfig.ps1 copies it into Ocr:ApprovedArtifactHashes.",
+          "file": "tesseract.exe",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
     },
     {
       "name": "eng.traineddata",

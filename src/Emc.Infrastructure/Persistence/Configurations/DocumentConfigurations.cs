@@ -52,6 +52,12 @@ public sealed class DocumentRenderJobConfiguration : IEntityTypeConfiguration<Do
         builder.HasIndex(j => new { j.Status, j.RequestedAtUtc });
         builder.HasIndex(j => j.SourceDocumentId);
         builder.Ignore(j => j.IsOpen);
+
+        // DOC-014 at the database: at most one open (Queued=1 or Running=2) render job per document.
+        builder.HasIndex(j => j.SourceDocumentId)
+            .HasDatabaseName("UX_DocumentRenderJobs_OneOpenPerDocument")
+            .IsUnique()
+            .HasFilter("Status IN (1, 2)");
     }
 }
 

@@ -168,6 +168,32 @@ public class OcrModelTests
     }
 
     [Fact]
+    public void ALeaseIsRenewedOnlyByItsHolder_AndMustBePositive()
+    {
+        // OCR-011. Renewal pushes the expiry out for the holder alone; a non-holder's renewal is
+        // refused; a zero or negative lease is not a lease.
+        var job = new OcrJob(1, 1, 1, 5, T0);
+        Assert.Throws<DomainRuleViolationException>(() => job.Lease("w1", T0, TimeSpan.Zero));
+        job.Lease("w1", T0, TimeSpan.FromMinutes(10));
+        var stamp = job.ConcurrencyStamp;
+
+        Assert.Throws<DomainRuleViolationException>(() => job.RenewLease("w2", T0.AddMinutes(1), TimeSpan.FromMinutes(10)));
+        Assert.Throws<DomainRuleViolationException>(() => job.RenewLease("w1", T0.AddMinutes(1), TimeSpan.FromSeconds(-1)));
+
+        job.RenewLease("w1", T0.AddMinutes(9), TimeSpan.FromMinutes(10));
+        Assert.Equal(T0.AddMinutes(19), job.LeaseExpiresUtc);
+        Assert.NotEqual(stamp, job.ConcurrencyStamp);
+        Assert.False(job.CanBeLeased(T0.AddMinutes(12)));
+
+        // The same rules on a render job (DOC-014).
+        var render = new Emc.Domain.Documents.DocumentRenderJob(1, 1, 5, T0);
+        render.Lease("w1", T0, TimeSpan.FromMinutes(10));
+        Assert.Throws<DomainRuleViolationException>(() => render.RenewLease("w2", T0.AddMinutes(1), TimeSpan.FromMinutes(10)));
+        render.RenewLease("w1", T0.AddMinutes(9), TimeSpan.FromMinutes(10));
+        Assert.Equal(T0.AddMinutes(19), render.LeaseExpiresUtc);
+    }
+
+    [Fact]
     public void ANonTransientFailureIsFinalOnTheFirstAttempt()
     {
         var job = new OcrJob(1, 1, 1, 5, T0);

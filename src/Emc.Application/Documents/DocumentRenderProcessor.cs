@@ -44,6 +44,17 @@ public sealed class DocumentRenderProcessor : IDocumentRenderProcessor
         _logger = logger;
         var workerId = workerOptions.Value.WorkerId;
         _workerId = string.IsNullOrWhiteSpace(workerId) ? $"{Environment.MachineName}/{Environment.ProcessId}" : workerId.Trim();
+
+        if (_options.RenderLeaseSeconds <= 0 || _options.RenderTimeoutSeconds <= 0)
+        {
+            throw new InvalidOperationException("SourceDocuments:RenderLeaseSeconds and SourceDocuments:RenderTimeoutSeconds must be positive.");
+        }
+
+        if (_options.RenderLeaseSeconds < _options.RenderTimeoutSeconds * 2)
+        {
+            throw new InvalidOperationException(
+                $"SourceDocuments:RenderLeaseSeconds ({_options.RenderLeaseSeconds}) must be at least twice SourceDocuments:RenderTimeoutSeconds ({_options.RenderTimeoutSeconds}): the lease is renewed after each page and must not expire while a page is being rendered.");
+        }
     }
 
     public async Task<bool> ProcessNextAsync(CancellationToken ct = default)
@@ -86,6 +97,13 @@ public sealed class DocumentRenderProcessor : IDocumentRenderProcessor
             await UnwindAsync(written);
             run = FailedRun(job, started, RenderFailureCategory.RendererCrashed);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            await UnwindAsync(written);
+            _logger.LogWarning("Render job {JobId}: lease lost during execution; this attempt is discarded.", job.Id);
+            DetachJob(job);
+            return true;
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             await UnwindAsync(written);
@@ -107,6 +125,14 @@ public sealed class DocumentRenderProcessor : IDocumentRenderProcessor
         {
             await _db.SaveChangesAsync(ct);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another worker holds the lease now; its attempt is the record, not this one.
+            await UnwindAsync(written);
+            _logger.LogWarning("Render job {JobId}: lease lost before settlement; this attempt is discarded.", job.Id);
+            DiscardAttempt(job);
+            return true;
+        }
         catch
         {
             // The run could not be persisted: its page blobs would be orphans. Remove them.
@@ -117,6 +143,26 @@ public sealed class DocumentRenderProcessor : IDocumentRenderProcessor
         _logger.LogInformation("Render job {JobId}: {Outcome} ({Category}); {Pages} page(s) in {Ms} ms; job now {Status}.",
             job.Id, run.Outcome, run.FailureCategory, run.Pages.Count, (int)(run.CompletedAtUtc - run.StartedAtUtc).TotalMilliseconds, job.Status);
         return true;
+    }
+
+    private void DetachJob(DocumentRenderJob job)
+    {
+        foreach (var entry in ((DbContext)_db).ChangeTracker.Entries<DocumentRenderJob>().Where(e => e.Entity.Id == job.Id).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
+
+    /// <summary>Drops the unsaved run graph (every Added entry) and the job from the tracker: nothing of this attempt reaches the database.</summary>
+    private void DiscardAttempt(DocumentRenderJob job)
+    {
+        var tracker = ((DbContext)_db).ChangeTracker;
+        foreach (var entry in tracker.Entries().Where(e => e.State == EntityState.Added).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        DetachJob(job);
     }
 
     private async Task<DocumentRenderJob?> LeaseNextAsync(CancellationToken ct)
@@ -210,6 +256,10 @@ public sealed class DocumentRenderProcessor : IDocumentRenderProcessor
             var blob = await _store.WriteAsync("pages", png, ct);
             written.Add(blob.StorageKey);
             rendered.Add((page, blob));
+
+            // Still rendering: renew the lease before the next page (DOC-014).
+            job.RenewLease(_workerId, _clock.UtcNow, TimeSpan.FromSeconds(_options.RenderLeaseSeconds));
+            await _db.SaveChangesAsync(ct);
         }
 
         var run = new DocumentRenderRun(job.Id, job.SourceDocumentId, _workerId, _rasterizer.RendererVersion, started, _clock.UtcNow,

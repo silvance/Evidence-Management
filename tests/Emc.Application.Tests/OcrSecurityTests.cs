@@ -77,7 +77,7 @@ public class OcrSecurityTests : IDisposable
     public async Task TheWorkFolderIsCleanedEvenWhenTheEngineIsGivenGarbage()
     {
         var work = Path.Combine(_root, "work");
-        var engine = new TesseractProcessOcrEngine(Options.Create(new OcrOptions { EnginePath = TesseractFactAttribute.EnginePath!, TessdataPath = TesseractFactAttribute.TessdataPath!, WorkRoot = work }));
+        var engine = new TesseractProcessOcrEngine(Options.Create(new OcrOptions { EnginePath = TesseractFactAttribute.EnginePath!, TessdataPath = TesseractFactAttribute.TessdataPath!, WorkRoot = work, RequireApprovedArtifactHashes = false }));
 
         // Not an image at all. The engine fails; the category is what comes back; the folder is gone.
         var ex = await Assert.ThrowsAsync<OcrEngineException>(() => engine.RecognizeAsync([1, 2, 3, 4, 5]));

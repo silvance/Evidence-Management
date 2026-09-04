@@ -23,8 +23,11 @@ namespace Emc.Infrastructure.Ocr;
 ///     engine is asked for; nothing the engine prints is logged or thrown;
 ///   - the engine's own network use: none. Tesseract has no network code.
 ///
-/// At construction the engine binary is executed with --version and each model file is hashed,
-/// so a missing engine or model is an explicit start-up failure (Phase 12), not a late one.
+/// At construction each installed artifact - the engine binary and every model file - is hashed
+/// and compared with the APPROVED hash from configuration (OCR-017): a mismatch or a missing
+/// entry is an explicit start-up failure with its own category, before the binary is ever
+/// executed. Then the binary is executed with --version, under a timeout that kills it, so a
+/// missing or hung engine is a start-up failure (Phase 12), not a queue that never drains.
 /// </summary>
 public sealed class TesseractProcessOcrEngine : IOcrEngine
 {
@@ -54,6 +57,19 @@ public sealed class TesseractProcessOcrEngine : IOcrEngine
         _workRoot = Path.GetFullPath(_options.WorkRoot);
         Directory.CreateDirectory(_workRoot);
 
+        var approved = _options.ApprovedArtifactHashes ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var verifying = approved.Count > 0;
+        if (_options.RequireApprovedArtifactHashes && !verifying)
+        {
+            // An engine nobody approved is not an engine this worker runs.
+            throw new OcrEngineException(OcrFailureCategory.ArtifactNotApproved);
+        }
+
+        if (verifying)
+        {
+            RequireApproved(approved, _options.EnginePath);
+        }
+
         var models = new List<OcrModelInfo>();
         foreach (var language in _options.Languages.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Append("osd").Distinct(StringComparer.Ordinal))
         {
@@ -63,12 +79,40 @@ public sealed class TesseractProcessOcrEngine : IOcrEngine
                 throw new OcrEngineException(OcrFailureCategory.ModelMissing);
             }
 
-            using var stream = File.OpenRead(path);
-            models.Add(new OcrModelInfo(language, Convert.ToHexStringLower(SHA256.HashData(stream))));
+            var hash = verifying ? RequireApproved(approved, path) : HashFile(path);
+            models.Add(new OcrModelInfo(language, hash));
         }
 
         Models = models;
+        ArtifactsVerifiedAgainstApprovedHashes = verifying;
         EngineVersion = ReadVersion();
+    }
+
+    /// <summary>True when every installed artifact was checked against the approved list at start (OCR-017).</summary>
+    public bool ArtifactsVerifiedAgainstApprovedHashes { get; }
+
+    private static string HashFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexStringLower(SHA256.HashData(stream));
+    }
+
+    /// <summary>The file's hash, if and only if it is the approved one for that file name.</summary>
+    private static string RequireApproved(IReadOnlyDictionary<string, string> approved, string path)
+    {
+        var name = Path.GetFileName(path);
+        if (!approved.TryGetValue(name, out var expected) || string.IsNullOrWhiteSpace(expected))
+        {
+            throw new OcrEngineException(OcrFailureCategory.ArtifactNotApproved);
+        }
+
+        var actual = HashFile(path);
+        if (!string.Equals(actual, expected.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new OcrEngineException(OcrFailureCategory.ArtifactNotApproved);
+        }
+
+        return actual;
     }
 
     public string EngineName => "tesseract";
@@ -207,6 +251,9 @@ public sealed class TesseractProcessOcrEngine : IOcrEngine
         static int Int(string s) => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;
     }
 
+    /// <summary>Time allowed for the binary to print its version. A binary that hangs here is killed and reported unavailable, never waited on.</summary>
+    internal static readonly TimeSpan VersionProbeTimeout = TimeSpan.FromSeconds(10);
+
     private string ReadVersion()
     {
         try
@@ -215,8 +262,24 @@ public sealed class TesseractProcessOcrEngine : IOcrEngine
             process.StartInfo = StartInfo(_workRoot);
             process.StartInfo.ArgumentList.Add("--version");
             process.Start();
-            var text = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-            process.WaitForExit(10_000);
+
+            // Output is drained asynchronously so a chatty or silent binary cannot deadlock the
+            // probe, and the wait is bounded: on expiry the process TREE is killed.
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit((int)VersionProbeTimeout.TotalMilliseconds))
+            {
+                TryKill(process);
+                throw new OcrEngineException(OcrFailureCategory.EngineUnavailable);
+            }
+
+            process.WaitForExit();
+            if (!Task.WaitAll([stdout, stderr], TimeSpan.FromSeconds(2)))
+            {
+                throw new OcrEngineException(OcrFailureCategory.EngineUnavailable);
+            }
+
+            var text = stdout.Result + stderr.Result;
             var first = text.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("tesseract", StringComparison.OrdinalIgnoreCase));
             if (process.ExitCode != 0 || first is null)
             {

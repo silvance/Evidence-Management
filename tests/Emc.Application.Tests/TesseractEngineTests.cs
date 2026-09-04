@@ -29,7 +29,8 @@ public class TesseractEngineTests : IDisposable
         EnginePath = TesseractFactAttribute.EnginePath!,
         TessdataPath = tessdata ?? TesseractFactAttribute.TessdataPath!,
         WorkRoot = _work,
-        PageTimeoutSeconds = pageTimeoutSeconds
+        PageTimeoutSeconds = pageTimeoutSeconds,
+        RequireApprovedArtifactHashes = false
     };
 
     private static byte[] RenderedPage(string text, int dpi = 150)
@@ -52,7 +53,7 @@ public class TesseractEngineTests : IDisposable
         Assert.Equal(OcrFailureCategory.ModelMissing, missing.Category);
 
         var noEngine = Assert.Throws<OcrEngineException>(() => new TesseractProcessOcrEngine(Microsoft.Extensions.Options.Options.Create(
-            new OcrOptions { EnginePath = Path.Combine(_work, "absent.exe"), TessdataPath = TesseractFactAttribute.TessdataPath!, WorkRoot = _work })));
+            new OcrOptions { EnginePath = Path.Combine(_work, "absent.exe"), TessdataPath = TesseractFactAttribute.TessdataPath!, WorkRoot = _work, RequireApprovedArtifactHashes = false })));
         Assert.Equal(OcrFailureCategory.EngineUnavailable, noEngine.Category);
     }
 

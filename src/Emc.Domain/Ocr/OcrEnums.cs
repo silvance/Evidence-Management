@@ -31,7 +31,10 @@ public enum OcrFailureCategory
     TemplateNotIdentified = 6,
     ResourceLimitExceeded = 7,
     DocumentUnavailable = 8,
-    Unexpected = 9
+    Unexpected = 9,
+
+    /// <summary>An installed engine binary or model file does not hash to the approved value (OCR-017). A start-up failure; never a per-job one.</summary>
+    ArtifactNotApproved = 10
 }
 
 /// <summary>

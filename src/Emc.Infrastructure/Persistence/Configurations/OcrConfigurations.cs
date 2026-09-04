@@ -24,6 +24,13 @@ public sealed class OcrJobConfiguration : IEntityTypeConfiguration<OcrJob>
         builder.HasOne<User>().WithMany().HasForeignKey(j => j.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(j => new { j.Status, j.RequestedAtUtc });
         builder.HasIndex(j => j.SourceDocumentId);
+
+        // OCR-010 at the database: at most ONE open (Queued=1 or Running=2) job per document,
+        // whatever two web requests race to do. The application checks first; this decides.
+        builder.HasIndex(j => j.SourceDocumentId)
+            .HasDatabaseName("UX_OcrJobs_OneOpenPerDocument")
+            .IsUnique()
+            .HasFilter("Status IN (1, 2)");
     }
 }
 

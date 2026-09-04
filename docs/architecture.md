@@ -529,8 +529,14 @@ so a later re-render never changes what an already-requested OCR job sees.
 
 ### 9.1 The OCR worker
 
-**[DESIGN] / [CONTROL].** `Emc.OcrWorker` is a console host (a Windows Service in deployment)
-that runs `OcrJobProcessor` in a loop. It has no HTTP surface and no listener of any kind.
+**[DESIGN] / [CONTROL].** `Emc.OcrWorker` is a generic host that runs as a **Windows Service**
+under the Service Control Manager (`AddWindowsService`; service name `EmcOcrWorker`) and as a
+console when started by hand. It runs the render processor and `OcrJobProcessor` in a loop.
+It has no HTTP surface and no listener of any kind. Installation is non-interactive
+(`scripts/deploy/Install-EmcOcrWorker.ps1`; `docs/ocr-worker-deployment.md`): a dedicated
+identity, least-privilege folder rights, automatic restart, event-log logging, outbound network
+blocked by firewall rule, and prerequisite checks (paths, approved hashes, Windows-authenticated
+connection string, lease arithmetic) that must pass before the service is registered.
 
 - **Queue = a table.** `DocumentRenderJobs` and `OcrJobs` rows are leased by writing the worker's
   id and a lease expiry under the row's concurrency stamp; two workers racing for one job produce
@@ -542,10 +548,26 @@ that runs `OcrJobProcessor` in a loop. It has no HTTP surface and no listener of
   and deleted in `finally`, with a minimal explicit environment (`TESSDATA_PREFIX`,
   `OMP_THREAD_LIMIT=1`), a hard timeout that kills the process tree, and stdout/stderr consumed
   and never logged. `docs/ocr-engine-evaluation.md` says why this engine and this shape.
-- **Start-up is the check.** Constructing the engine executes the binary for its version and
-  hashes every model file; a missing binary or model fails start-up with an explicit category
-  (Phase 12). Every `OcrRun` records engine name, version, model hashes and the preprocessing
-  version, so an engine or model change is a visible difference between runs.
+- **Start-up is the check (OCR-017).** Constructing the engine hashes the binary and every
+  model file and compares each with the SHA-256 in `Ocr:ApprovedArtifactHashes` - the values the
+  reviewer recorded in the artifact manifest the bundle was exported with - BEFORE executing
+  anything; a mismatch, a missing entry or an empty list is a start-up failure with the
+  `ArtifactNotApproved` category. Only then is the binary executed for its version, under a
+  bounded probe that kills a hung binary. Every `OcrRun` records engine name, version, model
+  hashes and the preprocessing version, so an engine or model change is a visible difference
+  between runs.
+- **Leases are renewed, and settled only by their holder (OCR-011).** After every page the
+  worker renews the job's lease under the concurrency stamp; the lease must be at least twice
+  the page timeout or the worker refuses to start. A worker that dies stops renewing and the
+  lease expires. A worker whose lease was taken over while it worked sees a concurrency
+  conflict at renewal or settlement, discards its attempt and removes the blobs it wrote.
+- **Blobs never dangle (OCR-018).** Page images are written before the run row; if the run is
+  not persisted the images are removed. A crash between the two leaves an orphan the sweep
+  reconciles against the database (`OrphanBlobSweeper`, on a schedule): committed and
+  referenced - never touched; unreferenced and younger than the grace window - staged, left;
+  unreferenced and older - orphan, removed; interrupted `.partial` - removed when old.
+- **One open job per document** is enforced at the database by a filtered unique index on
+  `OcrJobs` and on `DocumentRenderJobs`, not only by the application's check.
 - **Preprocessing is EMC code** (`SkiaImagePreprocessor`): orientation from the engine's OSD
   when it is confident, otherwise a vote between 0°/180° and, if needed, 90°/270° by summed word
   confidence; small-angle deskew by projection profile; scale to 300 DPI; grayscale; a percentile

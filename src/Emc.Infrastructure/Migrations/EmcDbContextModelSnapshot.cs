@@ -603,7 +603,10 @@ namespace Emc.Infrastructure.Migrations
 
                     b.HasIndex("RequestedByUserId");
 
-                    b.HasIndex("SourceDocumentId");
+                    b.HasIndex("SourceDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DocumentRenderJobs_OneOpenPerDocument")
+                        .HasFilter("Status IN (1, 2)");
 
                     b.HasIndex("Status", "RequestedAtUtc");
 
@@ -1542,7 +1545,10 @@ namespace Emc.Infrastructure.Migrations
 
                     b.HasIndex("RequestedByUserId");
 
-                    b.HasIndex("SourceDocumentId");
+                    b.HasIndex("SourceDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OcrJobs_OneOpenPerDocument")
+                        .HasFilter("Status IN (1, 2)");
 
                     b.HasIndex("Status", "RequestedAtUtc");
 

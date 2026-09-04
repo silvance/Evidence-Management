@@ -85,6 +85,7 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<Emc.Application.Documents.IPdfRasterizer, Emc.Infrastructure.Documents.IsolatedPdfRasterizer>();
         services.AddScoped<Emc.Application.Documents.IDocumentRenderProcessor, Emc.Application.Documents.DocumentRenderProcessor>();
+        services.AddScoped<Emc.Application.Documents.IOrphanBlobSweeper, Emc.Application.Documents.OrphanBlobSweeper>();
         services.AddSingleton<Emc.Application.Ocr.IOcrEngine, Emc.Infrastructure.Ocr.TesseractProcessOcrEngine>();
         services.AddSingleton<Emc.Application.Ocr.IImagePreprocessor>(sp =>
             new Emc.Infrastructure.Ocr.SkiaImagePreprocessor(

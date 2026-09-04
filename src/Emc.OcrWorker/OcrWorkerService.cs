@@ -29,12 +29,23 @@ public sealed class OcrWorkerService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("OCR worker started; polling every {Seconds}s.", _options.PollSeconds);
+        var nextSweep = DateTimeOffset.UtcNow;
         while (!stoppingToken.IsCancellationRequested)
         {
             bool processed;
             try
             {
                 using var scope = _scopes.CreateScope();
+
+                // Blob-store reconciliation (OCR-018): at start and every OrphanSweepHours. Never
+                // while a job is mid-flight in this process - it runs between jobs.
+                if (_options.OrphanSweepHours > 0 && DateTimeOffset.UtcNow >= nextSweep)
+                {
+                    nextSweep = DateTimeOffset.UtcNow.AddHours(_options.OrphanSweepHours);
+                    await scope.ServiceProvider.GetRequiredService<Emc.Application.Documents.IOrphanBlobSweeper>()
+                        .SweepAsync(TimeSpan.FromHours(Math.Max(1, _options.OrphanGraceHours)), stoppingToken);
+                }
+
                 processed = await scope.ServiceProvider.GetRequiredService<Emc.Application.Documents.IDocumentRenderProcessor>().ProcessNextAsync(stoppingToken)
                     || await scope.ServiceProvider.GetRequiredService<IOcrJobProcessor>().ProcessNextAsync(stoppingToken);
             }

@@ -102,9 +102,12 @@ public class SqlServerReleaseValidationTests
     {
         using var harness = SqlServerHarness.Create();
 
-        var filtered = harness.Scalar<int>(
-            "SELECT COUNT(*) FROM sys.indexes WHERE name = N'UX_CustodianAppointments_OneOpenPerType' AND has_filter = 1 AND is_unique = 1");
-        Assert.Equal(1, filtered);
+        foreach (var name in new[] { "UX_CustodianAppointments_OneOpenPerType", "UX_OcrJobs_OneOpenPerDocument", "UX_DocumentRenderJobs_OneOpenPerDocument" })
+        {
+            var filtered = harness.Scalar<int>(
+                $"SELECT COUNT(*) FROM sys.indexes WHERE name = N'{name}' AND has_filter = 1 AND is_unique = 1");
+            Assert.True(filtered == 1, $"Filtered unique index {name} is missing.");
+        }
 
         // The canonical document-number index is UNFILTERED and unique (VCH-011): once recorded,
         // a (room, year, sequence) is consumed for good, superseded or not.
@@ -117,7 +120,7 @@ public class SqlServerReleaseValidationTests
 
         // Generated storage keys are unique per table (DOC-006); a run's pages and a document's
         // pages are unique per page number.
-        foreach (var (table, columns) in new[] { ("SourceDocuments", 1), ("SourceDocumentPages", 1), ("OcrRunPages", 1) })
+        foreach (var (table, columns) in new[] { ("SourceDocuments", 1), ("DocumentRenderPages", 1), ("OcrRunPages", 1) })
         {
             var keyIndex = harness.Scalar<int>(
                 $@"SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id

@@ -30,6 +30,14 @@ public static class Program
         // account; see docs/architecture.md §9.1 for the ACLs it needs and nothing more.
         var builder = Host.CreateApplicationBuilder(args);
 
+        // Windows Service host (P13). Under the Service Control Manager the process answers
+        // start/stop control requests, logs to the Application event log through the host's
+        // logging (identifiers and categories only, never content), and stops cleanly: the loop
+        // observes the stopping token, a leased job's lease is left to expire, and a render
+        // child in flight is killed by its parent's timeout. Run from a console, the same
+        // process is a console application - nothing else changes.
+        builder.Services.AddWindowsService(o => o.ServiceName = "EmcOcrWorker");
+
         var connectionString = builder.Configuration.GetConnectionString("Emc")
             ?? throw new InvalidOperationException("Connection string 'Emc' is not configured. See appsettings.json.");
 
@@ -53,12 +61,31 @@ public static class Program
             throw new InvalidOperationException("SourceDocuments:RenderHelperPath does not name an existing file.");
         }
 
-        // Constructing the engine verifies the binary and every model file (Phase 12). Do it before
-        // the host reports "started", so a missing model is a start-up failure, not a queue that
-        // silently never drains.
-        var engine = host.Services.GetRequiredService<Emc.Application.Ocr.IOcrEngine>();
+        // Constructing the engine verifies every installed artifact against the approved hashes
+        // (OCR-017) and executes the binary for its version (Phase 12). Do it before the host
+        // reports "started", so an unapproved binary or a missing model is a start-up failure,
+        // not a queue that silently never drains. The category is logged; the exception is not.
+        var ocrOptions = host.Services.GetRequiredService<IOptions<Emc.Application.Ocr.OcrOptions>>().Value;
+        if (ocrOptions.RequireApprovedArtifactHashes && (ocrOptions.ApprovedArtifactHashes is null || ocrOptions.ApprovedArtifactHashes.Count == 0))
+        {
+            throw new InvalidOperationException("Ocr:ApprovedArtifactHashes is empty. Copy the approved SHA-256 of tesseract.exe, eng.traineddata and osd.traineddata from the reviewed artifact manifest; the worker does not run an engine nobody approved (OCR-017).");
+        }
+
+        Emc.Application.Ocr.IOcrEngine engine;
+        try
+        {
+            engine = host.Services.GetRequiredService<Emc.Application.Ocr.IOcrEngine>();
+        }
+        catch (Emc.Application.Ocr.OcrEngineException ex)
+        {
+            host.Services.GetRequiredService<ILogger<OcrWorkerService>>().LogCritical("OCR engine start-up check failed: {Category}. The worker will not start.", ex.Category);
+            return 2;
+        }
+
         host.Services.GetRequiredService<ILogger<OcrWorkerService>>().LogInformation(
-            "OCR engine {Engine} {Version}; models {Models}; render helper configured.", engine.EngineName, engine.EngineVersion, engine.ModelIdentifiers);
+            "OCR engine {Engine} {Version}; models {Models}; artifacts verified against approved hashes: {Verified}; render helper configured.",
+            engine.EngineName, engine.EngineVersion, engine.ModelIdentifiers,
+            engine is Emc.Infrastructure.Ocr.TesseractProcessOcrEngine t && t.ArtifactsVerifiedAgainstApprovedHashes);
 
         await host.RunAsync();
         return 0;

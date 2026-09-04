@@ -62,6 +62,11 @@ public sealed class OcrJob : Entity, IConcurrencyStamped
     public void Lease(string workerId, DateTimeOffset now, TimeSpan leaseDuration, int maxAttempts = DefaultMaxAttempts)
     {
         workerId = Guard.NotBlank(workerId, "OCR-011", "Worker id");
+        if (leaseDuration <= TimeSpan.Zero)
+        {
+            throw new DomainRuleViolationException("OCR-011", "A lease must last a positive duration.");
+        }
+
         if (!CanBeLeased(now))
         {
             throw new DomainRuleViolationException("OCR-011", $"Job {Id} is {Status} and cannot be leased.");
@@ -82,6 +87,23 @@ public sealed class OcrJob : Entity, IConcurrencyStamped
         Status = OcrJobStatus.Running;
         Attempts++;
         LeasedByWorkerId = workerId;
+        LeaseExpiresUtc = AccountabilityTime.Normalize(now.Add(leaseDuration));
+        ConcurrencyStamp = Guid.NewGuid();
+    }
+
+    /// <summary>
+    /// The lease-holder is still working: push the expiry out. A job whose lease outlives its
+    /// longest page is never taken over while it is genuinely running; a worker that dies
+    /// stops renewing and the lease expires (OCR-011). Only the holder may renew.
+    /// </summary>
+    public void RenewLease(string workerId, DateTimeOffset now, TimeSpan leaseDuration)
+    {
+        RequireLeaseHeldBy(workerId);
+        if (leaseDuration <= TimeSpan.Zero)
+        {
+            throw new DomainRuleViolationException("OCR-011", "A lease must last a positive duration.");
+        }
+
         LeaseExpiresUtc = AccountabilityTime.Normalize(now.Add(leaseDuration));
         ConcurrencyStamp = Guid.NewGuid();
     }

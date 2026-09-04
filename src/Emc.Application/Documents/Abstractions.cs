@@ -27,7 +27,25 @@ public interface ISourceDocumentStore
 
     /// <summary>Removes a blob that no record references. Returns false when nothing was there.</summary>
     Task<bool> TryDeleteAsync(string storageKey, CancellationToken ct = default);
+
+    /// <summary>Every blob the store holds, with its state (committed, or a partial left by an interrupted write) and last write time. For the orphan sweep only.</summary>
+    Task<IReadOnlyList<StoredBlobEntry>> EnumerateAsync(CancellationToken ct = default);
+
+    /// <summary>Removes a partial file left by an interrupted write. Returns false when nothing was there.</summary>
+    Task<bool> TryDeletePartialAsync(string storageKey, CancellationToken ct = default);
 }
+
+public enum StoredBlobState
+{
+    /// <summary>Wholly present under its key. Referenced or not is the database's knowledge, not the store's.</summary>
+    Committed = 1,
+
+    /// <summary>A ".partial" left by a write that did not complete. Never referenced by any record.</summary>
+    Partial = 2
+}
+
+/// <summary>One entry of the store, for the orphan sweep: the key, its state, and when it was last written.</summary>
+public sealed record StoredBlobEntry(string StorageKey, StoredBlobState State, DateTimeOffset LastWriteUtc, long Length);
 
 public sealed record PdfPageDimensions(int PageNumber, double WidthPoints, double HeightPoints);
 

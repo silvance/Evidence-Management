@@ -128,4 +128,25 @@ public sealed class OcrOptions
 
     /// <summary>Identifies this worker in job leases and run records. Defaults to machine name and process id.</summary>
     public string? WorkerId { get; set; }
+
+    /// <summary>
+    /// OCR-017. The SHA-256 the organization approved for each installed artifact, by file name
+    /// (e.g. "tesseract.exe", "eng.traineddata", "osd.traineddata"), copied from the reviewed
+    /// artifact manifest the bundle was exported with. The engine verifies every installed file
+    /// against this list at start-up and refuses to start on a mismatch or a missing entry.
+    /// </summary>
+    public Dictionary<string, string> ApprovedArtifactHashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// When true (the deployed default) the worker refuses to start with an EMPTY approved list:
+    /// an unverified engine is a start-up failure, not a silent acceptance. Tests and a developer
+    /// diagnosis run set it false explicitly.
+    /// </summary>
+    public bool RequireApprovedArtifactHashes { get; set; } = true;
+
+    /// <summary>How often the worker reconciles the blob store against the database (0 disables). Orphans younger than <see cref="OrphanGraceHours"/> are left alone.</summary>
+    public int OrphanSweepHours { get; set; } = 24;
+
+    /// <summary>A blob no record references is deleted only once it is older than this: a write in flight is "staged", not orphaned.</summary>
+    public int OrphanGraceHours { get; set; } = 24;
 }

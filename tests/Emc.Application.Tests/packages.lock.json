@@ -217,6 +217,14 @@
         "resolved": "10.0.11",
         "contentHash": "PJPtFYsZ+r+uz9qqXWUTEyKeJ1EiBGIJtqavkg9ZXijjGSFAk4Fgi5sqIxj+uAyLZwEKgexDUQXhWhvU6l3+og=="
       },
+      "Microsoft.Extensions.Hosting.WindowsServices": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "OTlOHRxmt4IyYR5tBejF5ffdVMbo9n5NbPJRzCe0bnJmzTQt0kHNiDiEU96t4KkB3wE3vZqPETtXJVLujrRJnA==",
+        "dependencies": {
+          "System.ServiceProcess.ServiceController": "10.0.11"
+        }
+      },
       "Microsoft.Identity.Client": {
         "type": "Transitive",
         "resolved": "4.84.2",
@@ -448,6 +456,11 @@
         "resolved": "9.0.11",
         "contentHash": "s8yUYuYYu+PAwvBdhLG1KyrGrk9gkYeuPxfAsXsTqqWyepwSyEw8hAaflW4nO98NG52YpYI1am2+9o+79h2RtQ=="
       },
+      "System.ServiceProcess.ServiceController": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "khROyIQ3GAZy5MbCabfmlbvxf9nuvdveFP2XbRCteZ9Lq8OFEvImmrjV6acl1LegRu/9T6VMxi9Lr+KZu29VHg=="
+      },
       "xunit.abstractions": {
         "type": "Transitive",
         "resolved": "2.0.3",
@@ -516,7 +529,8 @@
       "emc.ocrworker": {
         "type": "Project",
         "dependencies": {
-          "Emc.Infrastructure": "[1.0.0, )"
+          "Emc.Infrastructure": "[1.0.0, )",
+          "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.11, )"
         }
       },
       "emc.web": {

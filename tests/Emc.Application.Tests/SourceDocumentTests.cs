@@ -527,5 +527,11 @@ public class SourceDocumentTests : IDisposable
 
         public Task<bool> TryDeleteAsync(string storageKey, CancellationToken ct = default)
             => Inner.TryDeleteAsync(storageKey, ct);
+
+        public Task<IReadOnlyList<StoredBlobEntry>> EnumerateAsync(CancellationToken ct = default)
+            => Inner.EnumerateAsync(ct);
+
+        public Task<bool> TryDeletePartialAsync(string storageKey, CancellationToken ct = default)
+            => Inner.TryDeletePartialAsync(storageKey, ct);
     }
 }

@@ -88,6 +88,11 @@ public sealed class DocumentRenderJob : Entity, IConcurrencyStamped
     public void Lease(string workerId, DateTimeOffset now, TimeSpan leaseDuration, int maxAttempts = DefaultMaxAttempts)
     {
         workerId = Guard.NotBlank(workerId, "DOC-014", "Worker id");
+        if (leaseDuration <= TimeSpan.Zero)
+        {
+            throw new DomainRuleViolationException("DOC-014", "A lease must last a positive duration.");
+        }
+
         if (!CanBeLeased(now))
         {
             throw new DomainRuleViolationException("DOC-014", $"Render job {Id} is {Status} and cannot be leased.");
@@ -107,6 +112,19 @@ public sealed class DocumentRenderJob : Entity, IConcurrencyStamped
         Status = RenderJobStatus.Running;
         Attempts++;
         LeasedByWorkerId = workerId;
+        LeaseExpiresUtc = AccountabilityTime.Normalize(now.Add(leaseDuration));
+        ConcurrencyStamp = Guid.NewGuid();
+    }
+
+    /// <summary>The holder is still rendering: push the expiry out. Only the holder may renew.</summary>
+    public void RenewLease(string workerId, DateTimeOffset now, TimeSpan leaseDuration)
+    {
+        RequireLeaseHeldBy(workerId);
+        if (leaseDuration <= TimeSpan.Zero)
+        {
+            throw new DomainRuleViolationException("DOC-014", "A lease must last a positive duration.");
+        }
+
         LeaseExpiresUtc = AccountabilityTime.Normalize(now.Add(leaseDuration));
         ConcurrencyStamp = Guid.NewGuid();
     }

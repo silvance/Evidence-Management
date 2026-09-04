@@ -62,6 +62,19 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
         {
             throw new InvalidOperationException("At least one form template mapper is required.");
         }
+
+        // OCR-011. The lease is renewed after every page, so it must outlast one page's work
+        // with margin; otherwise a running job could be taken over and executed twice.
+        if (_options.LeaseSeconds <= 0 || _options.PageTimeoutSeconds <= 0 || _options.JobTimeoutSeconds <= 0)
+        {
+            throw new InvalidOperationException("Ocr:LeaseSeconds, Ocr:PageTimeoutSeconds and Ocr:JobTimeoutSeconds must all be positive.");
+        }
+
+        if (_options.LeaseSeconds < _options.PageTimeoutSeconds * 2)
+        {
+            throw new InvalidOperationException(
+                $"Ocr:LeaseSeconds ({_options.LeaseSeconds}) must be at least twice Ocr:PageTimeoutSeconds ({_options.PageTimeoutSeconds}): the lease is renewed after each page and must not expire while a page is being read.");
+        }
     }
 
     public async Task<bool> ProcessNextAsync(CancellationToken ct = default)
@@ -75,34 +88,54 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
         var started = _clock.UtcNow;
         _logger.LogInformation("OCR job {JobId} leased by {WorkerId} for document {DocumentId} (attempt {Attempt}).", job.Id, _workerId, job.SourceDocumentId, job.Attempts);
 
+        // Blob discipline (OCR-018): the page images a run references are written to the store
+        // BEFORE the run row exists. Every key written is remembered; if the run is not
+        // persisted - failure, shutdown, a lost lease - the blobs are removed. A blob is
+        // therefore either referenced by a committed run or gone; a crash between the two leaves
+        // an orphan the sweep reconciles against the database, never a dangling reference.
+        var written = new List<string>();
         OcrRun run;
         try
         {
             using var jobTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             jobTimeout.CancelAfter(TimeSpan.FromSeconds(_options.JobTimeoutSeconds));
-            run = await ExecuteAsync(job, started, jobTimeout.Token);
+            run = await ExecuteAsync(job, started, written, jobTimeout.Token);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Shutdown: leave the lease to expire; another worker (or this one, restarted) retries.
+            await UnwindAsync(written);
             _logger.LogWarning("OCR job {JobId}: worker stopping; lease left to expire.", job.Id);
             throw;
         }
         catch (OperationCanceledException)
         {
+            await UnwindAsync(written);
             run = FailedRun(job, started, OcrFailureCategory.Timeout);
         }
         catch (OcrEngineException ex)
         {
+            await UnwindAsync(written);
             run = FailedRun(job, started, ex.Category);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The lease was taken over while this worker was renewing it: the other holder settles
+            // the job; this attempt's output is discarded.
+            await UnwindAsync(written);
+            _logger.LogWarning("OCR job {JobId}: lease lost during execution; this attempt is discarded.", job.Id);
+            DetachJob(job);
+            return true;
         }
         catch (DomainRuleViolationException)
         {
+            await UnwindAsync(written);
             run = FailedRun(job, started, OcrFailureCategory.Unexpected);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // The type is logged; the message is not (it may quote engine output).
+            await UnwindAsync(written);
             _logger.LogError("OCR job {JobId}: unexpected {ExceptionType}.", job.Id, ex.GetType().Name);
             run = FailedRun(job, started, OcrFailureCategory.Unexpected);
         }
@@ -117,7 +150,24 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
             job.Fail(_workerId, _clock.UtcNow, run.FailureCategory, _options.MaxAttempts);
         }
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The settlement of a job is the lease-holder's alone (OCR-011): another worker holds
+            // the lease now, so this run is not the record and its blobs are removed.
+            await UnwindAsync(written);
+            _logger.LogWarning("OCR job {JobId}: lease lost before settlement; this attempt is discarded.", job.Id);
+            DiscardAttempt(job);
+            return true;
+        }
+        catch
+        {
+            await UnwindAsync(written);
+            throw;
+        }
         _logger.LogInformation("OCR job {JobId}: {Outcome} ({Category}); {Fields} field(s) over {Pages} page(s) in {Ms} ms; job now {Status}.",
             job.Id, run.Outcome, run.FailureCategory, run.Fields.Count, run.PagesProcessed, (int)(run.CompletedAtUtc - run.StartedAtUtc).TotalMilliseconds, job.Status);
         return true;
@@ -158,7 +208,37 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
         return null;
     }
 
-    private async Task<OcrRun> ExecuteAsync(OcrJob job, DateTimeOffset started, CancellationToken ct)
+    private void DetachJob(OcrJob job)
+    {
+        foreach (var entry in ((DbContext)_db).ChangeTracker.Entries<OcrJob>().Where(e => e.Entity.Id == job.Id).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
+
+    /// <summary>Drops the unsaved run graph (every Added entry) and the job from the tracker: nothing of this attempt reaches the database.</summary>
+    private void DiscardAttempt(OcrJob job)
+    {
+        var tracker = ((DbContext)_db).ChangeTracker;
+        foreach (var entry in tracker.Entries().Where(e => e.State == EntityState.Added).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        DetachJob(job);
+    }
+
+    private async Task UnwindAsync(List<string> keys)
+    {
+        foreach (var key in keys)
+        {
+            try { await _store.TryDeleteAsync(key); } catch { /* the orphan sweep is the backstop */ }
+        }
+
+        keys.Clear();
+    }
+
+    private async Task<OcrRun> ExecuteAsync(OcrJob job, DateTimeOffset started, List<string> written, CancellationToken ct)
     {
         // The ONE render run the job was requested against (DOC-015). Its pages are what the
         // engine reads; a later re-render does not change what this job sees.
@@ -194,6 +274,11 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
             }
 
             pages.Add(recognized);
+
+            // Still here, still working: renew before the next page (OCR-011). A conflict means
+            // another worker took the lease over - propagated, and this attempt is discarded.
+            job.RenewLease(_workerId, _clock.UtcNow, TimeSpan.FromSeconds(_options.LeaseSeconds));
+            await _db.SaveChangesAsync(ct);
         }
 
         // Template identification: first mapper whose score clears its own threshold.
@@ -235,6 +320,7 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
         {
             using var png = new MemoryStream(page.Image.Png, writable: false);
             var blob = await _store.WriteAsync("ocr-pages", png, ct);
+            written.Add(blob.StorageKey);
             run.AddPage(page.PageNumber, blob.StorageKey, blob.Sha256, page.Image.Width, page.Image.Height, page.Image.RotationAppliedDegrees, page.Image.DeskewAppliedDegrees, page.Image.Dpi);
         }
 

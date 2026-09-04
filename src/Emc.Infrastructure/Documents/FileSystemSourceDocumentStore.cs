@@ -106,24 +106,37 @@ public sealed class FileSystemSourceDocumentStore : ISourceDocumentStore
         return Task.FromResult(true);
     }
 
-    /// <summary>
-    /// Stale ".partial" files from interrupted writes, older than <paramref name="olderThan"/>.
-    /// Returns the number removed. Never touches a completed blob.
-    /// </summary>
-    public int SweepPartials(TimeSpan olderThan)
+    public Task<IReadOnlyList<StoredBlobEntry>> EnumerateAsync(CancellationToken ct = default)
     {
-        var cutoff = DateTime.UtcNow - olderThan;
-        var removed = 0;
-        foreach (var partial in Directory.EnumerateFiles(_root, "*.partial", SearchOption.AllDirectories))
+        var entries = new List<StoredBlobEntry>();
+        foreach (var path in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories))
         {
-            if (File.GetLastWriteTimeUtc(partial) < cutoff)
+            ct.ThrowIfCancellationRequested();
+            var relative = Path.GetRelativePath(_root, path).Replace(Path.DirectorySeparatorChar, '/');
+            var info = new FileInfo(path);
+            if (relative.EndsWith(".bin.partial", StringComparison.Ordinal))
             {
-                File.Delete(partial);
-                removed++;
+                entries.Add(new StoredBlobEntry(relative[..^".partial".Length], StoredBlobState.Partial, info.LastWriteTimeUtc, info.Length));
+            }
+            else if (relative.EndsWith(".bin", StringComparison.Ordinal))
+            {
+                entries.Add(new StoredBlobEntry(relative, StoredBlobState.Committed, info.LastWriteTimeUtc, info.Length));
             }
         }
 
-        return removed;
+        return Task.FromResult<IReadOnlyList<StoredBlobEntry>>(entries);
+    }
+
+    public Task<bool> TryDeletePartialAsync(string storageKey, CancellationToken ct = default)
+    {
+        var partial = Resolve(storageKey) + ".partial";
+        if (!File.Exists(partial))
+        {
+            return Task.FromResult(false);
+        }
+
+        File.Delete(partial);
+        return Task.FromResult(true);
     }
 
     private string Resolve(string storageKey)

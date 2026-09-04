@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260904013243_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260904014816_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -606,7 +606,10 @@ namespace Emc.Infrastructure.Migrations
 
                     b.HasIndex("RequestedByUserId");
 
-                    b.HasIndex("SourceDocumentId");
+                    b.HasIndex("SourceDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DocumentRenderJobs_OneOpenPerDocument")
+                        .HasFilter("Status IN (1, 2)");
 
                     b.HasIndex("Status", "RequestedAtUtc");
 
@@ -1545,7 +1548,10 @@ namespace Emc.Infrastructure.Migrations
 
                     b.HasIndex("RequestedByUserId");
 
-                    b.HasIndex("SourceDocumentId");
+                    b.HasIndex("SourceDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OcrJobs_OneOpenPerDocument")
+                        .HasFilter("Status IN (1, 2)");
 
                     b.HasIndex("Status", "RequestedAtUtc");
 
