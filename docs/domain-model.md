@@ -54,7 +54,7 @@ status column cannot represent that without losing information.
 | `AwaitingCustodianAcceptance` | Submitted; no item accepted yet |
 | `PartiallyAccepted` | Some but not all items accepted |
 | `Active` | ≥1 item accepted and ≥1 item not in a terminal state |
-| `Inactive` | **All** current form lines in a terminal accountability state (`Disposed`, `ReliefGranted`, or `PermanentlyTransferred`, which is terminal for the *sending* room) — **2-4h**; a line withdrawn as entered in error (VCH-026) is not a form line |
+| `Inactive` | **[DESIGN]** no active accountability remains in this room: every current form line is terminal (`Disposed`, `ReliefGranted`, or `PermanentlyTransferred`, terminal for the *sending* room). The **basis** is carried separately as `VoucherClosureBasis`: only `AllItemsFinallyDisposed` is the **2-4h** condition ("after all items ... have been properly disposed"); `AllItemsPermanentlyTransferred` is **2-7g** (the original goes with the evidence, the sending room keeps a copy); `AllItemsReliefGranted` is **3-3c** (relief "permits the closure of the DA Form 4137"); the mixed bases are named as such. The physical-document workflow uses the basis, never the status. A line withdrawn as entered in error (VCH-026) is not a form line |
 
 **[DESIGN]** the *names*; **[REG]** the `Inactive` rule and the item-level derivation (2-4h).
 

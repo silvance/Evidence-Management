@@ -425,18 +425,24 @@
         </p>
         <table>
             <tbody>
-                <tr><th>Original</th><td>@paper.OriginalStatus @(paper.OriginalContainerLabel is null ? "" : $"— {paper.OriginalContainerLabel}")</td></tr>
-                @if (paper.SuspenseCopyContainerLabel is not null)
+                <tr><th>What became of the original</th><td>@paper.OriginalDisposition
+                    @if (paper.OriginalDisposition == Emc.Domain.Filing.OriginalDisposition.HeldActive) { <span>(para 2-4f(1))</span> }
+                    else if (paper.OriginalDisposition == Emc.Domain.Filing.OriginalDisposition.AccompanyingTemporaryRelease) { <span>(para 2-7b, 2-4f(2): the original is with the evidence, not in any binder)</span> }
+                    else if (paper.OriginalDisposition == Emc.Domain.Filing.OriginalDisposition.SentForDispositionApproval) { <span>(para 2-4f(3)(c): the evidence stays in the room)</span> }
+                    else if (paper.OriginalDisposition == Emc.Domain.Filing.OriginalDisposition.TransferredToGainingRoom) { <span>(para 2-7g: original and duplicate went with the evidence)</span> }
+                </td></tr>
+                <tr><th>What this room holds</th><td>@paper.RetainedPaperStatus @(paper.CurrentContainerLabel is null ? "" : $"— in {paper.CurrentContainerLabel}")
+                    @if (paper.RetainedPaperStatus == Emc.Domain.Filing.RetainedPaperStatus.SuspenseCopy) { <span>(first copy, para 2-4f(2)/(3); home binder @paper.HomeActiveContainerLabel)</span> }
+                    @if (paper.SuspenseCopyFiledWithOriginal) { <span>— first (suspense) copy filed with the original (para 2-7b)</span> }
+                </td></tr>
+                @if (paper.HoldsCopyOnly && paper.CopyReason != Emc.Domain.Filing.CopyRetentionReason.None)
                 {
-                    <tr><th>Suspense copy</th><td>@paper.SuspenseCopyContainerLabel (para 2-4f(2)/(3))</td></tr>
+                    <tr><th>Copy retained because</th><td>@paper.CopyReason (para 2-4g / 2-7g). The original's disposition above is history and is not changed by anything this room later does with its copy.</td></tr>
                 }
-                @if (paper.HoldsCopyOnly)
-                {
-                    <tr><th>This room holds</th><td>A copy only — @paper.CopyReason (para 2-4g / 2-7g)</td></tr>
-                }
+                <tr><th>Closure basis</th><td>@paper.ClosureBasis</td></tr>
                 @if (paper.InactiveSinceUtc is not null)
                 {
-                    <tr><th>Inactive since</th><td>@paper.InactiveSinceUtc.Value.ToString("dd MMM yyyy").ToUpperInvariant() — @paper.InactiveContainerLabel</td></tr>
+                    <tr><th>Inactive since</th><td>@paper.InactiveSinceUtc.Value.ToString("dd MMM yyyy").ToUpperInvariant()</td></tr>
                     <tr><th>Paper destruction eligibility</th>
                         <td>
                             @paper.RetentionStatus — eligible @paper.DestructionEligibleAtUtc!.Value.ToString("dd MMM yyyy").ToUpperInvariant()

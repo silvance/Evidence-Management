@@ -40,7 +40,9 @@ public class PaperRecordReportTests : IDisposable
     private async Task<int> ContainerAsync(PhysicalFileKind kind, string label, int? year = null, int? month = null)
     {
         _harness.SignInAsCustodian();
-        var result = await Physical().CreateContainerAsync(new CreateFileContainerRequest(_harness.EvidenceRoomId, kind, ContainerForm.Folder, label, null, null, year, month));
+        var result = await Physical().CreateContainerAsync(kind == PhysicalFileKind.Active4137File
+            ? new CreateFileContainerRequest(_harness.EvidenceRoomId, kind, ContainerForm.Folder, label, 2026, 1, 50)
+            : new CreateFileContainerRequest(_harness.EvidenceRoomId, kind, ContainerForm.Folder, label, null, null, null, year, month));
         Assert.True(result.Succeeded, result.Error);
         return result.Value;
     }
@@ -90,7 +92,7 @@ public class PaperRecordReportTests : IDisposable
 
         // Nothing above changed a state: the paper record still says what was recorded.
         var paper = await Physical().GetForVoucherAsync(voucherId);
-        Assert.Equal(PhysicalOriginalStatus.AccompanyingTemporaryRelease, paper!.OriginalStatus);
+        Assert.Equal(OriginalDisposition.AccompanyingTemporaryRelease, paper!.OriginalDisposition);
 
         // An agent of another room sees no advisories at all.
         _harness.SignInAsAdministrator();
@@ -101,7 +103,7 @@ public class PaperRecordReportTests : IDisposable
     public async Task TheDashboardBucketsByFileAndByTheThreeYearClock_FromTheInactiveDateOnly()
     {
         var active = await ContainerAsync(PhysicalFileKind.Active4137File, "ACTIVE 001-26 to 050-26");
-        var inactive = await ContainerAsync(PhysicalFileKind.Inactive4137File, "INACTIVE SEP 2026", 2026, 9);
+        var inactive = await ContainerAsync(PhysicalFileKind.Inactive4137File, "INACTIVE " + _harness.Clock.UtcNow.ToString("MMM yyyy").ToUpperInvariant(), _harness.Clock.UtcNow.Year, _harness.Clock.UtcNow.Month);
 
         var filed = await AcceptedVoucherAsync("011-26");
         Assert.True((await Physical().RecordAsync(new PhysicalDocumentActionRequest(filed, PhysicalDocumentAction.FileOriginalInActiveFile, _harness.Clock.UtcNow, active))).Succeeded);

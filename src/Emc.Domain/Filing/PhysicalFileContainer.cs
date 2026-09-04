@@ -22,7 +22,11 @@ public enum PhysicalFileKind
     SuspensePendingDispositionApproval = 5
 }
 
-/// <summary>Folder or binder. AR 195-5 2-4f(1) allows either; it makes no difference to accountability.</summary>
+/// <summary>
+/// Folder or binder. AR 195-5 2-4f(1): an active file is "a file folder or binder"; nothing
+/// else is authorized for an active file. Other is for suspense and inactive files only, where
+/// the regulation names no form.
+/// </summary>
 public enum ContainerForm
 {
     Folder = 1,
@@ -36,18 +40,25 @@ public enum ContainerForm
 /// This exists because the PHYSICAL original DA Form 4137 is an operational custody document
 /// that AR 195-5 requires the custodian to keep in specific files (2-4d, 2-4f, 2-4h) and to send
 /// with the evidence in specific situations (2-4f(2), 2-7g). A scan stored by EMC is not the
-/// original and never stands in for it; the paper record is modelled here, separately from
-/// <c>SourceDocument</c>, so the two cannot be confused.
+/// original and never stands in for it.
 ///
-/// The 50-voucher limit on an active folder/binder is the regulation's (2-4f(1)) [REG]. Whether
-/// the unit uses folders or binders, and what it writes on the label beyond the document-number
-/// range 2-4f(1) requires, is the unit's [LOCAL].
+/// An ACTIVE file [REG 2-4f(1)]: a folder or binder; in numerical sequence; no more than 50
+/// vouchers; the number and year of the documents shown on the outside. The range is held here
+/// canonically (calendar year, first and last sequence) so that a voucher is filed only into the
+/// binder whose range covers its number, whatever layout the room writes numbers in (VCH-023);
+/// the rendered range is the label text. A range of at most 50 numbers follows from the limit
+/// [DESIGN, derived]. One calendar year per range [DESIGN]: numbering restarts at 001 each year
+/// (2-4c), so a binder spanning years would not be "in numerical sequence".
 ///
-/// Requirements: FIL-001, FIL-002, FIL-003.
+/// <see cref="FiledVoucherCount"/> is maintained by the domain and protected by the concurrency
+/// stamp, so two custodians filing the 50th voucher at once cannot both succeed: the second save
+/// conflicts and is refused (FIL-002).
+///
+/// Requirements: FIL-001, FIL-002, FIL-003, FIL-011, FIL-012, FIL-013.
 /// </summary>
 public class PhysicalFileContainer : Entity, IConcurrencyStamped
 {
-    /// <summary>AR 195-5 2-4f(1): "no more than 50 vouchers ... will be contained in one folder or binder." [REG]</summary>
+    /// <summary>AR 195-5 2-4f(1): "no more than 50 vouchers with attached documents per folder/binder." [REG]</summary>
     public const int ActiveFileVoucherCapacity = 50;
 
     private PhysicalFileContainer() { }
@@ -57,6 +68,9 @@ public class PhysicalFileContainer : Entity, IConcurrencyStamped
         PhysicalFileKind kind,
         ContainerForm form,
         string label,
+        int? rangeCalendarYear = null,
+        int? rangeFromSequence = null,
+        int? rangeToSequence = null,
         string? documentNumberRangeFrom = null,
         string? documentNumberRangeTo = null,
         int? dispositionYear = null,
@@ -67,11 +81,49 @@ public class PhysicalFileContainer : Entity, IConcurrencyStamped
         Kind = kind;
         Form = form;
         Label = Guard.NotBlank(label, "FIL-001", "Container label");
-        DocumentNumberRangeFrom = Guard.TrimToNull(documentNumberRangeFrom);
-        DocumentNumberRangeTo = Guard.TrimToNull(documentNumberRangeTo);
         Notes = Guard.TrimToNull(notes);
         IsActive = true;
         ConcurrencyStamp = Guid.NewGuid();
+
+        if (kind == PhysicalFileKind.Active4137File)
+        {
+            if (form is not (ContainerForm.Folder or ContainerForm.Binder))
+            {
+                throw new DomainRuleViolationException(
+                    "FIL-011", "AR 195-5 para 2-4f(1): an active DA Form 4137 file is a file folder or a binder.");
+            }
+
+            if (rangeCalendarYear is null || rangeFromSequence is null || rangeToSequence is null)
+            {
+                throw new DomainRuleViolationException(
+                    "FIL-012",
+                    "AR 195-5 para 2-4f(1): the number and year of the documents in the folder/binder are shown "
+                    + "on the outside. State the calendar year and the first and last document sequence.");
+            }
+
+            if (rangeCalendarYear is < 1990 or > 2200 || rangeFromSequence < 1 || rangeToSequence < rangeFromSequence)
+            {
+                throw new DomainRuleViolationException("FIL-012", "The document-number range is not valid.");
+            }
+
+            if (rangeToSequence - rangeFromSequence + 1 > ActiveFileVoucherCapacity)
+            {
+                throw new DomainRuleViolationException(
+                    "FIL-012",
+                    $"AR 195-5 para 2-4f(1): a folder/binder holds no more than {ActiveFileVoucherCapacity} vouchers, "
+                    + $"so its range covers at most {ActiveFileVoucherCapacity} numbers.");
+            }
+
+            RangeCalendarYear = rangeCalendarYear;
+            RangeFromSequence = rangeFromSequence;
+            RangeToSequence = rangeToSequence;
+            DocumentNumberRangeFrom = Guard.NotBlank(documentNumberRangeFrom, "FIL-012", "Rendered range start");
+            DocumentNumberRangeTo = Guard.NotBlank(documentNumberRangeTo, "FIL-012", "Rendered range end");
+        }
+        else if (rangeCalendarYear is not null || rangeFromSequence is not null || rangeToSequence is not null)
+        {
+            throw new DomainRuleViolationException("FIL-012", "Only an active DA Form 4137 file carries a document-number range.");
+        }
 
         if (kind == PhysicalFileKind.Inactive4137File)
         {
@@ -106,23 +158,29 @@ public class PhysicalFileContainer : Entity, IConcurrencyStamped
     public PhysicalFileKind Kind { get; private set; }
     public ContainerForm Form { get; private set; }
 
-    /// <summary>What is written on the outside. For an active file, 2-4f(1) requires the number range.</summary>
+    /// <summary>What is written on the outside.</summary>
     public string Label { get; private set; } = string.Empty;
 
-    /// <summary>AR 195-5 2-4f(1) - the range of document numbers "shown on the outside", as written.</summary>
-    public string? DocumentNumberRangeFrom { get; private set; }
+    /// <summary>Active files: the canonical range (2-4f(1)), one calendar year, first and last sequence.</summary>
+    public int? RangeCalendarYear { get; private set; }
+    public int? RangeFromSequence { get; private set; }
+    public int? RangeToSequence { get; private set; }
 
+    /// <summary>The range as the room writes it (its numbering layout), for the label.</summary>
+    public string? DocumentNumberRangeFrom { get; private set; }
     public string? DocumentNumberRangeTo { get; private set; }
 
     /// <summary>AR 195-5 2-4h - inactive files only.</summary>
     public int? DispositionYear { get; private set; }
-
     public int? DispositionMonth { get; private set; }
 
     public string? Notes { get; private set; }
 
     /// <summary>False once the container is closed (full, or retired). A closed container accepts no filing.</summary>
     public bool IsActive { get; private set; }
+
+    /// <summary>Vouchers whose paper is in this container NOW. Maintained by the domain; guarded by the stamp.</summary>
+    public int FiledVoucherCount { get; private set; }
 
     public Guid ConcurrencyStamp { get; set; }
 
@@ -131,11 +189,48 @@ public class PhysicalFileContainer : Entity, IConcurrencyStamped
             or PhysicalFileKind.SuspenseAdjudication
             or PhysicalFileKind.SuspensePendingDispositionApproval;
 
+    public bool Covers(int sequence, int calendarYear)
+        => Kind == PhysicalFileKind.Active4137File
+           && RangeCalendarYear == calendarYear
+           && sequence >= RangeFromSequence && sequence <= RangeToSequence;
+
+    /// <summary>FIL-012. A voucher is filed only in the binder whose range covers its number.</summary>
+    public void AssertCoversDocumentNumber(int sequence, int calendarYear)
+    {
+        if (!Covers(sequence, calendarYear))
+        {
+            throw new DomainRuleViolationException(
+                "FIL-012",
+                $"AR 195-5 para 2-4f(1): active DA Forms 4137 are filed in numerical sequence in the folder/binder "
+                + $"whose range is shown on the outside. \"{Label}\" covers {DocumentNumberRangeFrom} through "
+                + $"{DocumentNumberRangeTo}; this voucher is sequence {sequence} of {calendarYear}.");
+        }
+    }
+
+    /// <summary>FIL-013. An inactive file receives only records that became inactive in its labelled month and year (2-4h).</summary>
+    public void AssertLabeledForDispositionDate(DateTimeOffset dispositionDate)
+    {
+        if (Kind != PhysicalFileKind.Inactive4137File)
+        {
+            return;
+        }
+
+        if (DispositionYear != dispositionDate.Year || DispositionMonth != dispositionDate.Month)
+        {
+            throw new DomainRuleViolationException(
+                "FIL-013",
+                $"AR 195-5 para 2-4h: the inactive file is labelled by the month and year of the disposition date. "
+                + $"\"{Label}\" is {DispositionLabel}; this record became inactive in "
+                + $"{dispositionDate.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant()}.");
+        }
+    }
+
     /// <summary>
-    /// AR 195-5 2-4f(1). The count is of vouchers currently filed here, supplied by the caller
-    /// from the store; the container does not hold the list.
+    /// One more voucher's paper is now here. Refuses a closed container and, for an active file,
+    /// the 51st voucher (2-4f(1)). Bumps the concurrency stamp so a concurrent filing conflicts
+    /// at the database instead of both becoming the 50th.
     /// </summary>
-    public void AssertCanAcceptAnotherVoucher(int currentlyFiledCount)
+    public void RecordFiled()
     {
         if (!IsActive)
         {
@@ -143,24 +238,42 @@ public class PhysicalFileContainer : Entity, IConcurrencyStamped
                 "FIL-001", $"File container \"{Label}\" is closed and accepts no further filing.");
         }
 
-        if (Kind == PhysicalFileKind.Active4137File && currentlyFiledCount >= ActiveFileVoucherCapacity)
+        if (Kind == PhysicalFileKind.Active4137File && FiledVoucherCount >= ActiveFileVoucherCapacity)
         {
             throw new DomainRuleViolationException(
                 "FIL-002",
                 $"AR 195-5 para 2-4f(1): no more than {ActiveFileVoucherCapacity} vouchers with "
                 + $"attached documents are contained in one folder or binder. \"{Label}\" already "
-                + $"holds {currentlyFiledCount}. Open the next active file.");
+                + $"holds {FiledVoucherCount}. Open the next active file.");
         }
+
+        FiledVoucherCount++;
+        ConcurrencyStamp = Guid.NewGuid();
     }
 
-    public void Relabel(string label, string? rangeFrom, string? rangeTo)
+    /// <summary>One voucher's paper has left this container.</summary>
+    public void RecordRemoved()
+    {
+        if (FiledVoucherCount <= 0)
+        {
+            throw new DomainRuleViolationException("FIL-001", $"File container \"{Label}\" records no filed vouchers to remove.");
+        }
+
+        FiledVoucherCount--;
+        ConcurrencyStamp = Guid.NewGuid();
+    }
+
+    public void Relabel(string label)
     {
         Label = Guard.NotBlank(label, "FIL-001", "Container label");
-        DocumentNumberRangeFrom = Guard.TrimToNull(rangeFrom);
-        DocumentNumberRangeTo = Guard.TrimToNull(rangeTo);
+        ConcurrencyStamp = Guid.NewGuid();
     }
 
-    public void Close() => IsActive = false;
+    public void Close()
+    {
+        IsActive = false;
+        ConcurrencyStamp = Guid.NewGuid();
+    }
 
     /// <summary>The 2-4h label, "SEP 2026", for an inactive file.</summary>
     public string? DispositionLabel

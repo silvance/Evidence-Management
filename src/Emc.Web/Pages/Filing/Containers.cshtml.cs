@@ -47,7 +47,7 @@ public class ContainersModel : PageModel
         }
 
         var result = await _physical.CreateContainerAsync(new CreateFileContainerRequest(
-            roomId, Input.Kind, Input.Form, Input.Label!, Input.RangeFrom, Input.RangeTo,
+            roomId, Input.Kind, Input.Form, Input.Label!, Input.RangeCalendarYear, Input.RangeFromSequence, Input.RangeToSequence,
             Input.DispositionYear, Input.DispositionMonth, Input.Notes));
 
         if (!result.Succeeded)
@@ -89,11 +89,15 @@ public class ContainersModel : PageModel
         [Required, StringLength(256)]
         public string? Label { get; set; }
 
-        [StringLength(24)]
-        public string? RangeFrom { get; set; }
+        /// <summary>Active files (para 2-4f(1)): the calendar year and the first and last document sequence. Rendered in the room's layout for the label.</summary>
+        [Range(1990, 2200)]
+        public int? RangeCalendarYear { get; set; }
 
-        [StringLength(24)]
-        public string? RangeTo { get; set; }
+        [Range(1, 999999)]
+        public int? RangeFromSequence { get; set; }
+
+        [Range(1, 999999)]
+        public int? RangeToSequence { get; set; }
 
         public int? DispositionYear { get; set; }
         public int? DispositionMonth { get; set; }

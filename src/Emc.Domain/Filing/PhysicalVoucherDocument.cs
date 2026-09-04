@@ -2,38 +2,65 @@ using Emc.Domain.Common;
 
 namespace Emc.Domain.Filing;
 
-/// <summary>Where the PHYSICAL ORIGINAL DA Form 4137 is, or what became of it.</summary>
-public enum PhysicalOriginalStatus
+/// <summary>
+/// What became of the PHYSICAL ORIGINAL DA Form 4137. Historical: once the original leaves this
+/// room (2-7g, 2-4g) nothing this room later does to the paper it retained changes this.
+/// </summary>
+public enum OriginalDisposition
 {
-    /// <summary>The original has not yet been filed. 2-4d: the custodian retains it after numbering.</summary>
+    /// <summary>Not yet filed. 2-4d: the custodian keeps the original after numbering.</summary>
     NotYetFiled = 0,
 
-    /// <summary>AR 195-5 2-4f(1) - in the active DA Form 4137 file.</summary>
-    FiledActive = 1,
+    /// <summary>AR 195-5 2-4f(1) - in this room's active DA Form 4137 file.</summary>
+    HeldActive = 1,
 
-    /// <summary>AR 195-5 2-4f(2) - accompanies evidence on temporary release; a copy is in suspense.</summary>
+    /// <summary>AR 195-5 2-4f(2), 2-7b - accompanies evidence on temporary release; the first copy is in suspense.</summary>
     AccompanyingTemporaryRelease = 2,
 
-    /// <summary>AR 195-5 2-4f(3)(c) - sent to trial counsel / prosecutor for disposition approval; a copy is in suspense.</summary>
+    /// <summary>AR 195-5 2-4f(3)(c) - with trial counsel / prosecutor for disposition approval; a copy is in suspense.</summary>
     SentForDispositionApproval = 3,
 
-    /// <summary>AR 195-5 2-4h - in the inactive file after all items were disposed.</summary>
+    /// <summary>AR 195-5 2-4h (or closure under 3-3c) - in this room's inactive file.</summary>
     FiledInactive = 4,
 
-    /// <summary>AR 195-5 2-7g - the original (and duplicate) went with the evidence to the gaining room; this room keeps a copy.</summary>
+    /// <summary>AR 195-5 2-7g - the original and duplicate went with the evidence to the gaining room.</summary>
     TransferredToGainingRoom = 5,
 
-    /// <summary>AR 195-5 2-4g(1) - the original is a permanent part of the record of trial; this room keeps a copy.</summary>
+    /// <summary>AR 195-5 2-4g(1) - a permanent part of the record of trial.</summary>
     PartOfRecordOfTrial = 6,
 
-    /// <summary>AR 195-5 2-4g(2) - the original accompanied evidence released to an external agency; this room keeps a copy.</summary>
+    /// <summary>AR 195-5 2-4g(2) - accompanied evidence released to an external agency.</summary>
     WithExternalAgency = 7,
 
-    /// <summary>AR 195-5 2-4g(3) - the original is not available for another documented reason; this room keeps a copy.</summary>
-    UnavailableOther = 8,
+    /// <summary>AR 195-5 2-4g(3) - not available for another documented reason.</summary>
+    UnavailableOther = 8
+}
 
-    /// <summary>The inactive paper record was destroyed, confirmed by the custodian. Terminal.</summary>
-    Destroyed = 9
+/// <summary>
+/// What THIS evidence room holds on paper for the voucher, and where. Operational: this is what
+/// is in the binders and folders now. Separate from <see cref="OriginalDisposition"/> so that
+/// destroying the paper this room retained (2-4h, three years after inactive) never rewrites
+/// what became of an original that left.
+/// </summary>
+public enum RetainedPaperStatus
+{
+    /// <summary>Nothing filed yet.</summary>
+    None = 0,
+
+    /// <summary>The original, in an active folder/binder (2-4f(1)).</summary>
+    ActiveOriginal = 1,
+
+    /// <summary>The original is out; this room holds the first copy in a suspense folder (2-4f(2), 2-4f(3)).</summary>
+    SuspenseCopy = 2,
+
+    /// <summary>The original, in this room's inactive file (2-4h).</summary>
+    InactiveOriginal = 3,
+
+    /// <summary>A copy in this room's inactive file, noting the disposition of the original (2-4g, 2-7g, 2-4d).</summary>
+    InactiveCopy = 4,
+
+    /// <summary>This room's retained paper was destroyed after its retention period, confirmed by a person (2-4h).</summary>
+    Destroyed = 5
 }
 
 /// <summary>Why the evidence room holds only a COPY in its inactive file (AR 195-5 2-4g, 2-7g).</summary>
@@ -73,33 +100,35 @@ public enum PhysicalDocumentEventKind
     CopyFiledInactiveOriginalWithExternalAgency = 10,
     CopyFiledOriginalUnavailable = 11,
     DestructionConfirmed = 12,
-    Note = 13
+    Note = 13,
+
+    /// <summary>AR 195-5 2-7b - on return, the first (suspense) copy, chain of custody annotated, is filed with the original.</summary>
+    SuspenseCopyFiledWithOriginal = 14
 }
 
 /// <summary>
-/// The evidence room's record of the PHYSICAL DA Form 4137 for one voucher: where the original
-/// is, whether the room holds only a copy and why, when the paper record became inactive, and
-/// when it was actually destroyed.
+/// The evidence room's record of the PHYSICAL DA Form 4137 for one voucher, on two axes:
+///
+///   <see cref="OriginalDisposition"/>  what became of the original (historical; never rewritten
+///                                       by what this room later does with its own paper);
+///   <see cref="RetainedPaperStatus"/>  what this room holds now and where (operational).
+///
+/// Where the paper physically is now is <see cref="CurrentContainerId"/>: the active binder
+/// while the original is here, the suspense folder while only the first copy is here, the
+/// inactive file afterwards, nothing once destroyed. <see cref="HomeActiveContainerId"/> is the
+/// active binder the original belongs in (by its document-number range, 2-4f(1)) and returns to
+/// (2-7b). While the original is out, the binder does not contain it and does not count it.
 ///
 /// A voucher-level record, deliberately. The DA Form 4137 is one document listing many items; it
-/// is filed, released, returned and retired as a whole (2-4d, 2-4f, 2-4h). It is not attached to
-/// items.
+/// is filed, released, returned and retired as a whole (2-4d, 2-4f, 2-4h). It is not the digital
+/// scan: a <c>SourceDocument</c> is a companion copy; this says where the paper is (FIL-004).
 ///
-/// It is NOT the digital scan. A <c>SourceDocument</c> is a companion copy with provenance saying
-/// what paper was scanned; this record says where the paper is. Uploading a scan changes nothing
-/// here, and a scan never satisfies 2-4f's requirement to maintain the original in the active
-/// file (FIL-004).
-///
-/// THE THREE-YEAR CLOCK (2-4h) runs from the date the paper record BECAME INACTIVE - not from
-/// the form's preparation, the evidence's receipt, or the case's status. This record does not
-/// know whether the investigation is open, and that is correct: permanent transfer (2-7g) ends
-/// the sending room's accountability while the investigation continues. Eligibility is computed;
-/// nothing is destroyed by software, and "eligible" and "destroyed" are different states
-/// (FIL-006, FIL-007). The copy in the investigative case file is a different record under a
-/// different schedule and is not touched by any of this (FIL-008). EMC's own digital records are
+/// THE THREE-YEAR CLOCK (2-4h) runs from the date this room's paper record BECAME INACTIVE. It
+/// does not know the case's status. Eligibility is computed; nothing is destroyed by software;
+/// "eligible" and "destroyed" are different states (FIL-006, FIL-009). EMC's digital records are
 /// retained regardless (DEC-07).
 ///
-/// Requirements: FIL-004 .. FIL-009, SUSP-007 (paper portion), RET-007 (paper portion).
+/// Requirements: FIL-004 .. FIL-014, SUSP-007 (paper portion), RET-007 (paper portion).
 /// </summary>
 public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 {
@@ -114,28 +143,27 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
     {
         VoucherId = voucherId;
         EvidenceRoomId = evidenceRoomId;
-        OriginalStatus = PhysicalOriginalStatus.NotYetFiled;
+        OriginalDisposition = OriginalDisposition.NotYetFiled;
+        RetainedPaperStatus = RetainedPaperStatus.None;
         ConcurrencyStamp = Guid.NewGuid();
     }
 
     public int VoucherId { get; private set; }
     public int EvidenceRoomId { get; private set; }
 
-    public PhysicalOriginalStatus OriginalStatus { get; private set; }
+    public OriginalDisposition OriginalDisposition { get; private set; }
+    public RetainedPaperStatus RetainedPaperStatus { get; private set; }
 
-    /// <summary>The container the ORIGINAL is filed in, when it is filed here.</summary>
-    public int? OriginalContainerId { get; private set; }
+    /// <summary>The container this room's retained paper is in NOW. Null before filing and after destruction.</summary>
+    public int? CurrentContainerId { get; private set; }
 
-    /// <summary>The suspense folder holding the COPY while the original is out (2-4f(2), 2-4f(3)).</summary>
-    public int? SuspenseCopyContainerId { get; private set; }
-
-    /// <summary>The inactive file holding this room's paper record - original or copy (2-4h, 2-4g).</summary>
-    public int? InactiveContainerId { get; private set; }
-
-    /// <summary>True when this room holds only a copy; <see cref="CopyReason"/> says why.</summary>
-    public bool HoldsCopyOnly { get; private set; }
+    /// <summary>The active binder the original belongs to and returns to (2-4f(1), 2-7b). Null once inactive.</summary>
+    public int? HomeActiveContainerId { get; private set; }
 
     public CopyRetentionReason CopyReason { get; private set; }
+
+    /// <summary>AR 195-5 2-7b - the returned first copy, chain of custody annotated, is filed with the original.</summary>
+    public bool SuspenseCopyFiledWithOriginal { get; private set; }
 
     /// <summary>When this room's paper record became inactive. The 2-4h clock starts here.</summary>
     public DateTimeOffset? InactiveSinceUtc { get; private set; }
@@ -147,23 +175,22 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 
     public IReadOnlyList<PhysicalVoucherDocumentEvent> Events => _events.AsReadOnly();
 
-    /// <summary>True while the original is held by this room in a file (active or inactive).</summary>
-    public bool OriginalHeldHere
-        => OriginalStatus is PhysicalOriginalStatus.FiledActive or PhysicalOriginalStatus.FiledInactive;
+    /// <summary>True when this room holds only a copy of the form (2-4g, 2-7g).</summary>
+    public bool HoldsCopyOnly => RetainedPaperStatus is RetainedPaperStatus.InactiveCopy or RetainedPaperStatus.SuspenseCopy;
 
     public bool OriginalIsOut
-        => OriginalStatus is PhysicalOriginalStatus.AccompanyingTemporaryRelease
-            or PhysicalOriginalStatus.SentForDispositionApproval;
+        => OriginalDisposition is OriginalDisposition.AccompanyingTemporaryRelease or OriginalDisposition.SentForDispositionApproval;
+
+    /// <summary>The original left this room for good (2-7g, 2-4g).</summary>
+    public bool OriginalLeftThisRoom
+        => OriginalDisposition is OriginalDisposition.TransferredToGainingRoom or OriginalDisposition.PartOfRecordOfTrial
+            or OriginalDisposition.WithExternalAgency or OriginalDisposition.UnavailableOther;
 
     public bool IsInactive => InactiveSinceUtc is not null;
 
     /// <summary>AR 195-5 2-4h - exactly three years after the record became inactive. Null while active.</summary>
     public DateTimeOffset? DestructionEligibleAtUtc => InactiveSinceUtc?.AddYears(InactiveRetentionYears);
 
-    /// <summary>
-    /// Paper retention status at <paramref name="at"/>. Computed, never stored; depends on
-    /// nothing but the inactive date and whether destruction was confirmed.
-    /// </summary>
     public PaperRetentionStatus RetentionStatusAt(DateTimeOffset at)
     {
         if (DestructionConfirmedAtUtc is not null)
@@ -178,25 +205,30 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 
     // ----- lifecycle -----------------------------------------------------------------------
 
-    /// <summary>AR 195-5 2-4d, 2-4f(1) - the custodian retains the original and files it in the active file.</summary>
-    public void FileOriginalInActiveFile(PhysicalFileContainer container, int currentlyFiledInContainer, int userId, DateTimeOffset at, string? narrative = null)
+    /// <summary>
+    /// AR 195-5 2-4d, 2-4f(1) - the custodian retains the original and files it in the active
+    /// folder/binder whose document-number range covers this voucher's number.
+    /// </summary>
+    public void FileOriginalInActiveFile(PhysicalFileContainer container, int sequence, int calendarYear, int userId, DateTimeOffset at, string? narrative = null)
     {
         RequireContainer(container, PhysicalFileKind.Active4137File);
-        RequireStatus("FIL-004", "file the original in the active file",
-            PhysicalOriginalStatus.NotYetFiled);
-        container.AssertCanAcceptAnotherVoucher(currentlyFiledInContainer);
+        RequireOriginal("FIL-004", "file the original in the active file", OriginalDisposition.NotYetFiled);
+        container.AssertCoversDocumentNumber(sequence, calendarYear);
+        container.RecordFiled();
 
-        OriginalStatus = PhysicalOriginalStatus.FiledActive;
-        OriginalContainerId = container.Id;
+        OriginalDisposition = OriginalDisposition.HeldActive;
+        RetainedPaperStatus = RetainedPaperStatus.ActiveOriginal;
+        CurrentContainerId = container.Id;
+        HomeActiveContainerId = container.Id;
         Add(PhysicalDocumentEventKind.OriginalFiledActive, userId, at, container.Id, narrative);
     }
 
     /// <summary>
-    /// AR 195-5 2-4f(2): "When evidence is temporarily released ... the original DA Form 4137
-    /// will accompany the evidence and a copy ... retained in a suspense folder." Two events: the
-    /// original goes; the copy stays in the named suspense folder (USACIL or ADJUDICATION, 2-4f(3)).
+    /// AR 195-5 2-4f(2), 2-7b: the original accompanies the evidence; the first copy goes in the
+    /// proper suspense folder (USACIL or ADJUDICATION, 2-4f(3)). The active binder no longer
+    /// contains the original and no longer counts it; it stays the original's home.
     /// </summary>
-    public void ReleaseOriginalWithEvidence(PhysicalFileContainer suspenseFolder, int userId, DateTimeOffset at, string? narrative = null)
+    public void ReleaseOriginalWithEvidence(PhysicalFileContainer homeActiveFile, PhysicalFileContainer suspenseFolder, int userId, DateTimeOffset at, string? narrative = null)
     {
         ArgumentNullException.ThrowIfNull(suspenseFolder);
         RequireSameRoom(suspenseFolder);
@@ -211,83 +243,147 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
                 + "sent for disposition approval.");
         }
 
-        RequireStatus("FIL-005", "release the original with the evidence", PhysicalOriginalStatus.FiledActive);
-        suspenseFolder.AssertCanAcceptAnotherVoucher(0);
+        RequireOriginal("FIL-005", "release the original with the evidence", OriginalDisposition.HeldActive);
+        RequireHome(homeActiveFile);
+        suspenseFolder.RecordFiled();
+        homeActiveFile.RecordRemoved();
 
-        OriginalStatus = PhysicalOriginalStatus.AccompanyingTemporaryRelease;
-        SuspenseCopyContainerId = suspenseFolder.Id;
+        OriginalDisposition = OriginalDisposition.AccompanyingTemporaryRelease;
+        RetainedPaperStatus = RetainedPaperStatus.SuspenseCopy;
+        CurrentContainerId = suspenseFolder.Id;
+        SuspenseCopyFiledWithOriginal = false;
         Add(PhysicalDocumentEventKind.OriginalAccompaniesTemporaryRelease, userId, at, null, narrative);
         Add(PhysicalDocumentEventKind.SuspenseCopyRetained, userId, at, suspenseFolder.Id, null);
     }
 
-    /// <summary>AR 195-5 2-4f(2) - "until the evidence is returned to the evidence room." The original comes back to its active file.</summary>
-    public void ReturnOriginalToActiveFile(PhysicalFileContainer activeFile, int currentlyFiledInContainer, int userId, DateTimeOffset at, string? narrative = null)
+    /// <summary>
+    /// AR 195-5 2-7b: when the evidence is returned, the original, properly annotated, is put in
+    /// the appropriate active file, and the first (suspense) copy, chain of custody annotated, is
+    /// filed WITH the original. The suspense folder no longer holds the copy.
+    /// </summary>
+    public void ReturnOriginalToActiveFile(PhysicalFileContainer activeFile, PhysicalFileContainer suspenseFolder, int sequence, int calendarYear, int userId, DateTimeOffset at, string? narrative = null)
     {
         RequireContainer(activeFile, PhysicalFileKind.Active4137File);
-        RequireStatus("FIL-005", "return the original to the active file",
-            PhysicalOriginalStatus.AccompanyingTemporaryRelease, PhysicalOriginalStatus.SentForDispositionApproval);
+        RequireOriginal("FIL-005", "return the original to the active file",
+            OriginalDisposition.AccompanyingTemporaryRelease, OriginalDisposition.SentForDispositionApproval);
+        RequireCurrent(suspenseFolder);
+        activeFile.AssertCoversDocumentNumber(sequence, calendarYear);
+        activeFile.RecordFiled();
+        suspenseFolder.RecordRemoved();
 
-        if (activeFile.Id != OriginalContainerId)
-        {
-            activeFile.AssertCanAcceptAnotherVoucher(currentlyFiledInContainer);
-        }
-
-        OriginalStatus = PhysicalOriginalStatus.FiledActive;
-        OriginalContainerId = activeFile.Id;
-        SuspenseCopyContainerId = null;
+        OriginalDisposition = OriginalDisposition.HeldActive;
+        RetainedPaperStatus = RetainedPaperStatus.ActiveOriginal;
+        CurrentContainerId = activeFile.Id;
+        HomeActiveContainerId = activeFile.Id;
+        SuspenseCopyFiledWithOriginal = true;
         Add(PhysicalDocumentEventKind.OriginalReturnedToActiveFile, userId, at, activeFile.Id, narrative);
+        Add(PhysicalDocumentEventKind.SuspenseCopyFiledWithOriginal, userId, at, activeFile.Id, "AR 195-5 2-7b: first copy, chain of custody annotated, filed with the original.");
     }
 
-    /// <summary>AR 195-5 2-4f(3)(c), 2-8e(5) - the original goes to trial counsel / prosecutor; the copy waits in PENDING DISPOSITION APPROVAL.</summary>
-    public void SendOriginalForDispositionApproval(PhysicalFileContainer pendingFolder, int userId, DateTimeOffset at, string? narrative = null)
+    /// <summary>AR 195-5 2-4f(3)(c), 2-8e(5) - the original goes to trial counsel / prosecutor; the copy waits in PENDING DISPOSITION APPROVAL. Evidence stays in the room.</summary>
+    public void SendOriginalForDispositionApproval(PhysicalFileContainer homeActiveFile, PhysicalFileContainer pendingFolder, int userId, DateTimeOffset at, string? narrative = null)
     {
         RequireContainer(pendingFolder, PhysicalFileKind.SuspensePendingDispositionApproval);
-        RequireStatus("FIL-005", "send the original for disposition approval", PhysicalOriginalStatus.FiledActive);
+        RequireOriginal("FIL-005", "send the original for disposition approval", OriginalDisposition.HeldActive);
+        RequireHome(homeActiveFile);
+        pendingFolder.RecordFiled();
+        homeActiveFile.RecordRemoved();
 
-        OriginalStatus = PhysicalOriginalStatus.SentForDispositionApproval;
-        SuspenseCopyContainerId = pendingFolder.Id;
+        OriginalDisposition = OriginalDisposition.SentForDispositionApproval;
+        RetainedPaperStatus = RetainedPaperStatus.SuspenseCopy;
+        CurrentContainerId = pendingFolder.Id;
+        SuspenseCopyFiledWithOriginal = false;
         Add(PhysicalDocumentEventKind.OriginalSentForDispositionApproval, userId, at, null, narrative);
         Add(PhysicalDocumentEventKind.SuspenseCopyRetained, userId, at, pendingFolder.Id, null);
     }
 
     /// <summary>
-    /// AR 195-5 2-4h - after ALL items are disposed, the original and related documents go to
-    /// the inactive file. Whether all items are disposed is the voucher's derived status; the
-    /// caller checks it. The three-year clock starts at <paramref name="inactiveAtUtc"/>.
+    /// The original goes to this room's inactive file. Two bases, cited separately:
+    ///   2-4h  after ALL items listed on the form have been properly disposed;
+    ///   3-3c  relief from accountability, which "permits the closure of the DA Form 4137".
+    /// A form whose items were permanently transferred is NOT filed this way: the original went
+    /// with the evidence (2-7g); the sending room files a COPY. The caller supplies the voucher's
+    /// closure basis. The inactive file's month and year must be those of the inactive date.
     /// </summary>
-    public void FileOriginalInactive(PhysicalFileContainer inactiveFile, int userId, DateTimeOffset inactiveAtUtc, string? narrative = null)
+    public void FileOriginalInactive(PhysicalFileContainer inactiveFile, PhysicalFileContainer? currentHolder, VoucherClosureBasis closureBasis, int userId, DateTimeOffset inactiveAt, string? narrative = null)
     {
         RequireContainer(inactiveFile, PhysicalFileKind.Inactive4137File);
-        RequireStatus("FIL-006", "file the original as inactive",
-            PhysicalOriginalStatus.FiledActive, PhysicalOriginalStatus.SentForDispositionApproval, PhysicalOriginalStatus.NotYetFiled);
+        RequireOriginal("FIL-006", "file the original as inactive",
+            OriginalDisposition.HeldActive, OriginalDisposition.SentForDispositionApproval, OriginalDisposition.NotYetFiled);
 
-        OriginalStatus = PhysicalOriginalStatus.FiledInactive;
-        OriginalContainerId = null;
-        SuspenseCopyContainerId = null;
-        InactiveContainerId = inactiveFile.Id;
-        InactiveSinceUtc = AccountabilityTime.Normalize(inactiveAtUtc);
-        Add(PhysicalDocumentEventKind.OriginalFiledInactive, userId, inactiveAtUtc, inactiveFile.Id, narrative);
+        switch (closureBasis)
+        {
+            case VoucherClosureBasis.AllItemsFinallyDisposed:
+            case VoucherClosureBasis.AllItemsReliefGranted:
+            case VoucherClosureBasis.MixedDisposedAndReliefGranted:
+                break;
+            case VoucherClosureBasis.AllItemsPermanentlyTransferred:
+            case VoucherClosureBasis.MixedIncludingPermanentTransfer:
+                throw new DomainRuleViolationException(
+                    "FIL-006",
+                    "AR 195-5 para 2-7g: on permanent transfer the original and duplicate DA Form 4137 go "
+                    + "with the evidence and the sending room places a COPY showing the disposition in its "
+                    + "inactive file. Record the transfer of the original, not an inactive filing of it.");
+            default:
+                throw new DomainRuleViolationException(
+                    "FIL-006",
+                    "AR 195-5 para 2-4h: the original DA Form 4137 moves to the inactive file after ALL items "
+                    + "listed on it have been properly disposed (or, under 3-3c, relief from accountability "
+                    + "has been granted). This voucher still has items accounted for in this room.");
+        }
+
+        inactiveFile.AssertLabeledForDispositionDate(inactiveAt);
+        if (currentHolder is not null)
+        {
+            RequireCurrent(currentHolder);
+            currentHolder.RecordRemoved();
+        }
+
+        inactiveFile.RecordFiled();
+
+        OriginalDisposition = OriginalDisposition.FiledInactive;
+        RetainedPaperStatus = RetainedPaperStatus.InactiveOriginal;
+        CurrentContainerId = inactiveFile.Id;
+        HomeActiveContainerId = null;
+        InactiveSinceUtc = AccountabilityTime.Normalize(inactiveAt);
+        Add(PhysicalDocumentEventKind.OriginalFiledInactive, userId, inactiveAt, inactiveFile.Id,
+            closureBasis == VoucherClosureBasis.AllItemsFinallyDisposed ? narrative : $"Closure basis {closureBasis} (AR 195-5 3-3c where relief was granted). {narrative}".Trim());
     }
 
     /// <summary>
-    /// AR 195-5 2-7g - on permanent transfer the original and duplicate go with the evidence to
-    /// the gaining room, and the sending room retains a copy showing the disposition, filed
-    /// inactive. This ends the sending room's accountability for the paper record; the
-    /// investigation may well continue. The clock starts now.
+    /// AR 195-5 2-7g, 2-4d - on permanent transfer the original and duplicate go with the
+    /// evidence to the gaining room; the sending room retains a copy showing the disposition in
+    /// its inactive file. Ends this room's paper accountability; the investigation may continue.
     /// </summary>
-    public void TransferOriginalToGainingRoom(PhysicalFileContainer inactiveFile, string gainingEvidenceRoom, int userId, DateTimeOffset at, string? narrative = null)
+    public void TransferOriginalToGainingRoom(PhysicalFileContainer inactiveFile, PhysicalFileContainer? currentHolder, VoucherClosureBasis closureBasis, string gainingEvidenceRoom, int userId, DateTimeOffset at, string? narrative = null)
     {
         RequireContainer(inactiveFile, PhysicalFileKind.Inactive4137File);
-        RequireStatus("FIL-007", "transfer the original to the gaining evidence room",
-            PhysicalOriginalStatus.FiledActive, PhysicalOriginalStatus.NotYetFiled);
-        var gaining = Guard.NotBlank(gainingEvidenceRoom, "FIL-007", "Gaining evidence room");
+        RequireOriginal("FIL-007", "transfer the original to the gaining evidence room",
+            OriginalDisposition.HeldActive, OriginalDisposition.NotYetFiled);
+        if (closureBasis != VoucherClosureBasis.AllItemsPermanentlyTransferred)
+        {
+            throw new DomainRuleViolationException(
+                "FIL-007",
+                "AR 195-5 para 2-7g: the original and duplicate DA Form 4137 accompany the evidence on "
+                + "permanent transfer. Record the items' permanent transfer first; this voucher still has "
+                + "items accounted for in this room, or closed on another basis.");
+        }
 
-        OriginalStatus = PhysicalOriginalStatus.TransferredToGainingRoom;
-        OriginalContainerId = null;
-        SuspenseCopyContainerId = null;
-        HoldsCopyOnly = true;
+        var gaining = Guard.NotBlank(gainingEvidenceRoom, "FIL-007", "Gaining evidence room");
+        inactiveFile.AssertLabeledForDispositionDate(at);
+        if (currentHolder is not null)
+        {
+            RequireCurrent(currentHolder);
+            currentHolder.RecordRemoved();
+        }
+
+        inactiveFile.RecordFiled();
+
+        OriginalDisposition = OriginalDisposition.TransferredToGainingRoom;
+        RetainedPaperStatus = RetainedPaperStatus.InactiveCopy;
         CopyReason = CopyRetentionReason.OriginalTransferredToGainingRoom;
-        InactiveContainerId = inactiveFile.Id;
+        CurrentContainerId = inactiveFile.Id;
+        HomeActiveContainerId = null;
         InactiveSinceUtc = AccountabilityTime.Normalize(at);
         Add(PhysicalDocumentEventKind.OriginalTransferredToGainingRoom, userId, at, null, $"To {gaining}. {narrative}".Trim());
         Add(PhysicalDocumentEventKind.SendingRoomCopyFiledInactive, userId, at, inactiveFile.Id, null);
@@ -295,12 +391,11 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
 
     /// <summary>
     /// AR 195-5 2-4g - a COPY is used as the suspense copy and placed in the inactive file, noting
-    /// the disposition of the original, when the original is a permanent part of the record of
-    /// trial (1), accompanies evidence released to an external agency (2), or is not available
-    /// for other reasons (3). The clock starts now.
+    /// the disposition of the original: record of trial (1), external agency (2), unavailable for
+    /// other reasons (3). The clock starts now.
     /// </summary>
     public void FileCopyInactiveBecauseOriginalUnavailable(
-        PhysicalFileContainer inactiveFile, CopyRetentionReason reason, string dispositionOfOriginal, int userId, DateTimeOffset at)
+        PhysicalFileContainer inactiveFile, PhysicalFileContainer? currentHolder, CopyRetentionReason reason, string dispositionOfOriginal, int userId, DateTimeOffset at)
     {
         RequireContainer(inactiveFile, PhysicalFileKind.Inactive4137File);
 
@@ -312,23 +407,30 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
                 "FIL-008", "State which of AR 195-5 para 2-4g(1), (2) or (3) applies.");
         }
 
-        RequireStatus("FIL-008", "file a copy as inactive because the original is unavailable",
-            PhysicalOriginalStatus.FiledActive, PhysicalOriginalStatus.AccompanyingTemporaryRelease,
-            PhysicalOriginalStatus.SentForDispositionApproval, PhysicalOriginalStatus.NotYetFiled);
+        RequireOriginal("FIL-008", "file a copy as inactive because the original is unavailable",
+            OriginalDisposition.HeldActive, OriginalDisposition.AccompanyingTemporaryRelease,
+            OriginalDisposition.SentForDispositionApproval, OriginalDisposition.NotYetFiled);
 
         var disposition = Guard.NotBlank(dispositionOfOriginal, "FIL-008", "Disposition of the original (AR 195-5 2-4g)");
-
-        OriginalStatus = reason switch
+        inactiveFile.AssertLabeledForDispositionDate(at);
+        if (currentHolder is not null)
         {
-            CopyRetentionReason.OriginalInRecordOfTrial => PhysicalOriginalStatus.PartOfRecordOfTrial,
-            CopyRetentionReason.OriginalWithExternalAgency => PhysicalOriginalStatus.WithExternalAgency,
-            _ => PhysicalOriginalStatus.UnavailableOther
+            RequireCurrent(currentHolder);
+            currentHolder.RecordRemoved();
+        }
+
+        inactiveFile.RecordFiled();
+
+        OriginalDisposition = reason switch
+        {
+            CopyRetentionReason.OriginalInRecordOfTrial => OriginalDisposition.PartOfRecordOfTrial,
+            CopyRetentionReason.OriginalWithExternalAgency => OriginalDisposition.WithExternalAgency,
+            _ => OriginalDisposition.UnavailableOther
         };
-        OriginalContainerId = null;
-        SuspenseCopyContainerId = null;
-        HoldsCopyOnly = true;
+        RetainedPaperStatus = RetainedPaperStatus.InactiveCopy;
         CopyReason = reason;
-        InactiveContainerId = inactiveFile.Id;
+        CurrentContainerId = inactiveFile.Id;
+        HomeActiveContainerId = null;
         InactiveSinceUtc = AccountabilityTime.Normalize(at);
 
         var kind = reason switch
@@ -341,11 +443,12 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
     }
 
     /// <summary>
-    /// The custodian confirms the inactive PAPER record was actually destroyed. Requires the
-    /// record to be inactive and eligible at <paramref name="at"/>. Nothing here touches EMC's
-    /// digital records, the scan, or the case-file copy (FIL-009, DEC-07).
+    /// The custodian confirms THIS ROOM'S inactive paper was actually destroyed. Changes only the
+    /// retained-paper axis: what became of the original is history and stays as recorded
+    /// (FIL-014). Nothing here touches EMC's digital records, the scan, or the case-file copy
+    /// (FIL-009, DEC-07).
     /// </summary>
-    public void ConfirmDestruction(int userId, DateTimeOffset at, string narrative)
+    public void ConfirmDestruction(PhysicalFileContainer? inactiveHolder, int userId, DateTimeOffset at, string narrative)
     {
         if (!IsInactive)
         {
@@ -368,19 +471,30 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         }
 
         var what = Guard.NotBlank(narrative, "FIL-009", "Destruction record (how, when, by whom)");
+        if (inactiveHolder is not null)
+        {
+            RequireCurrent(inactiveHolder);
+            inactiveHolder.RecordRemoved();
+        }
 
+        var originalBefore = OriginalDisposition;
         DestructionConfirmedAtUtc = AccountabilityTime.Normalize(at);
         DestructionConfirmedByUserId = userId;
-        OriginalStatus = PhysicalOriginalStatus.Destroyed;
-        InactiveContainerId = null;
+        RetainedPaperStatus = RetainedPaperStatus.Destroyed;
+        CurrentContainerId = null;
         Add(PhysicalDocumentEventKind.DestructionConfirmed, userId, at, null, what);
+
+        if (OriginalDisposition != originalBefore)
+        {
+            throw new InvalidOperationException("Invariant FIL-014: destruction of retained paper must not change the original's disposition.");
+        }
     }
 
     public void AddNote(int userId, DateTimeOffset at, string narrative)
         => Add(PhysicalDocumentEventKind.Note, userId, at, null, Guard.NotBlank(narrative, "FIL-004", "Note"));
 
     private void Add(PhysicalDocumentEventKind kind, int userId, DateTimeOffset at, int? containerId, string? narrative)
-        => _events.Add(new PhysicalVoucherDocumentEvent(this, kind, OriginalStatus, userId, at, containerId, narrative));
+        => _events.Add(new PhysicalVoucherDocumentEvent(this, kind, OriginalDisposition, RetainedPaperStatus, userId, at, containerId, narrative));
 
     private void RequireContainer(PhysicalFileContainer container, PhysicalFileKind kind)
     {
@@ -403,18 +517,36 @@ public class PhysicalVoucherDocument : Entity, IConcurrencyStamped
         }
     }
 
-    private void RequireStatus(string requirementId, string action, params PhysicalOriginalStatus[] allowed)
+    private void RequireHome(PhysicalFileContainer homeActiveFile)
     {
-        if (!allowed.Contains(OriginalStatus))
+        ArgumentNullException.ThrowIfNull(homeActiveFile);
+        if (homeActiveFile.Id != HomeActiveContainerId || homeActiveFile.Id != CurrentContainerId)
+        {
+            throw new DomainRuleViolationException("FIL-001", "The active binder given is not the one holding this original.");
+        }
+    }
+
+    private void RequireCurrent(PhysicalFileContainer holder)
+    {
+        ArgumentNullException.ThrowIfNull(holder);
+        if (holder.Id != CurrentContainerId)
+        {
+            throw new DomainRuleViolationException("FIL-001", $"\"{holder.Label}\" does not currently hold this voucher's paper.");
+        }
+    }
+
+    private void RequireOriginal(string requirementId, string action, params OriginalDisposition[] allowed)
+    {
+        if (!allowed.Contains(OriginalDisposition))
         {
             throw new DomainRuleViolationException(
                 requirementId,
-                $"Cannot {action}: the original DA Form 4137 is {OriginalStatus}.");
+                $"Cannot {action}: the original DA Form 4137 is {OriginalDisposition}.");
         }
     }
 }
 
-/// <summary>One thing that happened to the paper record. Append-only.</summary>
+/// <summary>One thing that happened to the paper record. Append-only; records both axes as they stood after it.</summary>
 public class PhysicalVoucherDocumentEvent : Entity, IAppendOnly
 {
     private PhysicalVoucherDocumentEvent() { }
@@ -422,7 +554,8 @@ public class PhysicalVoucherDocumentEvent : Entity, IAppendOnly
     internal PhysicalVoucherDocumentEvent(
         PhysicalVoucherDocument document,
         PhysicalDocumentEventKind kind,
-        PhysicalOriginalStatus resultingStatus,
+        OriginalDisposition resultingOriginalDisposition,
+        RetainedPaperStatus resultingRetainedPaperStatus,
         int recordedByUserId,
         DateTimeOffset occurredAtUtc,
         int? containerId,
@@ -431,7 +564,8 @@ public class PhysicalVoucherDocumentEvent : Entity, IAppendOnly
         DocumentId = document.Id;
         Document = document;
         Kind = kind;
-        ResultingOriginalStatus = resultingStatus;
+        ResultingOriginalDisposition = resultingOriginalDisposition;
+        ResultingRetainedPaperStatus = resultingRetainedPaperStatus;
         RecordedByUserId = recordedByUserId;
         OccurredAtUtc = AccountabilityTime.Normalize(occurredAtUtc);
         ContainerId = containerId;
@@ -441,7 +575,8 @@ public class PhysicalVoucherDocumentEvent : Entity, IAppendOnly
     public int DocumentId { get; private set; }
     public PhysicalVoucherDocument? Document { get; private set; }
     public PhysicalDocumentEventKind Kind { get; private set; }
-    public PhysicalOriginalStatus ResultingOriginalStatus { get; private set; }
+    public OriginalDisposition ResultingOriginalDisposition { get; private set; }
+    public RetainedPaperStatus ResultingRetainedPaperStatus { get; private set; }
     public int RecordedByUserId { get; private set; }
     public DateTimeOffset OccurredAtUtc { get; private set; }
     public int? ContainerId { get; private set; }

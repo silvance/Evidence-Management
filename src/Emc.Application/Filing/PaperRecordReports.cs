@@ -58,7 +58,7 @@ public sealed class PhysicalDigitalConsistencyService : IPhysicalDigitalConsiste
 
         if (!accepted)
         {
-            if (paper is not null && paper.OriginalStatus != PhysicalOriginalStatus.NotYetFiled)
+            if (paper is not null && paper.OriginalDisposition != OriginalDisposition.NotYetFiled)
             {
                 advisories.Add(new("PDC-010", "2-4c", "The paper record says the original is filed, but no official document number is recorded on the companion. The custodian assigns the number at acceptance and the original is filed after it (2-4c, 2-4f(1))."));
             }
@@ -68,42 +68,51 @@ public sealed class PhysicalDigitalConsistencyService : IPhysicalDigitalConsiste
 
         // Paper original vs item states.
         var anyReleased = statuses.Any(s => s == AccountabilityStatus.TemporarilyReleased);
-        var allTerminalOrTransferred = lines.Count > 0 && statuses.All(s => s == AccountabilityStatus.PermanentlyTransferred);
-        var status = paper?.OriginalStatus ?? PhysicalOriginalStatus.NotYetFiled;
+        var basis = voucher.ClosureBasis;
+        var original = paper?.OriginalDisposition ?? OriginalDisposition.NotYetFiled;
 
-        if (paper is null || status == PhysicalOriginalStatus.NotYetFiled)
+        if (paper is null || original == OriginalDisposition.NotYetFiled)
         {
             advisories.Add(new("PDC-001", "2-4d, 2-4f(1)", "The voucher is accepted but the paper record does not say where the original DA Form 4137 is filed. Record its filing in the active file."));
         }
 
-        if (anyReleased && status is PhysicalOriginalStatus.FiledActive or PhysicalOriginalStatus.FiledInactive)
+        if (anyReleased && original is OriginalDisposition.HeldActive or OriginalDisposition.FiledInactive)
         {
-            advisories.Add(new("PDC-002", "2-7a, 2-4f(2)", "An item is on temporary release, but the paper record says the original DA Form 4137 is in the file. The original accompanies the evidence and a copy goes to the suspense folder; record the release of the original, or check the item's state."));
+            advisories.Add(new("PDC-002", "2-7b, 2-4f(2)", "An item is on temporary release, but the paper record says the original DA Form 4137 is in the file. The original accompanies the evidence and the first copy goes to the suspense folder; record the release of the original, or check the item's state."));
         }
 
-        if (!anyReleased && status == PhysicalOriginalStatus.AccompanyingTemporaryRelease)
+        if (!anyReleased && original == OriginalDisposition.AccompanyingTemporaryRelease)
         {
-            advisories.Add(new("PDC-003", "2-7a, 2-4f(2)", "The paper record says the original DA Form 4137 is out with the evidence, but no item on this voucher is on temporary release. Record the return of the original, or check the items' states."));
+            advisories.Add(new("PDC-003", "2-7b, 2-4f(2)", "The paper record says the original DA Form 4137 is out with the evidence, but no item on this voucher is on temporary release. Record the return of the original, or check the items' states."));
         }
 
-        if (derived == VoucherDerivedStatus.Inactive && status is PhysicalOriginalStatus.FiledActive or PhysicalOriginalStatus.AccompanyingTemporaryRelease or PhysicalOriginalStatus.SentForDispositionApproval)
+        if (basis is VoucherClosureBasis.AllItemsFinallyDisposed or VoucherClosureBasis.AllItemsReliefGranted or VoucherClosureBasis.MixedDisposedAndReliefGranted
+            && original is OriginalDisposition.HeldActive or OriginalDisposition.AccompanyingTemporaryRelease or OriginalDisposition.SentForDispositionApproval)
         {
-            advisories.Add(new("PDC-004", "2-4h", "Every item is disposed of, so the voucher is inactive, but the paper record says the original is still in the active file or out. File it in the inactive file labelled with the month and year."));
+            advisories.Add(new("PDC-004", basis == VoucherClosureBasis.AllItemsFinallyDisposed ? "2-4h" : "2-4h, 3-3c",
+                basis == VoucherClosureBasis.AllItemsFinallyDisposed
+                    ? "Every item is disposed of, but the paper record says the original is still in the active file or out. File it in the inactive file labelled with the month and year (2-4h)."
+                    : "Accountability for every item has closed (disposition and/or relief under 3-3c), but the paper record says the original is still in the active file or out. File it in the inactive file."));
         }
 
-        if (derived != VoucherDerivedStatus.Inactive && status == PhysicalOriginalStatus.FiledInactive && !allTerminalOrTransferred)
+        if (basis == VoucherClosureBasis.NotClosed && original == OriginalDisposition.FiledInactive)
         {
-            advisories.Add(new("PDC-005", "2-4h", "The paper record says the original is in the inactive file, but the companion still carries items that are not disposed of. A voucher becomes inactive only when all items are disposed of."));
+            advisories.Add(new("PDC-005", "2-4h", "The paper record says the original is in the inactive file, but the companion still carries items accounted for in this room. A form is filed inactive after ALL items are properly disposed (or closed under 3-3c)."));
         }
 
-        if (allTerminalOrTransferred && status is not (PhysicalOriginalStatus.TransferredToGainingRoom or PhysicalOriginalStatus.FiledInactive))
+        if (basis == VoucherClosureBasis.AllItemsPermanentlyTransferred && original != OriginalDisposition.TransferredToGainingRoom)
         {
-            advisories.Add(new("PDC-006", "2-7g, 2-4d", "Every item is permanently transferred, but the paper record does not say the original went to the gaining unit with a copy in the inactive file."));
+            advisories.Add(new("PDC-006", "2-7g, 2-4d", "Every item is permanently transferred, but the paper record does not say the original and duplicate went to the gaining unit with a copy in this room's inactive file."));
         }
 
-        if (paper is { HoldsCopyOnly: true, CopyReason: CopyRetentionReason.None })
+        if (basis == VoucherClosureBasis.MixedIncludingPermanentTransfer && original is not (OriginalDisposition.UnavailableOther or OriginalDisposition.TransferredToGainingRoom or OriginalDisposition.WithExternalAgency))
         {
-            advisories.Add(new("PDC-007", "2-4g", "The paper record holds a copy only, without saying why (record of trial, external agency, or other unavailability)."));
+            advisories.Add(new("PDC-009", "2-7g, 2-4g(3) [DESIGN]", "Some items were permanently transferred and the rest closed otherwise. AR 195-5 does not address a split form; record where the original went (2-7g) and file a copy noting it (2-4g(3)) with a narrative."));
+        }
+
+        if (paper is { RetainedPaperStatus: RetainedPaperStatus.InactiveCopy, CopyReason: CopyRetentionReason.None })
+        {
+            advisories.Add(new("PDC-007", "2-4g", "The paper record holds a copy only, without saying why (record of trial, external agency, transfer, or other unavailability)."));
         }
 
         if (paper is not null && paper.RetentionStatusAt(now) == PaperRetentionStatus.EligibleForDestruction)
@@ -119,11 +128,11 @@ public sealed class PhysicalDigitalConsistencyService : IPhysicalDigitalConsiste
 
         foreach (var scan in scans.Where(s => s.Provenance == ScanProvenance.PhysicalOriginal && s.DocumentType == SourceDocumentType.DaForm4137))
         {
-            var originalGone = status is PhysicalOriginalStatus.TransferredToGainingRoom or PhysicalOriginalStatus.PartOfRecordOfTrial or PhysicalOriginalStatus.WithExternalAgency or PhysicalOriginalStatus.Destroyed;
+            var originalGone = paper?.OriginalLeftThisRoom == true;
             var leftAt = paper?.InactiveSinceUtc;
             if (originalGone && (leftAt is null || scan.ReceivedAtUtc > leftAt))
             {
-                advisories.Add(new("PDC-021", "2-4g", $"Companion copy {scan.Id} is recorded as a scan of the PHYSICAL ORIGINAL received {scan.ReceivedAtUtc:dd MMM yy}, but the paper record says the original is {status}. Check the scan's provenance."));
+                advisories.Add(new("PDC-021", "2-4g, 2-7g", $"Companion copy {scan.Id} is recorded as a scan of the PHYSICAL ORIGINAL received {scan.ReceivedAtUtc:dd MMM yy}, but the paper record says the original is {original}. Check the scan's provenance."));
             }
         }
 
@@ -138,8 +147,8 @@ public sealed class PhysicalDigitalConsistencyService : IPhysicalDigitalConsiste
 }
 
 public sealed record RetentionRow(
-    int VoucherId, string VoucherIdentifier, VoucherDerivedStatus VoucherStatus, PhysicalOriginalStatus OriginalStatus, bool HoldsCopyOnly, CopyRetentionReason CopyReason,
-    string? ContainerLabel, DateTimeOffset? InactiveSinceUtc, DateTimeOffset? DestructionEligibleAtUtc, PaperRetentionStatus RetentionStatus, DateTimeOffset? DestructionConfirmedAtUtc);
+    int VoucherId, string VoucherIdentifier, VoucherDerivedStatus VoucherStatus, VoucherClosureBasis ClosureBasis, OriginalDisposition OriginalDisposition, RetainedPaperStatus RetainedPaperStatus,
+    CopyRetentionReason CopyReason, string? ContainerLabel, DateTimeOffset? InactiveSinceUtc, DateTimeOffset? DestructionEligibleAtUtc, PaperRetentionStatus RetentionStatus, DateTimeOffset? DestructionConfirmedAtUtc);
 
 public sealed record ContainerLoadRow(FileContainerRow Container, int Capacity, bool OverCapacity);
 
@@ -198,22 +207,22 @@ public sealed class RetentionDashboardService : IRetentionDashboardService
         var unfiled = new List<RetentionRow>();
         foreach (var v in vouchers.Where(v => v.HasOfficialDocumentNumber).OrderBy(v => v.DisplayIdentifier))
         {
-            if (!papers.TryGetValue(v.Id, out var p) || p.OriginalStatus == PhysicalOriginalStatus.NotYetFiled)
+            if (!papers.TryGetValue(v.Id, out var p) || p.RetainedPaperStatus == RetainedPaperStatus.None)
             {
-                unfiled.Add(new RetentionRow(v.Id, v.DisplayIdentifier, v.DerivedStatus, PhysicalOriginalStatus.NotYetFiled, false, CopyRetentionReason.None, null, null, null, PaperRetentionStatus.Retain, null));
+                unfiled.Add(new RetentionRow(v.Id, v.DisplayIdentifier, v.DerivedStatus, v.ClosureBasis, OriginalDisposition.NotYetFiled, RetainedPaperStatus.None, CopyRetentionReason.None, null, null, null, PaperRetentionStatus.Retain, null));
                 continue;
             }
 
-            var containerId = p.InactiveContainerId ?? p.SuspenseCopyContainerId ?? p.OriginalContainerId;
-            rows.Add(new RetentionRow(v.Id, v.DisplayIdentifier, v.DerivedStatus, p.OriginalStatus, p.HoldsCopyOnly, p.CopyReason,
-                containerId is int id && labels.TryGetValue(id, out var label) ? label : null,
+            rows.Add(new RetentionRow(v.Id, v.DisplayIdentifier, v.DerivedStatus, v.ClosureBasis, p.OriginalDisposition, p.RetainedPaperStatus, p.CopyReason,
+                p.CurrentContainerId is int id && labels.TryGetValue(id, out var label) ? label : null,
                 p.InactiveSinceUtc, p.DestructionEligibleAtUtc, p.RetentionStatusAt(now), p.DestructionConfirmedAtUtc));
         }
 
-        bool Inactive(RetentionRow r) => r.InactiveSinceUtc is not null;
-        var active = rows.Where(r => !Inactive(r) && r.OriginalStatus == PhysicalOriginalStatus.FiledActive).ToList();
-        var suspense = rows.Where(r => !Inactive(r) && r.OriginalStatus is PhysicalOriginalStatus.AccompanyingTemporaryRelease or PhysicalOriginalStatus.SentForDispositionApproval).ToList();
-        var inactive = rows.Where(Inactive).ToList();
+        // Buckets follow what the room HOLDS: an original out on release is in no binder; the
+        // suspense folder holds its first copy.
+        var active = rows.Where(r => r.RetainedPaperStatus == RetainedPaperStatus.ActiveOriginal).ToList();
+        var suspense = rows.Where(r => r.RetainedPaperStatus == RetainedPaperStatus.SuspenseCopy).ToList();
+        var inactive = rows.Where(r => r.InactiveSinceUtc is not null).ToList();
 
         return new RetentionDashboardView(
             evidenceRoomId, now, active, suspense,

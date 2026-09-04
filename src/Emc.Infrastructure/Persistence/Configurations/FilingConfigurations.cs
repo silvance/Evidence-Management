@@ -22,6 +22,7 @@ public sealed class PhysicalFileContainerConfiguration : IEntityTypeConfiguratio
         builder.Property(c => c.DocumentNumberRangeTo).HasMaxLength(24);
         builder.Property(c => c.Notes).HasMaxLength(2000);
         builder.Property(c => c.ConcurrencyStamp).IsConcurrencyToken();
+        builder.HasIndex(c => new { c.EvidenceRoomId, c.RangeCalendarYear, c.RangeFromSequence });
         builder.Ignore(c => c.DispositionLabel);
         builder.Ignore(c => c.IsSuspense);
 
@@ -38,7 +39,8 @@ public sealed class PhysicalVoucherDocumentConfiguration : IEntityTypeConfigurat
 
         builder.ToTable("PhysicalVoucherDocuments");
         builder.HasKey(d => d.Id);
-        builder.Property(d => d.OriginalStatus).HasConversion<int>().IsRequired();
+        builder.Property(d => d.OriginalDisposition).HasConversion<int>().IsRequired();
+        builder.Property(d => d.RetainedPaperStatus).HasConversion<int>().IsRequired();
         builder.Property(d => d.CopyReason).HasConversion<int>().IsRequired();
         builder.Property(d => d.ConcurrencyStamp).IsConcurrencyToken();
 
@@ -46,14 +48,15 @@ public sealed class PhysicalVoucherDocumentConfiguration : IEntityTypeConfigurat
         builder.HasIndex(d => d.VoucherId).IsUnique();
         builder.HasOne<EvidenceVoucher>().WithMany().HasForeignKey(d => d.VoucherId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<EvidenceRoom>().WithMany().HasForeignKey(d => d.EvidenceRoomId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.OriginalContainerId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.SuspenseCopyContainerId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.InactiveContainerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.CurrentContainerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PhysicalFileContainer>().WithMany().HasForeignKey(d => d.HomeActiveContainerId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(d => d.CurrentContainerId);
 
         builder.HasMany(d => d.Events).WithOne(e => e.Document).HasForeignKey(e => e.DocumentId).OnDelete(DeleteBehavior.Restrict);
 
-        builder.Ignore(d => d.OriginalHeldHere);
+        builder.Ignore(d => d.HoldsCopyOnly);
         builder.Ignore(d => d.OriginalIsOut);
+        builder.Ignore(d => d.OriginalLeftThisRoom);
         builder.Ignore(d => d.IsInactive);
         builder.Ignore(d => d.DestructionEligibleAtUtc);
     }
@@ -68,7 +71,8 @@ public sealed class PhysicalVoucherDocumentEventConfiguration : IEntityTypeConfi
         builder.ToTable("PhysicalVoucherDocumentEvents");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Kind).HasConversion<int>().IsRequired();
-        builder.Property(e => e.ResultingOriginalStatus).HasConversion<int>().IsRequired();
+        builder.Property(e => e.ResultingOriginalDisposition).HasConversion<int>().IsRequired();
+        builder.Property(e => e.ResultingRetainedPaperStatus).HasConversion<int>().IsRequired();
         builder.Property(e => e.Narrative).HasMaxLength(2000);
         builder.HasOne<User>().WithMany().HasForeignKey(e => e.RecordedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(e => new { e.DocumentId, e.OccurredAtUtc });

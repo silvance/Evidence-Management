@@ -171,12 +171,16 @@ namespace Emc.Infrastructure.Migrations
                     Kind = table.Column<int>(type: "int", nullable: false),
                     Form = table.Column<int>(type: "int", nullable: false),
                     Label = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    RangeCalendarYear = table.Column<int>(type: "int", nullable: true),
+                    RangeFromSequence = table.Column<int>(type: "int", nullable: true),
+                    RangeToSequence = table.Column<int>(type: "int", nullable: true),
                     DocumentNumberRangeFrom = table.Column<string>(type: "nvarchar(24)", maxLength: 24, nullable: true),
                     DocumentNumberRangeTo = table.Column<string>(type: "nvarchar(24)", maxLength: 24, nullable: true),
                     DispositionYear = table.Column<int>(type: "int", nullable: true),
                     DispositionMonth = table.Column<int>(type: "int", nullable: true),
                     Notes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    FiledVoucherCount = table.Column<int>(type: "int", nullable: false),
                     ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
                 },
                 constraints: table =>
@@ -565,12 +569,12 @@ namespace Emc.Infrastructure.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     VoucherId = table.Column<int>(type: "int", nullable: false),
                     EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
-                    OriginalStatus = table.Column<int>(type: "int", nullable: false),
-                    OriginalContainerId = table.Column<int>(type: "int", nullable: true),
-                    SuspenseCopyContainerId = table.Column<int>(type: "int", nullable: true),
-                    InactiveContainerId = table.Column<int>(type: "int", nullable: true),
-                    HoldsCopyOnly = table.Column<bool>(type: "bit", nullable: false),
+                    OriginalDisposition = table.Column<int>(type: "int", nullable: false),
+                    RetainedPaperStatus = table.Column<int>(type: "int", nullable: false),
+                    CurrentContainerId = table.Column<int>(type: "int", nullable: true),
+                    HomeActiveContainerId = table.Column<int>(type: "int", nullable: true),
                     CopyReason = table.Column<int>(type: "int", nullable: false),
+                    SuspenseCopyFiledWithOriginal = table.Column<bool>(type: "bit", nullable: false),
                     InactiveSinceUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     DestructionConfirmedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     DestructionConfirmedByUserId = table.Column<int>(type: "int", nullable: true),
@@ -592,20 +596,14 @@ namespace Emc.Infrastructure.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_InactiveContainerId",
-                        column: x => x.InactiveContainerId,
+                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_CurrentContainerId",
+                        column: x => x.CurrentContainerId,
                         principalTable: "PhysicalFileContainers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_OriginalContainerId",
-                        column: x => x.OriginalContainerId,
-                        principalTable: "PhysicalFileContainers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_SuspenseCopyContainerId",
-                        column: x => x.SuspenseCopyContainerId,
+                        name: "FK_PhysicalVoucherDocuments_PhysicalFileContainers_HomeActiveContainerId",
+                        column: x => x.HomeActiveContainerId,
                         principalTable: "PhysicalFileContainers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -815,7 +813,8 @@ namespace Emc.Infrastructure.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     DocumentId = table.Column<int>(type: "int", nullable: false),
                     Kind = table.Column<int>(type: "int", nullable: false),
-                    ResultingOriginalStatus = table.Column<int>(type: "int", nullable: false),
+                    ResultingOriginalDisposition = table.Column<int>(type: "int", nullable: false),
+                    ResultingRetainedPaperStatus = table.Column<int>(type: "int", nullable: false),
                     RecordedByUserId = table.Column<int>(type: "int", nullable: false),
                     OccurredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     ContainerId = table.Column<int>(type: "int", nullable: true),
@@ -1335,6 +1334,11 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_PhysicalFileContainers_EvidenceRoomId_RangeCalendarYear_RangeFromSequence",
+                table: "PhysicalFileContainers",
+                columns: new[] { "EvidenceRoomId", "RangeCalendarYear", "RangeFromSequence" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PhysicalVoucherDocumentEvents_DocumentId_OccurredAtUtc",
                 table: "PhysicalVoucherDocumentEvents",
                 columns: new[] { "DocumentId", "OccurredAtUtc" });
@@ -1345,24 +1349,19 @@ namespace Emc.Infrastructure.Migrations
                 column: "RecordedByUserId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_PhysicalVoucherDocuments_CurrentContainerId",
+                table: "PhysicalVoucherDocuments",
+                column: "CurrentContainerId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PhysicalVoucherDocuments_EvidenceRoomId",
                 table: "PhysicalVoucherDocuments",
                 column: "EvidenceRoomId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_PhysicalVoucherDocuments_InactiveContainerId",
+                name: "IX_PhysicalVoucherDocuments_HomeActiveContainerId",
                 table: "PhysicalVoucherDocuments",
-                column: "InactiveContainerId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PhysicalVoucherDocuments_OriginalContainerId",
-                table: "PhysicalVoucherDocuments",
-                column: "OriginalContainerId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PhysicalVoucherDocuments_SuspenseCopyContainerId",
-                table: "PhysicalVoucherDocuments",
-                column: "SuspenseCopyContainerId");
+                column: "HomeActiveContainerId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PhysicalVoucherDocuments_VoucherId",

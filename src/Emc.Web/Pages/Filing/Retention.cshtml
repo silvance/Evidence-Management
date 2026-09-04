@@ -23,15 +23,15 @@
             else
             {
                 <table>
-                    <thead><tr><th>Voucher</th><th>Voucher status</th><th>Original</th><th>Copy</th><th>Filed in</th>@if (showRetention) { <th>Inactive since</th><th>Eligible</th><th>Retention</th> }</tr></thead>
+                    <thead><tr><th>Voucher</th><th>Voucher status</th><th>Original</th><th>This room holds</th><th>Filed in</th>@if (showRetention) { <th>Inactive since</th><th>Eligible</th><th>Retention</th> }</tr></thead>
                     <tbody>
                     @foreach (var r in rows)
                     {
                         <tr>
                             <td><a asp-page="/Vouchers/Details" asp-route-id="@r.VoucherId">@r.VoucherIdentifier</a></td>
                             <td>@r.VoucherStatus</td>
-                            <td>@r.OriginalStatus</td>
-                            <td>@(r.HoldsCopyOnly ? $"copy only ({r.CopyReason})" : "—")</td>
+                            <td>@r.OriginalDisposition</td>
+                            <td>@r.RetainedPaperStatus@(r.CopyReason == Emc.Domain.Filing.CopyRetentionReason.None ? "" : $" ({r.CopyReason})")</td>
                             <td>@(r.ContainerLabel ?? "—")</td>
                             @if (showRetention)
                             {

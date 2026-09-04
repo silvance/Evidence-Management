@@ -828,6 +828,9 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("EvidenceRoomId")
                         .HasColumnType("int");
 
+                    b.Property<int>("FiledVoucherCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("Form")
                         .HasColumnType("int");
 
@@ -846,10 +849,21 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<int?>("RangeCalendarYear")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RangeFromSequence")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RangeToSequence")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EvidenceRoomId", "Kind", "Label")
                         .IsUnique();
+
+                    b.HasIndex("EvidenceRoomId", "RangeCalendarYear", "RangeFromSequence");
 
                     b.ToTable("PhysicalFileContainers", (string)null);
                 });
@@ -869,6 +883,9 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("CopyReason")
                         .HasColumnType("int");
 
+                    b.Property<int?>("CurrentContainerId")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("DestructionConfirmedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -878,36 +895,31 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("EvidenceRoomId")
                         .HasColumnType("int");
 
-                    b.Property<bool>("HoldsCopyOnly")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("InactiveContainerId")
+                    b.Property<int?>("HomeActiveContainerId")
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("InactiveSinceUtc")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<int?>("OriginalContainerId")
+                    b.Property<int>("OriginalDisposition")
                         .HasColumnType("int");
 
-                    b.Property<int>("OriginalStatus")
+                    b.Property<int>("RetainedPaperStatus")
                         .HasColumnType("int");
 
-                    b.Property<int?>("SuspenseCopyContainerId")
-                        .HasColumnType("int");
+                    b.Property<bool>("SuspenseCopyFiledWithOriginal")
+                        .HasColumnType("bit");
 
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurrentContainerId");
+
                     b.HasIndex("EvidenceRoomId");
 
-                    b.HasIndex("InactiveContainerId");
-
-                    b.HasIndex("OriginalContainerId");
-
-                    b.HasIndex("SuspenseCopyContainerId");
+                    b.HasIndex("HomeActiveContainerId");
 
                     b.HasIndex("VoucherId")
                         .IsUnique();
@@ -942,7 +954,10 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("RecordedByUserId")
                         .HasColumnType("int");
 
-                    b.Property<int>("ResultingOriginalStatus")
+                    b.Property<int>("ResultingOriginalDisposition")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ResultingRetainedPaperStatus")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -2180,6 +2195,11 @@ namespace Emc.Infrastructure.Migrations
 
             modelBuilder.Entity("Emc.Domain.Filing.PhysicalVoucherDocument", b =>
                 {
+                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentContainerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
                         .WithMany()
                         .HasForeignKey("EvidenceRoomId")
@@ -2188,17 +2208,7 @@ namespace Emc.Infrastructure.Migrations
 
                     b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
                         .WithMany()
-                        .HasForeignKey("InactiveContainerId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
-                        .WithMany()
-                        .HasForeignKey("OriginalContainerId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Emc.Domain.Filing.PhysicalFileContainer", null)
-                        .WithMany()
-                        .HasForeignKey("SuspenseCopyContainerId")
+                        .HasForeignKey("HomeActiveContainerId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Emc.Domain.Cases.EvidenceVoucher", null)

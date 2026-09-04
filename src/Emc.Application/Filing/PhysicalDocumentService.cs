@@ -4,6 +4,7 @@ using Emc.Application.Authorization;
 using Emc.Domain.Cases;
 using Emc.Domain.Common;
 using Emc.Domain.Filing;
+using Emc.Domain.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace Emc.Application.Filing;
@@ -35,38 +36,46 @@ public sealed record PhysicalDocumentActionRequest(
     CopyRetentionReason CopyReason = CopyRetentionReason.None,
     string? GainingEvidenceRoom = null);
 
+/// <summary>
+/// A new paper file. An active file (2-4f(1)) states its canonical range - calendar year, first
+/// and last sequence - and the service renders it in the room's numbering layout for the label.
+/// </summary>
 public sealed record CreateFileContainerRequest(
     int EvidenceRoomId,
     PhysicalFileKind Kind,
     ContainerForm Form,
     string Label,
-    string? DocumentNumberRangeFrom = null,
-    string? DocumentNumberRangeTo = null,
+    int? RangeCalendarYear = null,
+    int? RangeFromSequence = null,
+    int? RangeToSequence = null,
     int? DispositionYear = null,
     int? DispositionMonth = null,
     string? Notes = null);
 
 public sealed record FileContainerRow(
     int Id, PhysicalFileKind Kind, ContainerForm Form, string Label,
-    string? RangeFrom, string? RangeTo, string? DispositionLabel, bool IsActive, int VouchersFiled);
+    string? RangeFrom, string? RangeTo, int? RangeCalendarYear, int? RangeFromSequence, int? RangeToSequence,
+    string? DispositionLabel, bool IsActive, int VouchersFiled);
 
 public sealed record PhysicalDocumentEventRow(
-    PhysicalDocumentEventKind Kind, PhysicalOriginalStatus ResultingStatus, string RecordedByName,
-    DateTimeOffset OccurredAtUtc, string? ContainerLabel, string? Narrative);
+    PhysicalDocumentEventKind Kind, OriginalDisposition ResultingOriginalDisposition, RetainedPaperStatus ResultingRetainedPaperStatus,
+    string RecordedByName, DateTimeOffset OccurredAtUtc, string? ContainerLabel, string? Narrative);
 
-/// <summary>The paper record for one voucher, as the voucher page shows it.</summary>
+/// <summary>The paper record for one voucher, as the voucher page shows it: what became of the original, and what this room holds now.</summary>
 public sealed record PhysicalDocumentView(
     int VoucherId,
-    PhysicalOriginalStatus OriginalStatus,
-    string? OriginalContainerLabel,
-    string? SuspenseCopyContainerLabel,
-    string? InactiveContainerLabel,
+    OriginalDisposition OriginalDisposition,
+    RetainedPaperStatus RetainedPaperStatus,
+    string? CurrentContainerLabel,
+    string? HomeActiveContainerLabel,
     bool HoldsCopyOnly,
     CopyRetentionReason CopyReason,
+    bool SuspenseCopyFiledWithOriginal,
     DateTimeOffset? InactiveSinceUtc,
     DateTimeOffset? DestructionEligibleAtUtc,
     PaperRetentionStatus RetentionStatus,
     DateTimeOffset? DestructionConfirmedAtUtc,
+    VoucherClosureBasis ClosureBasis,
     IReadOnlyList<PhysicalDocumentEventRow> Events,
     IReadOnlyList<FileContainerRow> RoomContainers);
 
@@ -122,9 +131,20 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
         PhysicalFileContainer container;
         try
         {
+            // The label range is rendered in the room's own numbering layout (VCH-023); the
+            // canonical range is what filing is checked against.
+            string? from = null, to = null;
+            if (request.Kind == PhysicalFileKind.Active4137File && request.RangeCalendarYear is int year
+                && request.RangeFromSequence is int first && request.RangeToSequence is int last && first >= 1 && last >= first)
+            {
+                var policy = await ResolveNumberingPolicyAsync(request.EvidenceRoomId, _clock.UtcNow, ct);
+                from = policy.Format(first, year);
+                to = policy.Format(last, year);
+            }
+
             container = new PhysicalFileContainer(
                 request.EvidenceRoomId, request.Kind, request.Form, request.Label,
-                request.DocumentNumberRangeFrom, request.DocumentNumberRangeTo,
+                request.RangeCalendarYear, request.RangeFromSequence, request.RangeToSequence, from, to,
                 request.DispositionYear, request.DispositionMonth, request.Notes);
         }
         catch (DomainRuleViolationException ex)
@@ -151,11 +171,10 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
             .OrderBy(c => c.Kind).ThenBy(c => c.Label)
             .ToListAsync(ct);
 
-        var counts = await FiledCountsAsync(containers.Select(c => c.Id).ToList(), ct);
-
         return containers.Select(c => new FileContainerRow(
             c.Id, c.Kind, c.Form, c.Label, c.DocumentNumberRangeFrom, c.DocumentNumberRangeTo,
-            c.DispositionLabel, c.IsActive, counts.GetValueOrDefault(c.Id))).ToList();
+            c.RangeCalendarYear, c.RangeFromSequence, c.RangeToSequence,
+            c.DispositionLabel, c.IsActive, c.FiledVoucherCount)).ToList();
     }
 
     public async Task<PhysicalDocumentView?> GetForVoucherAsync(int voucherId, CancellationToken ct = default)
@@ -175,11 +194,12 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
         var containers = await GetContainersAsync(roomId.Value, ct);
         var labels = containers.ToDictionary(c => c.Id, c => c.Label);
 
+        var voucher = await _db.EvidenceVouchers.AsNoTracking().Include(v => v.Items).FirstAsync(v => v.Id == voucherId, ct);
         if (document is null)
         {
             return new PhysicalDocumentView(
-                voucherId, PhysicalOriginalStatus.NotYetFiled, null, null, null, false,
-                CopyRetentionReason.None, null, null, PaperRetentionStatus.Retain, null, [], containers);
+                voucherId, OriginalDisposition.NotYetFiled, RetainedPaperStatus.None, null, null, false,
+                CopyRetentionReason.None, false, null, null, PaperRetentionStatus.Retain, null, voucher.ClosureBasis, [], containers);
         }
 
         var userIds = document.Events.Select(e => e.RecordedByUserId).Distinct().ToList();
@@ -188,19 +208,21 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
 
         return new PhysicalDocumentView(
             voucherId,
-            document.OriginalStatus,
-            Label(document.OriginalContainerId),
-            Label(document.SuspenseCopyContainerId),
-            Label(document.InactiveContainerId),
+            document.OriginalDisposition,
+            document.RetainedPaperStatus,
+            Label(document.CurrentContainerId),
+            Label(document.HomeActiveContainerId),
             document.HoldsCopyOnly,
             document.CopyReason,
+            document.SuspenseCopyFiledWithOriginal,
             document.InactiveSinceUtc,
             document.DestructionEligibleAtUtc,
             document.RetentionStatusAt(_clock.UtcNow),
             document.DestructionConfirmedAtUtc,
+            voucher.ClosureBasis,
             document.Events.OrderBy(e => e.OccurredAtUtc).ThenBy(e => e.Id)
                 .Select(e => new PhysicalDocumentEventRow(
-                    e.Kind, e.ResultingOriginalStatus, names.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
+                    e.Kind, e.ResultingOriginalDisposition, e.ResultingRetainedPaperStatus, names.GetValueOrDefault(e.RecordedByUserId, "(unknown user)"),
                     e.OccurredAtUtc, Label(e.ContainerId), e.Narrative))
                 .ToList(),
             containers);
@@ -243,11 +265,8 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
             .Include(d => d.Events)
             .FirstOrDefaultAsync(d => d.VoucherId == voucher.Id, ct);
 
-        if (document is null)
-        {
-            document = new PhysicalVoucherDocument(voucher.Id, voucher.EvidenceRoomId);
-            _db.PhysicalVoucherDocuments.Add(document);
-        }
+        var isNew = document is null;
+        document ??= new PhysicalVoucherDocument(voucher.Id, voucher.EvidenceRoomId);
 
         PhysicalFileContainer? container = null;
         if (request.ContainerId is int containerId)
@@ -262,60 +281,46 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
 
         var userId = _currentUser.UserId;
         var at = request.OccurredAt;
-        var before = document.OriginalStatus;
+        var before = $"{document.OriginalDisposition}/{document.RetainedPaperStatus}";
+        var current = document.CurrentContainerId is int currentId
+            ? await _db.PhysicalFileContainers.FirstOrDefaultAsync(c => c.Id == currentId, ct)
+            : null;
+        var assignment = voucher.CurrentDocumentNumberAssignment;
 
         try
         {
             switch (request.Action)
             {
                 case PhysicalDocumentAction.FileOriginalInActiveFile:
-                    document.FileOriginalInActiveFile(Required(container), await FiledCountAsync(Required(container).Id, ct), userId, at, request.Narrative);
+                    document.FileOriginalInActiveFile(Required(container), assignment!.Sequence, assignment.CalendarYear, userId, at, request.Narrative);
                     break;
 
                 case PhysicalDocumentAction.ReleaseOriginalWithEvidence:
-                    document.ReleaseOriginalWithEvidence(Required(container), userId, at, request.Narrative);
+                    document.ReleaseOriginalWithEvidence(RequiredCurrent(current), Required(container), userId, at, request.Narrative);
                     break;
 
                 case PhysicalDocumentAction.ReturnOriginalToActiveFile:
-                    document.ReturnOriginalToActiveFile(Required(container), await FiledCountAsync(Required(container).Id, ct), userId, at, request.Narrative);
+                    document.ReturnOriginalToActiveFile(Required(container), RequiredCurrent(current), assignment!.Sequence, assignment.CalendarYear, userId, at, request.Narrative);
                     break;
 
                 case PhysicalDocumentAction.SendOriginalForDispositionApproval:
-                    document.SendOriginalForDispositionApproval(Required(container), userId, at, request.Narrative);
+                    document.SendOriginalForDispositionApproval(RequiredCurrent(current), Required(container), userId, at, request.Narrative);
                     break;
 
                 case PhysicalDocumentAction.FileOriginalInactive:
-                    // AR 195-5 2-4h: "After ALL items of evidence listed on a DA Form 4137 have
-                    // been properly disposed". The voucher's derived status is the test.
-                    if (voucher.DerivedStatus != VoucherDerivedStatus.Inactive)
-                    {
-                        return OperationResult.Failure(
-                            "AR 195-5 para 2-4h: the original DA Form 4137 moves to the inactive file "
-                            + "after ALL items listed on it have been properly disposed. This voucher "
-                            + $"is {voucher.DerivedStatus}.", "FIL-006");
-                    }
-
-                    document.FileOriginalInactive(Required(container), userId, at, request.Narrative);
+                    document.FileOriginalInactive(Required(container), current, voucher.ClosureBasis, userId, at, request.Narrative);
                     break;
 
                 case PhysicalDocumentAction.TransferOriginalToGainingRoom:
-                    if (voucher.CurrentFormLines.Any(i => i.AccountabilityStatus != AccountabilityStatus.PermanentlyTransferred))
-                    {
-                        return OperationResult.Failure(
-                            "AR 195-5 para 2-7g: the original and duplicate DA Form 4137 accompany the "
-                            + "evidence on permanent transfer. Record the items' permanent transfer "
-                            + "first; this voucher still has items accounted for in this room.", "FIL-007");
-                    }
-
-                    document.TransferOriginalToGainingRoom(Required(container), request.GainingEvidenceRoom ?? string.Empty, userId, at, request.Narrative);
+                    document.TransferOriginalToGainingRoom(Required(container), current, voucher.ClosureBasis, request.GainingEvidenceRoom ?? string.Empty, userId, at, request.Narrative);
                     break;
 
                 case PhysicalDocumentAction.FileCopyInactiveOriginalUnavailable:
-                    document.FileCopyInactiveBecauseOriginalUnavailable(Required(container), request.CopyReason, request.Narrative ?? string.Empty, userId, at);
+                    document.FileCopyInactiveBecauseOriginalUnavailable(Required(container), current, request.CopyReason, request.Narrative ?? string.Empty, userId, at);
                     break;
 
                 case PhysicalDocumentAction.ConfirmDestruction:
-                    document.ConfirmDestruction(userId, at, request.Narrative ?? string.Empty);
+                    document.ConfirmDestruction(current, userId, at, request.Narrative ?? string.Empty);
                     break;
 
                 case PhysicalDocumentAction.Note:
@@ -331,35 +336,49 @@ public sealed class PhysicalDocumentService : IPhysicalDocumentService
             return OperationResult.Failure(ex.Message, ex.RequirementId);
         }
 
+        // Attached only once the action succeeded, so a refused first action leaves no
+        // half-built record in the unit of work.
+        if (isNew)
+        {
+            _db.PhysicalVoucherDocuments.Add(document);
+        }
+
         _audit.Record(
             AuditEventType.AccountabilityActionRecorded,
             nameof(PhysicalVoucherDocument), voucher.DisplayIdentifier,
-            previousValue: before.ToString(), newValue: document.OriginalStatus.ToString(),
+            previousValue: before, newValue: $"{document.OriginalDisposition}/{document.RetainedPaperStatus}",
             reason: $"{request.Action}: {request.Narrative}".Trim());
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // FIL-002. Another filing changed the container (its count and stamp) between our
+            // read and our write - the 50th-voucher race. Nothing was written; the caller retries
+            // against the container's current state.
+            return OperationResult.Failure(
+                "The file container was changed by another filing at the same moment. Nothing was recorded; check the container's current contents and try again.",
+                "FIL-002");
+        }
+
         return OperationResult.Success();
 
         static PhysicalFileContainer Required(PhysicalFileContainer? c)
             => c ?? throw new DomainRuleViolationException("FIL-001", "This action names a file container.");
+
+        static PhysicalFileContainer RequiredCurrent(PhysicalFileContainer? c)
+            => c ?? throw new DomainRuleViolationException("FIL-001", "The paper record names no current container for this action.");
     }
 
-    private async Task<int> FiledCountAsync(int containerId, CancellationToken ct)
-        => await _db.PhysicalVoucherDocuments.AsNoTracking()
-            .CountAsync(d => d.OriginalContainerId == containerId, ct);
-
-    private async Task<Dictionary<int, int>> FiledCountsAsync(List<int> containerIds, CancellationToken ct)
-        => await _db.PhysicalVoucherDocuments.AsNoTracking()
-            .Where(d => d.OriginalContainerId != null && containerIds.Contains(d.OriginalContainerId.Value)
-                        || d.SuspenseCopyContainerId != null && containerIds.Contains(d.SuspenseCopyContainerId.Value)
-                        || d.InactiveContainerId != null && containerIds.Contains(d.InactiveContainerId.Value))
-            .Select(d => new { d.OriginalContainerId, d.SuspenseCopyContainerId, d.InactiveContainerId })
-            .ToListAsync(ct)
-            .ContinueWith(t => t.Result
-                .SelectMany(d => new[] { d.OriginalContainerId, d.SuspenseCopyContainerId, d.InactiveContainerId })
-                .Where(id => id is not null)
-                .GroupBy(id => id!.Value)
-                .ToDictionary(g => g.Key, g => g.Count()), ct);
+    /// <summary>The room's numbering policy in effect now; the regulation's layout when none is recorded.</summary>
+    private async Task<EvidenceRoomNumberingPolicy> ResolveNumberingPolicyAsync(int evidenceRoomId, DateTimeOffset at, CancellationToken ct)
+    {
+        var policies = await _db.EvidenceRoomNumberingPolicies.AsNoTracking().Where(p => p.EvidenceRoomId == evidenceRoomId).ToListAsync(ct);
+        return policies.Where(p => p.IsEffectiveAt(at)).OrderByDescending(p => p.EffectiveFrom).FirstOrDefault()
+               ?? EvidenceRoomNumberingPolicy.Regulatory(evidenceRoomId, DateTimeOffset.MinValue);
+    }
 
     private async Task<OperationResult<T>> DenyAsync<T>(AuthorizationDecision decision, string recordType, string? recordId, CancellationToken ct)
     {

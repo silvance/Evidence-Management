@@ -194,6 +194,9 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
                 return VoucherDerivedStatus.ReturnedForCorrection;
             }
 
+            // [DESIGN] Inactive means "no active accountability remains in this room" - every
+            // line terminal on any basis. Which basis is ClosureBasis; only AllItemsFinallyDisposed
+            // is the 2-4h wording.
             var terminalCount = lines.Count(i => IsTerminal(i.AccountabilityStatus));
             if (terminalCount == lines.Count)
             {
@@ -227,6 +230,44 @@ public class EvidenceVoucher : Entity, IConcurrencyStamped
     public bool AllowsItemEditing
         => ReviewStage is VoucherReviewStage.Draft
             or VoucherReviewStage.ReturnedToSubmittingAgentForCorrection;
+
+    /// <summary>
+    /// The basis on which accountability in this room has closed, if it has. Derived from the
+    /// current form lines. Withdrawn lines (VCH-026) are not form lines and do not count.
+    /// </summary>
+    public VoucherClosureBasis ClosureBasis
+    {
+        get
+        {
+            var lines = CurrentFormLines.ToList();
+            if (lines.Count == 0 || lines.Any(i => !Emc.Domain.Events.AccountabilityStateMachine.IsTerminal(i.AccountabilityStatus)))
+            {
+                return VoucherClosureBasis.NotClosed;
+            }
+
+            var disposed = lines.Count(i => i.AccountabilityStatus == AccountabilityStatus.Disposed);
+            var transferred = lines.Count(i => i.AccountabilityStatus == AccountabilityStatus.PermanentlyTransferred);
+            var relieved = lines.Count(i => i.AccountabilityStatus == AccountabilityStatus.ReliefGranted);
+
+            if (disposed == lines.Count) return VoucherClosureBasis.AllItemsFinallyDisposed;
+            if (transferred == lines.Count) return VoucherClosureBasis.AllItemsPermanentlyTransferred;
+            if (relieved == lines.Count) return VoucherClosureBasis.AllItemsReliefGranted;
+            return transferred > 0 ? VoucherClosureBasis.MixedIncludingPermanentTransfer : VoucherClosureBasis.MixedDisposedAndReliefGranted;
+        }
+    }
+
+    /// <summary>[DESIGN] Every current line is terminal for this room. Not the 2-4h condition by itself; see <see cref="ClosureBasis"/>.</summary>
+    public bool HasNoActiveItemsForThisRoom => ClosureBasis != VoucherClosureBasis.NotClosed;
+
+    /// <summary>AR 195-5 2-4h, exactly: every current line finally disposed.</summary>
+    public bool AllCurrentItemsFinallyDisposed => ClosureBasis == VoucherClosureBasis.AllItemsFinallyDisposed;
+
+    public bool AllCurrentItemsPermanentlyTransferred => ClosureBasis == VoucherClosureBasis.AllItemsPermanentlyTransferred;
+
+    public bool AllCurrentItemsReliefGranted => ClosureBasis == VoucherClosureBasis.AllItemsReliefGranted;
+
+    public bool AnyCurrentItemPermanentlyTransferred
+        => CurrentFormLines.Any(i => i.AccountabilityStatus == AccountabilityStatus.PermanentlyTransferred);
 
     public void MarkAsRequestForAssistance(string requestingOfficeCaseNumber)
     {

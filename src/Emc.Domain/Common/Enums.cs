@@ -65,7 +65,35 @@ public enum AccountabilityStatus
     WithdrawnAsEnteredInError = 13
 }
 
-/// <summary>Derived from contained items — never stored as maintained state (AR 195-5 2-4h).</summary>
+/// <summary>
+/// On what basis a voucher's accountability in THIS room has closed. Derived from the current
+/// form lines; never stored. The bases are cited separately because AR 195-5 treats them
+/// differently: final disposition (2-4h, 2-8, 2-9) moves the original to the inactive file;
+/// permanent transfer (2-7g) sends the original with the evidence and leaves a copy; relief from
+/// accountability (3-3c) "permits the closure of the DA Form 4137".
+/// </summary>
+public enum VoucherClosureBasis
+{
+    /// <summary>At least one current line is still accounted for in this room.</summary>
+    NotClosed = 0,
+
+    /// <summary>AR 195-5 2-4h: "after all items of evidence listed on a DA Form 4137 have been properly disposed".</summary>
+    AllItemsFinallyDisposed = 1,
+
+    /// <summary>AR 195-5 2-7g: every item permanently transferred to another evidence room.</summary>
+    AllItemsPermanentlyTransferred = 2,
+
+    /// <summary>AR 195-5 3-3c: relief from accountability granted for every item.</summary>
+    AllItemsReliefGranted = 3,
+
+    /// <summary>Every line closed, by disposition or relief, none by transfer. Filed inactive on both citations.</summary>
+    MixedDisposedAndReliefGranted = 4,
+
+    /// <summary>Every line closed, at least one by permanent transfer and at least one otherwise. The regulation does not address a split form; the paper path is a 2-4g copy with a narrative [DESIGN].</summary>
+    MixedIncludingPermanentTransfer = 5
+}
+
+/// <summary>Derived from contained items — never stored as maintained state.</summary>
 public enum VoucherDerivedStatus
 {
     Draft = 0,
@@ -73,7 +101,13 @@ public enum VoucherDerivedStatus
     PartiallyAccepted = 2,
     Active = 3,
 
-    /// <summary>AR 195-5 2-4h — all items disposed. Only then does the voucher become inactive.</summary>
+    /// <summary>
+    /// [DESIGN] No active accountability remains in this room: every current line is in a
+    /// terminal state. The BASIS is <see cref="VoucherClosureBasis"/>; only
+    /// <see cref="VoucherClosureBasis.AllItemsFinallyDisposed"/> is the 2-4h condition
+    /// ("after all items ... have been properly disposed"). Permanent transfer (2-7g) and relief
+    /// (3-3c) close the form in this room on their own citations.
+    /// </summary>
     Inactive = 4,
 
     /// <summary>
