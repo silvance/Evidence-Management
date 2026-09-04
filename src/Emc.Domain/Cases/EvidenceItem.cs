@@ -200,6 +200,53 @@ public class EvidenceItem : Entity, IConcurrencyStamped
         ValidateSealAnnotation();
     }
 
+    /// <summary>
+    /// The form's rendered annotation, which the paper shows and OCR reads back, is not part
+    /// of the raw description (AR 195-5 2-3l). A verified description that ends with it is
+    /// stripped before it becomes the raw value, so the annotation is never stored twice.
+    /// </summary>
+    public const string PossibleBiohazardAnnotation = "POSSIBLE BIOHAZARD";
+
+    public static string RawDescriptionFromForm(string formText)
+    {
+        var text = (formText ?? string.Empty).Trim();
+        while (text.EndsWith(PossibleBiohazardAnnotation, StringComparison.OrdinalIgnoreCase))
+        {
+            text = text[..^PossibleBiohazardAnnotation.Length].TrimEnd(' ', ',', '-', ';');
+        }
+
+        return text;
+    }
+
+    /// <summary>ITEM-008. Changes the raw description and nothing else. Draft or returned form only (VCH-010).</summary>
+    public void UpdateDescription(string description)
+    {
+        RequireDraftVoucher();
+        Description = Guard.NotBlank(description, "ITEM-003", "Description of articles");
+        ValidateSealAnnotation();
+    }
+
+    /// <summary>ITEM-008. Changes the quantity and nothing else.</summary>
+    public void UpdateQuantity(string? quantity)
+    {
+        RequireDraftVoucher();
+        Quantity = Guard.TrimToNull(quantity);
+    }
+
+    /// <summary>ITEM-008. Changes the serial number and nothing else.</summary>
+    public void UpdateSerialNumber(string? serialNumber)
+    {
+        RequireDraftVoucher();
+        SerialNumber = Guard.TrimToNull(serialNumber);
+    }
+
+    /// <summary>ITEM-008. Changes the unique device identifier and nothing else.</summary>
+    public void UpdateUniqueDeviceIdentifier(string? uniqueDeviceIdentifier)
+    {
+        RequireDraftVoucher();
+        UniqueDeviceIdentifier = Guard.TrimToNull(uniqueDeviceIdentifier);
+    }
+
     /// <summary>AR 195-5 2-3d — exact amount by denomination (ITEM-006).</summary>
     public void RecordAsCurrency(string denominationBreakdown, decimal totalAmount)
     {

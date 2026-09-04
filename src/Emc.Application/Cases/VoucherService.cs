@@ -57,6 +57,23 @@ public sealed record RecordAgentCorrectionRequest(
 /// </summary>
 public sealed record WithdrawItemLineRequest(int ItemId, string Reason, bool AttestsNoPhysicalItemExists);
 
+/// <summary>The raw item fields a draft (or a returned form) may change one at a time (ITEM-008).</summary>
+public enum DraftItemField
+{
+    Description = 1,
+    Quantity = 2,
+    SerialNumber = 3,
+    UniqueDeviceIdentifier = 4
+}
+
+/// <summary>
+/// A strongly typed patch of ONE raw field. Nothing else on the item is read or rewritten:
+/// biohazard, fungible, seal and currency semantics stay exactly as they were. Description is
+/// the RAW description; the rendered form text (with its POSSIBLE BIOHAZARD annotation) is never
+/// fed back in.
+/// </summary>
+public sealed record UpdateDraftItemFieldRequest(int ItemId, DraftItemField Field, string? Value);
+
 /// <summary>The header blocks a draft (or a returned form) may still change: receiving activity, its location, and from whom received.</summary>
 public sealed record UpdateVoucherHeaderRequest(int VoucherId, string ReceivingActivity, string ReceivingActivityLocation, string ReceivedFrom);
 
@@ -66,6 +83,9 @@ public interface IVoucherService
     Task<OperationResult> UpdateHeaderAsync(UpdateVoucherHeaderRequest request, CancellationToken ct = default);
     Task<OperationResult<int>> AddItemAsync(AddItemRequest request, CancellationToken ct = default);
     Task<OperationResult> UpdateItemAsync(UpdateItemRequest request, CancellationToken ct = default);
+
+    /// <summary>ITEM-008. Changes one raw field of a draft (or returned-form) item and nothing else.</summary>
+    Task<OperationResult> UpdateDraftItemFieldAsync(UpdateDraftItemFieldRequest request, CancellationToken ct = default);
     Task<OperationResult> RemoveItemAsync(int itemId, CancellationToken ct = default);
     Task<OperationResult> SubmitForCustodianIntakeAsync(int voucherId, CancellationToken ct = default);
 
@@ -277,6 +297,58 @@ public sealed class VoucherService : IVoucherService
             AuditEventType.AccountabilityActionRecorded,
             nameof(EvidenceItem), $"{item.Voucher.DisplayIdentifier}/{item.ItemNumber}",
             newValue: "Draft item updated");
+
+        await _db.SaveChangesAsync(ct);
+        return OperationResult.Success([.. DescriptionWarnings(item)]);
+    }
+
+    public async Task<OperationResult> UpdateDraftItemFieldAsync(UpdateDraftItemFieldRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var item = await _db.EvidenceItems
+            .Include(i => i.Voucher!).ThenInclude(v => v.Items)
+            .Include(i => i.Voucher!).ThenInclude(v => v.ReviewActions)
+            .FirstOrDefaultAsync(i => i.Id == request.ItemId, ct);
+        if (item?.Voucher is null)
+        {
+            return OperationResult.Failure("Item not found.", "ITEM-001");
+        }
+
+        var decision = await _authorization.AuthorizeAsync(EmcPermissions.EditDraftVoucher, item.Voucher.EvidenceRoomId, ct);
+        if (!decision.IsAllowed)
+        {
+            return (await DenyAsync<bool>(decision, nameof(EvidenceItem), item.Id.ToString(), ct)).ToUntyped();
+        }
+
+        try
+        {
+            switch (request.Field)
+            {
+                case DraftItemField.Description:
+                    item.UpdateDescription(request.Value ?? string.Empty);
+                    break;
+                case DraftItemField.Quantity:
+                    item.UpdateQuantity(request.Value);
+                    break;
+                case DraftItemField.SerialNumber:
+                    item.UpdateSerialNumber(request.Value);
+                    break;
+                case DraftItemField.UniqueDeviceIdentifier:
+                    item.UpdateUniqueDeviceIdentifier(request.Value);
+                    break;
+                default:
+                    return OperationResult.Failure("Unknown item field.", "ITEM-008");
+            }
+        }
+        catch (DomainRuleViolationException ex)
+        {
+            return OperationResult.Failure(ex.Message, ex.RequirementId);
+        }
+
+        _audit.Record(
+            AuditEventType.AccountabilityActionRecorded,
+            nameof(EvidenceItem), $"{item.Voucher.DisplayIdentifier}/{item.ItemNumber}",
+            newValue: $"Draft item {request.Field} updated");
 
         await _db.SaveChangesAsync(ct);
         return OperationResult.Success([.. DescriptionWarnings(item)]);

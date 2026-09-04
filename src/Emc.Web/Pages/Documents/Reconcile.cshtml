@@ -22,7 +22,7 @@
         <tr><th>Voucher status</th><td>@v.VoucherStatus @(v.IsPreAcceptance ? "(draft: changes go to the draft form)" : "(accepted: findings only)")</td></tr>
         <tr><th>OCR run</th><td>@(v.RunId is null ? "none successful" : $"run {v.RunId}")</td></tr>
         <tr><th>Verification</th><td>@(v.VerificationComplete ? "complete" : $"{v.MandatoryVerificationsOutstanding} mandatory verification(s) outstanding — nothing can be applied until they are done")</td></tr>
-        <tr><th>Differences</th><td>@v.Differences.Count found, @v.OpenDifferences open, @v.Findings.Count decision(s) on record</td></tr>
+        <tr><th>Differences</th><td>@v.Differences.Count found, @v.OpenDifferences open, @v.ConflictedDifferences conflicted between pages, @v.Findings.Count decision(s) on record (a decision binds to its OCR run and to the two values it compared)</td></tr>
     </tbody></table>
 </div>
 
@@ -44,7 +44,10 @@ else
             @foreach (var d in v.Differences)
             {
                 <tr class="@(d.IsResolved ? "" : "ocr-field--outstanding")">
-                    <td><strong>@d.FieldKey</strong> <span class="badge">@d.Kind</span><div class="hint">@d.Explanation</div></td>
+                    <td><strong>@d.FieldKey</strong> <span class="badge">@d.Kind</span>
+                        @if (d.IsConflicted) { <span class="badge badge--high-consequence">CONFLICTED between pages — resolve at verification</span> }
+                        else { <span class="badge">@d.Applicability</span> }
+                        <div class="hint">@d.Explanation</div></td>
                     <td><code>@(d.CompanionValue ?? "—")</code></td>
                     <td><code>@(d.DocumentValue ?? "—")</code> @if (!d.DocumentValueVerified) { <span class="badge badge--high-consequence">not verified</span> }</td>
                     <td>
@@ -61,18 +64,21 @@ else
                             <form method="post" asp-page-handler="Decide" asp-route-id="@v.SourceDocumentId" class="ocr-verify-form">
                                 <input type="hidden" name="Input.FieldKey" value="@d.FieldKey" />
                                 <select name="Input.Decision" aria-label="Decision for @d.FieldKey">
-                                    @if (v.IsPreAcceptance && d.Kind is ReconciliationDifferenceKind.HeaderField or ReconciliationDifferenceKind.ItemField or ReconciliationDifferenceKind.MissingItem && d.FieldKey != Emc.Domain.Ocr.OcrFieldCatalog.CaseControlNumber)
+                                    @if (d.Applicability == Emc.Application.Reconciliation.DifferenceApplicability.AppliesToDraft)
                                     {
-                                        <option value="@ReconciliationDecision.AppliedToDraftForm">Apply to the draft form</option>
+                                        <option value="@ReconciliationDecision.AppliedToDraftForm">Apply to the draft form (this field only)</option>
                                     }
                                     <option value="@ReconciliationDecision.CompanionRecordAlreadyCorrect">Companion record already correct</option>
                                     <option value="@ReconciliationDecision.ExtractionIncorrect">Extraction incorrect (state why)</option>
                                     <option value="@ReconciliationDecision.FlagForCustodianReview">Flag for custodian review (state why)</option>
-                                    @if (!v.IsPreAcceptance)
+                                    @if (!v.IsPreAcceptance && !d.IsConflicted)
                                     {
                                         <option value="@ReconciliationDecision.InitiatePostAcceptanceCorrection">Accepted record is wrong — initiate 1-7c(3) correction</option>
                                     }
-                                    <option value="@ReconciliationDecision.RecordMissingHistoricalEvent">Record missing historical event (state what)</option>
+                                    @if (!d.IsConflicted)
+                                    {
+                                        <option value="@ReconciliationDecision.RecordMissingHistoricalEvent">Record missing historical event (state what)</option>
+                                    }
                                 </select>
                                 <input type="text" name="Input.Narrative" maxlength="4000" placeholder="narrative" aria-label="Narrative for @d.FieldKey" />
                                 <button type="submit">Decide</button>

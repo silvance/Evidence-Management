@@ -107,8 +107,11 @@ public sealed class SourceDocumentService : ISourceDocumentService
         ArgumentNullException.ThrowIfNull(request);
 
         // The room the document is claimed for must be the room its voucher/case belongs to.
+        // For a voucher-attached document the CASE is the voucher's case, derived here and never
+        // taken from the client (DOC-013): a document cannot say "voucher from case A, case B".
         int? ownerRoom = null;
         string? voucherIdentifier = null;
+        var caseIdForDocument = request.CaseId;
 
         if (request.VoucherId is int voucherId)
         {
@@ -117,6 +120,16 @@ public sealed class SourceDocumentService : ISourceDocumentService
                 .FirstOrDefaultAsync(v => v.Id == voucherId, ct);
             ownerRoom = voucher?.EvidenceRoomId;
             voucherIdentifier = voucher?.DisplayIdentifier;
+            if (voucher is not null)
+            {
+                if (request.CaseId is int claimed && claimed != voucher.CaseId)
+                {
+                    return OperationResult<int>.Failure(
+                        "The document names a case that is not the voucher's case. A voucher-attached document belongs to the voucher's own case; leave the case blank or name that case.", "DOC-013");
+                }
+
+                caseIdForDocument = voucher.CaseId;
+            }
         }
         else if (request.CaseId is int caseId)
         {
@@ -161,7 +174,7 @@ public sealed class SourceDocumentService : ISourceDocumentService
         var window = now.AddSeconds(-_options.DuplicateRequestWindowSeconds);
         var repeated = await _db.SourceDocuments.AsNoTracking().AnyAsync(d =>
             d.Sha256 == sha256 && d.EvidenceRoomId == request.EvidenceRoomId
-            && d.VoucherId == request.VoucherId && d.CaseId == request.CaseId
+            && d.VoucherId == request.VoucherId && d.CaseId == caseIdForDocument
             && d.ReceivedByUserId == _currentUser.UserId && d.ReceivedAtUtc >= window, ct);
         if (repeated)
         {
@@ -256,7 +269,7 @@ public sealed class SourceDocumentService : ISourceDocumentService
             }
 
             var document = new SourceDocument(
-                request.EvidenceRoomId, request.CaseId, request.VoucherId, request.DocumentType, request.Provenance,
+                request.EvidenceRoomId, caseIdForDocument, request.VoucherId, request.DocumentType, request.Provenance,
                 request.OriginalFilename, original.Length, original.Sha256, pageCount, original.StorageKey,
                 _currentUser.UserId, now, marking, status, request.ProvenanceNotes);
 
