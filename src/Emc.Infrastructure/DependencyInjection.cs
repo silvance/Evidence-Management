@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<ITemporaryIdentifierAllocator, TemporaryIdentifierAllocator>();
         services.AddScoped<IEvidenceIntakeService, EvidenceIntakeService>();
         services.AddScoped<IItemHistoryService, ItemHistoryService>();
+        services.AddScoped<ICustodyEventService, CustodyEventService>();
         services.AddScoped<Emc.Application.Filing.IPhysicalDocumentService, Emc.Application.Filing.PhysicalDocumentService>();
         services.AddScoped<Emc.Application.Filing.IPhysicalDigitalConsistencyService, Emc.Application.Filing.PhysicalDigitalConsistencyService>();
         services.AddScoped<Emc.Application.Filing.IRetentionDashboardService, Emc.Application.Filing.RetentionDashboardService>();

@@ -75,6 +75,8 @@ public sealed class CustodyEventConfiguration : IEntityTypeConfiguration<Custody
         builder.Navigation(e => e.ReleasedBy).AutoInclude();
         builder.Navigation(e => e.ReceivedBy).AutoInclude();
 
+        builder.HasOne<Emc.Domain.Reconciliation.ReconciliationFinding>().WithMany().HasForeignKey(e => e.ReconciliationFindingId).OnDelete(DeleteBehavior.Restrict);
+
         builder.HasOne(e => e.ReceivedBy)
             .WithMany()
             .HasForeignKey(e => e.ReceivedByPartyId)

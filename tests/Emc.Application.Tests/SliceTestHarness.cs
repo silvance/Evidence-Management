@@ -132,6 +132,9 @@ public class SliceTestHarness : IDisposable
     public IItemHistoryService History
         => new ItemHistoryService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
 
+    public ICustodyEventService Custody
+        => new CustodyEventService(Db, Authorization, CurrentUser, Audit, EventRecorder, Clock);
+
     public Filing.IPhysicalDocumentService PhysicalDocuments
         => new Filing.PhysicalDocumentService(Db, Authorization, CurrentUser, Audit, Clock);
 

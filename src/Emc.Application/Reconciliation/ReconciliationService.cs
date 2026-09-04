@@ -6,6 +6,7 @@ using Emc.Application.Ocr;
 using Emc.Application.Reads;
 using Emc.Domain.Cases;
 using Emc.Domain.Common;
+using Emc.Domain.Events;
 using Emc.Domain.Ocr;
 using Emc.Domain.Reconciliation;
 using Microsoft.EntityFrameworkCore;
@@ -56,10 +57,17 @@ public sealed record ReconciliationDifference(
     DifferenceApplicability Applicability,
     string Explanation,
     ReconciliationFindingRow? LatestFinding,
-    IReadOnlyList<string>? ConflictingValues = null)
+    IReadOnlyList<string>? ConflictingValues = null,
+
+    /// <summary>For a custody row decided "record missing historical event": the custody event a person then recorded from that finding, if any (REC-010).</summary>
+    int? RecordedCustodyEventId = null)
 {
     /// <summary>Resolved only by a finding on THIS run, THIS kind, THIS item, and THESE two values (REC-008).</summary>
     public bool IsResolved => LatestFinding is not null;
+
+    /// <summary>A custody row whose finding says "record it" and which no person has recorded yet - the explicit next step.</summary>
+    public bool AwaitsCustodyRecording
+        => Kind == ReconciliationDifferenceKind.CustodyRow && LatestFinding?.Decision == ReconciliationDecision.RecordMissingHistoricalEvent && RecordedCustodyEventId is null;
 
     public bool IsConflicted => Applicability == DifferenceApplicability.Conflicted;
 }
@@ -154,7 +162,16 @@ public sealed class ReconciliationService : IReconciliationService
 
         var run = status.LatestRun is { Outcome: OcrRunOutcome.Succeeded } r ? r : null;
         var findings = await FindingsAsync(sourceDocumentId, ct);
-        var differences = run is null ? [] : Compute(voucher, run, findings);
+
+        // REC-010. Custody rows a person has since recorded from their finding.
+        var findingIds = findings.Where(f => f.Kind == ReconciliationDifferenceKind.CustodyRow).Select(f => f.Id).ToList();
+        var recordedFromFindings = findingIds.Count == 0
+            ? new Dictionary<int, int>()
+            : await _db.ItemEvents.OfType<CustodyEvent>().AsNoTracking()
+                .Where(e => e.ReconciliationFindingId != null && findingIds.Contains(e.ReconciliationFindingId.Value))
+                .ToDictionaryAsync(e => e.ReconciliationFindingId!.Value, e => e.Id, ct);
+
+        var differences = run is null ? [] : Compute(voucher, run, findings, recordedFromFindings);
         var canDecide = (await _authorization.AuthorizeAsync(EmcPermissions.ReconcileSourceDocument, doc.EvidenceRoomId, ct)).IsAllowed;
         var canCorrect = (await _authorization.AuthorizeAsync(EmcPermissions.RecordCorrection, doc.EvidenceRoomId, ct)).IsAllowed;
 
@@ -262,7 +279,9 @@ public sealed class ReconciliationService : IReconciliationService
             }
 
             case ReconciliationDecision.RecordMissingHistoricalEvent:
-                warnings.Add("Finding recorded. The event the scan shows is recorded through the workflow that owns it (custody, release, disposition), not from the scan.");
+                warnings.Add(difference.Kind == ReconciliationDifferenceKind.CustodyRow
+                    ? "Finding recorded. The custodian now records the custody row on the item's history through the custody workflow (REC-010) - naming the parties and the date the paper shows - with this scan as provenance. Nothing is recorded from the scan by itself; a release the paper shows goes through the release workflow."
+                    : "Finding recorded. The event the scan shows is recorded through the workflow that owns it (custody, release, disposition), not from the scan.");
                 break;
         }
 
@@ -386,9 +405,10 @@ public sealed class ReconciliationService : IReconciliationService
 
     // ---- the draft patch ----------------------------------------------------------------
 
-    internal static IReadOnlyList<ReconciliationDifference> Compute(VoucherDetailView voucher, OcrRunView run, IReadOnlyList<ReconciliationFindingRow> findings)
+    internal static IReadOnlyList<ReconciliationDifference> Compute(VoucherDetailView voucher, OcrRunView run, IReadOnlyList<ReconciliationFindingRow> findings, IReadOnlyDictionary<int, int>? recordedFromFindings = null)
     {
         var result = new List<ReconciliationDifference>();
+        recordedFromFindings ??= new Dictionary<int, int>();
         var preAcceptance = voucher.AllowsItemEditing;
 
         // REC-008. A finding resolves a difference only when it was taken on THIS run, about
@@ -519,11 +539,13 @@ public sealed class ReconciliationService : IReconciliationService
             var key = $"Custody[{k}].{OcrFieldCatalog.CustodyDateField}";
             var value = string.Join(" | ", parts.Select(p => p.Value ?? "—"));
             var conflicted = parts.Any(p => p.Conflicts is not null);
+            var latestCustodyFinding = Latest(key, ReconciliationDifferenceKind.CustodyRow, null, null, value);
             result.Add(new ReconciliationDifference(key, ReconciliationDifferenceKind.CustodyRow, null, null, null, value,
                 parts.Where(p => p.Value is not null).All(p => p.Verified),
                 conflicted ? DifferenceApplicability.Conflicted : DifferenceApplicability.CustodyWorkflow,
-                $"Chain of custody row {k} on the form: item(s) | date | released by | received by | purpose. Custody events are recorded through the custody workflow, not from a scan.",
-                Latest(key, ReconciliationDifferenceKind.CustodyRow, null, null, value), conflicted ? parts.SelectMany(p => p.Conflicts ?? []).ToList() : null));
+                $"Chain of custody row {k} on the form: item(s) | date | released by | received by | purpose. A row the companion lacks is recorded by the custodian through the custody workflow (REC-010), never from the scan by itself.",
+                latestCustodyFinding, conflicted ? parts.SelectMany(p => p.Conflicts ?? []).ToList() : null,
+                latestCustodyFinding is not null && recordedFromFindings.TryGetValue(latestCustodyFinding.Id, out var recordedEventId) ? recordedEventId : null));
         }
 
         // Disposition blocks.

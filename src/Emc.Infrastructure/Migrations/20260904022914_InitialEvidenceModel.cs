@@ -799,97 +799,6 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "ItemEvents",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    EvidenceItemId = table.Column<int>(type: "int", nullable: false),
-                    SequenceNumber = table.Column<int>(type: "int", nullable: false),
-                    OccurredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    OccurredAtLocal = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    OccurredAtOffset = table.Column<TimeSpan>(type: "time", nullable: false),
-                    RecordedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
-                    Notes = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
-                    SourceDocumentId = table.Column<int>(type: "int", nullable: true),
-                    PreviousEventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
-                    EventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
-                    HashSchemaVersion = table.Column<int>(type: "int", nullable: false),
-                    EventKind = table.Column<string>(type: "nvarchar(21)", maxLength: 21, nullable: false),
-                    CorrectsEventId = table.Column<int>(type: "int", nullable: true),
-                    FieldName = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
-                    OriginalValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
-                    CorrectedValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
-                    PreviousEffectiveValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
-                    PreviousEffectiveReferenceId = table.Column<int>(type: "int", nullable: true),
-                    Reason = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    Category = table.Column<int>(type: "int", nullable: true),
-                    MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    SupervisorNotifiedUserId = table.Column<int>(type: "int", nullable: true),
-                    SupervisorNotifiedName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    SupervisorNotifiedGradeOrTitle = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
-                    SupervisorNotifiedOrganization = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    SupervisorNotifiedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    ReferenceKind = table.Column<int>(type: "int", nullable: true),
-                    OriginalReferenceId = table.Column<int>(type: "int", nullable: true),
-                    CorrectedReferenceId = table.Column<int>(type: "int", nullable: true),
-                    ReleasedByPartyId = table.Column<int>(type: "int", nullable: true),
-                    ReceivedByPartyId = table.Column<int>(type: "int", nullable: true),
-                    PurposeOfChangeOfCustody = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    IsScrcni = table.Column<bool>(type: "bit", nullable: true),
-                    Destination = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
-                    Agency = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    DocumentNumber = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: true),
-                    PreviousDocumentNumber = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: true),
-                    AttestedAssignedInAuthoritativeLedger = table.Column<bool>(type: "bit", nullable: true),
-                    Laboratory = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    ExaminationRequestReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    ExhibitNumber = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
-                    ExtractionDescription = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    ResultReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    StorageLocationId = table.Column<int>(type: "int", nullable: true),
-                    StorageLocationPath = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    LocationEvent_Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    Action = table.Column<int>(type: "int", nullable: true),
-                    PerformedByName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    PurposeOfBreach = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    SealEvent_MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    DirectingSupervisorName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
-                    FromStatus = table.Column<int>(type: "int", nullable: true),
-                    ToStatus = table.Column<int>(type: "int", nullable: true),
-                    StatusEvent_Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ItemEvents", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ItemEvents_CustodyParties_ReceivedByPartyId",
-                        column: x => x.ReceivedByPartyId,
-                        principalTable: "CustodyParties",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ItemEvents_CustodyParties_ReleasedByPartyId",
-                        column: x => x.ReleasedByPartyId,
-                        principalTable: "CustodyParties",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ItemEvents_EvidenceItems_EvidenceItemId",
-                        column: x => x.EvidenceItemId,
-                        principalTable: "EvidenceItems",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ItemEvents_ItemEvents_CorrectsEventId",
-                        column: x => x.CorrectsEventId,
-                        principalTable: "ItemEvents",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "PhysicalVoucherDocumentEvents",
                 columns: table => new
                 {
@@ -1062,49 +971,6 @@ namespace Emc.Infrastructure.Migrations
                         name: "FK_VoucherFormRevisionLines_VoucherFormRevisions_RevisionId",
                         column: x => x.RevisionId,
                         principalTable: "VoucherFormRevisions",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "TemporaryReleaseItems",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TemporaryReleaseId = table.Column<int>(type: "int", nullable: false),
-                    EvidenceItemId = table.Column<int>(type: "int", nullable: false),
-                    ItemNumber = table.Column<int>(type: "int", nullable: false),
-                    ReleaseCustodyEventId = table.Column<int>(type: "int", nullable: false),
-                    ReturnCustodyEventId = table.Column<int>(type: "int", nullable: true),
-                    Status = table.Column<int>(type: "int", nullable: false),
-                    ReturnedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TemporaryReleaseItems", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_TemporaryReleaseItems_EvidenceItems_EvidenceItemId",
-                        column: x => x.EvidenceItemId,
-                        principalTable: "EvidenceItems",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_TemporaryReleaseItems_ItemEvents_ReleaseCustodyEventId",
-                        column: x => x.ReleaseCustodyEventId,
-                        principalTable: "ItemEvents",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_TemporaryReleaseItems_ItemEvents_ReturnCustodyEventId",
-                        column: x => x.ReturnCustodyEventId,
-                        principalTable: "ItemEvents",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_TemporaryReleaseItems_TemporaryReleases_TemporaryReleaseId",
-                        column: x => x.TemporaryReleaseId,
-                        principalTable: "TemporaryReleases",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -1403,6 +1269,147 @@ namespace Emc.Infrastructure.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "ItemEvents",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EvidenceItemId = table.Column<int>(type: "int", nullable: false),
+                    SequenceNumber = table.Column<int>(type: "int", nullable: false),
+                    OccurredAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    OccurredAtLocal = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    OccurredAtOffset = table.Column<TimeSpan>(type: "time", nullable: false),
+                    RecordedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RecordedByUserId = table.Column<int>(type: "int", nullable: false),
+                    Notes = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: true),
+                    PreviousEventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                    EventHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    HashSchemaVersion = table.Column<int>(type: "int", nullable: false),
+                    EventKind = table.Column<string>(type: "nvarchar(21)", maxLength: 21, nullable: false),
+                    CorrectsEventId = table.Column<int>(type: "int", nullable: true),
+                    FieldName = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    OriginalValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    CorrectedValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    PreviousEffectiveValue = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    PreviousEffectiveReferenceId = table.Column<int>(type: "int", nullable: true),
+                    Reason = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    Category = table.Column<int>(type: "int", nullable: true),
+                    MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    SupervisorNotifiedUserId = table.Column<int>(type: "int", nullable: true),
+                    SupervisorNotifiedName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    SupervisorNotifiedGradeOrTitle = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                    SupervisorNotifiedOrganization = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    SupervisorNotifiedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    ReferenceKind = table.Column<int>(type: "int", nullable: true),
+                    OriginalReferenceId = table.Column<int>(type: "int", nullable: true),
+                    CorrectedReferenceId = table.Column<int>(type: "int", nullable: true),
+                    ReleasedByPartyId = table.Column<int>(type: "int", nullable: true),
+                    ReceivedByPartyId = table.Column<int>(type: "int", nullable: true),
+                    PurposeOfChangeOfCustody = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    IsScrcni = table.Column<bool>(type: "bit", nullable: true),
+                    Destination = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    Agency = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    ReconciliationFindingId = table.Column<int>(type: "int", nullable: true),
+                    DocumentNumber = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: true),
+                    PreviousDocumentNumber = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: true),
+                    AttestedAssignedInAuthoritativeLedger = table.Column<bool>(type: "bit", nullable: true),
+                    Laboratory = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    ExaminationRequestReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    ExhibitNumber = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    ExtractionDescription = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
+                    ResultReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    StorageLocationId = table.Column<int>(type: "int", nullable: true),
+                    StorageLocationPath = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    LocationEvent_Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    Action = table.Column<int>(type: "int", nullable: true),
+                    PerformedByName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    PurposeOfBreach = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    SealEvent_MfrReference = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    DirectingSupervisorName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    FromStatus = table.Column<int>(type: "int", nullable: true),
+                    ToStatus = table.Column<int>(type: "int", nullable: true),
+                    StatusEvent_Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ItemEvents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ItemEvents_CustodyParties_ReceivedByPartyId",
+                        column: x => x.ReceivedByPartyId,
+                        principalTable: "CustodyParties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ItemEvents_CustodyParties_ReleasedByPartyId",
+                        column: x => x.ReleasedByPartyId,
+                        principalTable: "CustodyParties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ItemEvents_EvidenceItems_EvidenceItemId",
+                        column: x => x.EvidenceItemId,
+                        principalTable: "EvidenceItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ItemEvents_ItemEvents_CorrectsEventId",
+                        column: x => x.CorrectsEventId,
+                        principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ItemEvents_ReconciliationFindings_ReconciliationFindingId",
+                        column: x => x.ReconciliationFindingId,
+                        principalTable: "ReconciliationFindings",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TemporaryReleaseItems",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TemporaryReleaseId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceItemId = table.Column<int>(type: "int", nullable: false),
+                    ItemNumber = table.Column<int>(type: "int", nullable: false),
+                    ReleaseCustodyEventId = table.Column<int>(type: "int", nullable: false),
+                    ReturnCustodyEventId = table.Column<int>(type: "int", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    ReturnedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TemporaryReleaseItems", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_EvidenceItems_EvidenceItemId",
+                        column: x => x.EvidenceItemId,
+                        principalTable: "EvidenceItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_ItemEvents_ReleaseCustodyEventId",
+                        column: x => x.ReleaseCustodyEventId,
+                        principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_ItemEvents_ReturnCustodyEventId",
+                        column: x => x.ReturnCustodyEventId,
+                        principalTable: "ItemEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TemporaryReleaseItems_TemporaryReleases_TemporaryReleaseId",
+                        column: x => x.TemporaryReleaseId,
+                        principalTable: "TemporaryReleases",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_AuditEvents_ActingUserId_OccurredAtUtc",
                 table: "AuditEvents",
@@ -1580,6 +1587,11 @@ namespace Emc.Infrastructure.Migrations
                 name: "IX_ItemEvents_ReceivedByPartyId",
                 table: "ItemEvents",
                 column: "ReceivedByPartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ItemEvents_ReconciliationFindingId",
+                table: "ItemEvents",
+                column: "ReconciliationFindingId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ItemEvents_ReleasedByPartyId",
@@ -1972,9 +1984,6 @@ namespace Emc.Infrastructure.Migrations
                 name: "PrimaryCustodianTransitions");
 
             migrationBuilder.DropTable(
-                name: "ReconciliationFindings");
-
-            migrationBuilder.DropTable(
                 name: "RoleAssignments");
 
             migrationBuilder.DropTable(
@@ -2026,16 +2035,19 @@ namespace Emc.Infrastructure.Migrations
                 name: "VoucherFormRevisions");
 
             migrationBuilder.DropTable(
-                name: "OcrRuns");
-
-            migrationBuilder.DropTable(
-                name: "EvidenceItems");
+                name: "ReconciliationFindings");
 
             migrationBuilder.DropTable(
                 name: "CustodyParties");
 
             migrationBuilder.DropTable(
                 name: "PhysicalFileContainers");
+
+            migrationBuilder.DropTable(
+                name: "EvidenceItems");
+
+            migrationBuilder.DropTable(
+                name: "OcrRuns");
 
             migrationBuilder.DropTable(
                 name: "OcrJobs");

@@ -68,6 +68,24 @@ public class CustodyEvent : ItemEvent
     public string? Destination { get; private set; }
     public string? Agency { get; private set; }
 
+    /// <summary>
+    /// The reconciliation finding this event was recorded from, when a person recorded a custody
+    /// row the scan shows and the companion record lacked (REC-010). A correlation pointer, set
+    /// once, outside the hash: the hashed <see cref="ItemEvent.SourceDocumentId"/> and the notes
+    /// are the provenance; this only lets the reconciliation view say "recorded".
+    /// </summary>
+    public int? ReconciliationFindingId { get; private set; }
+
+    public void LinkReconciliationFinding(int findingId)
+    {
+        if (ReconciliationFindingId is not null)
+        {
+            throw new AppendOnlyViolationException($"Event {Id} is already linked to reconciliation finding {ReconciliationFindingId}.");
+        }
+
+        ReconciliationFindingId = Guard.Positive(findingId, "REC-010", "Reconciliation finding");
+    }
+
     /// <summary>The purpose text as it must appear on the form, with the SCRCNI annotation applied.</summary>
     public string PurposeForForm
         => IsScrcni ? $"{PurposeOfChangeOfCustody} ({ScrcniAnnotation})" : PurposeOfChangeOfCustody;

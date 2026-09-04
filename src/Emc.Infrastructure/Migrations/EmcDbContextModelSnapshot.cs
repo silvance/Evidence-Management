@@ -2212,10 +2212,15 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("ReceivedByPartyId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ReconciliationFindingId")
+                        .HasColumnType("int");
+
                     b.Property<int>("ReleasedByPartyId")
                         .HasColumnType("int");
 
                     b.HasIndex("ReceivedByPartyId");
+
+                    b.HasIndex("ReconciliationFindingId");
 
                     b.HasIndex("ReleasedByPartyId");
 
@@ -3055,6 +3060,11 @@ namespace Emc.Infrastructure.Migrations
                         .HasForeignKey("ReceivedByPartyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Emc.Domain.Reconciliation.ReconciliationFinding", null)
+                        .WithMany()
+                        .HasForeignKey("ReconciliationFindingId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Emc.Domain.Events.CustodyParty", "ReleasedBy")
                         .WithMany()
