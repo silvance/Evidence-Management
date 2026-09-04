@@ -44,8 +44,9 @@ public class OcrSecurityTests : IDisposable
         var caseResult = await _harness.Cases.CreateAsync(new CreateCaseRequest($"CASE-{Guid.NewGuid():N}"[..20], "Log test", null, _harness.EvidenceRoomId));
         var voucher = await _harness.Vouchers.CreateDraftAsync(new CreateVoucherRequest(caseResult.Value, "TEST ROOM", "FORT TEST", "SMITH, TEST A.", _harness.Clock.UtcNow, false, null));
         await _harness.Vouchers.AddItemAsync(new AddItemRequest(voucher.Value, "One item", "1", null, null, false, false, false, null));
-        var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, new PdfiumRasterizer(), Options.Create(_docOptions));
+        var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, Options.Create(_docOptions));
         var upload = await documents.UploadAsync(new UploadSourceDocumentRequest(_harness.EvidenceRoomId, null, voucher.Value, SourceDocumentType.DaForm4137, ScanProvenance.PhysicalOriginal, $"{sensitive}.pdf", SyntheticPdf.SinglePage(), "UNCLASSIFIED"));
+        await TestRendering.RenderAllAsync(_harness.Db, _store, _harness.Clock, _docOptions);
         var jobs = new OcrJobService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store);
         Assert.True((await jobs.RequestAsync(upload.Value)).Succeeded);
 

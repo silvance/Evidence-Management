@@ -513,6 +513,12 @@
           "PDFtoImage": "[5.4.0, )"
         }
       },
+      "emc.ocrworker": {
+        "type": "Project",
+        "dependencies": {
+          "Emc.Infrastructure": "[1.0.0, )"
+        }
+      },
       "emc.web": {
         "type": "Project",
         "dependencies": {

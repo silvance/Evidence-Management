@@ -18,9 +18,10 @@ public sealed class OcrJob : Entity, IConcurrencyStamped
 
     private OcrJob() { }
 
-    public OcrJob(int sourceDocumentId, int evidenceRoomId, int requestedByUserId, DateTimeOffset requestedAtUtc)
+    public OcrJob(int sourceDocumentId, int renderRunId, int evidenceRoomId, int requestedByUserId, DateTimeOffset requestedAtUtc)
     {
         SourceDocumentId = Guard.Positive(sourceDocumentId, "OCR-010", "Source document");
+        RenderRunId = Guard.Positive(renderRunId, "OCR-010", "Render run");
         EvidenceRoomId = Guard.Positive(evidenceRoomId, "OCR-010", "Evidence room");
         RequestedByUserId = Guard.Positive(requestedByUserId, "OCR-010", "Requesting user");
         RequestedAtUtc = AccountabilityTime.Normalize(requestedAtUtc);
@@ -29,6 +30,13 @@ public sealed class OcrJob : Entity, IConcurrencyStamped
     }
 
     public int SourceDocumentId { get; private set; }
+
+    /// <summary>
+    /// The ONE successful render run whose page images this job reads (DOC-015). Chosen when the
+    /// job is requested, never "whatever is current when the worker gets to it": a re-render
+    /// between request and execution does not change what this job reads.
+    /// </summary>
+    public int RenderRunId { get; private set; }
     public int EvidenceRoomId { get; private set; }
     public int RequestedByUserId { get; private set; }
     public DateTimeOffset RequestedAtUtc { get; private set; }

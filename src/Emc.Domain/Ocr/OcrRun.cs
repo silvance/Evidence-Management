@@ -21,6 +21,7 @@ public sealed class OcrRun : Entity, IAppendOnly
     public OcrRun(
         int ocrJobId,
         int sourceDocumentId,
+        int renderRunId,
         string workerId,
         string engineName,
         string engineVersion,
@@ -36,6 +37,7 @@ public sealed class OcrRun : Entity, IAppendOnly
     {
         OcrJobId = Guard.Positive(ocrJobId, "OCR-012", "Job");
         SourceDocumentId = Guard.Positive(sourceDocumentId, "OCR-012", "Source document");
+        RenderRunId = Guard.Positive(renderRunId, "OCR-012", "Render run");
         WorkerId = Guard.NotBlank(workerId, "OCR-012", "Worker id");
         EngineName = Guard.NotBlank(engineName, "OCR-012", "Engine name");
         EngineVersion = Guard.NotBlank(engineVersion, "OCR-012", "Engine version");
@@ -67,6 +69,9 @@ public sealed class OcrRun : Entity, IAppendOnly
 
     public int OcrJobId { get; private set; }
     public int SourceDocumentId { get; private set; }
+
+    /// <summary>The render run whose page images were read. What the engine saw is exactly those images.</summary>
+    public int RenderRunId { get; private set; }
     public string WorkerId { get; private set; } = string.Empty;
     public string EngineName { get; private set; } = string.Empty;
     public string EngineVersion { get; private set; } = string.Empty;

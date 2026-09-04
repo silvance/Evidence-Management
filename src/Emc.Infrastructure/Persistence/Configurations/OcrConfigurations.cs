@@ -19,6 +19,7 @@ public sealed class OcrJobConfiguration : IEntityTypeConfiguration<OcrJob>
         builder.Property(j => j.LeasedByWorkerId).HasMaxLength(128);
         builder.Property(j => j.ConcurrencyStamp).IsConcurrencyToken();
         builder.HasOne<SourceDocument>().WithMany().HasForeignKey(j => j.SourceDocumentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<DocumentRenderRun>().WithMany().HasForeignKey(j => j.RenderRunId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<EvidenceRoom>().WithMany().HasForeignKey(j => j.EvidenceRoomId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<User>().WithMany().HasForeignKey(j => j.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(j => new { j.Status, j.RequestedAtUtc });
@@ -43,6 +44,7 @@ public sealed class OcrRunConfiguration : IEntityTypeConfiguration<OcrRun>
         builder.Property(r => r.FailureCategory).HasConversion<int>().IsRequired();
         builder.HasOne<OcrJob>().WithMany().HasForeignKey(r => r.OcrJobId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<SourceDocument>().WithMany().HasForeignKey(r => r.SourceDocumentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<DocumentRenderRun>().WithMany().HasForeignKey(r => r.RenderRunId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(r => new { r.SourceDocumentId, r.CompletedAtUtc });
         builder.HasMany(r => r.Fields).WithOne(f => f.Run).HasForeignKey(f => f.OcrRunId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(r => r.Pages).WithOne(p => p.Run).HasForeignKey(p => p.OcrRunId).OnDelete(DeleteBehavior.Restrict);

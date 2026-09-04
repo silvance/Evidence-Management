@@ -32,6 +32,8 @@
     <ProjectReference Include="..\..\src\Emc.Application\Emc.Application.csproj" />
     <ProjectReference Include="..\..\src\Emc.Infrastructure\Emc.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Emc.Web\Emc.Web.csproj" />
+    <!-- The worker assembly sits beside the tests so the render-isolation tests can start it as the child process it is in deployment. -->
+    <ProjectReference Include="..\..\src\Emc.OcrWorker\Emc.OcrWorker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace Emc.Application.Ocr;
 
 /// <summary>
-/// The worker's loop body: lease one job, read the document's rendered pages from the store,
+/// The worker's loop body: lease one job, read the pages of the render run it names from the store,
 /// preprocess, recognize, identify the template, map fields, write ONE immutable run, settle the
 /// job. Runs in <c>Emc.OcrWorker</c>, never in the web process (Phase 3C).
 ///
@@ -160,15 +160,17 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
 
     private async Task<OcrRun> ExecuteAsync(OcrJob job, DateTimeOffset started, CancellationToken ct)
     {
-        var document = await _db.SourceDocuments.AsNoTracking().Include(d => d.Pages)
-            .FirstOrDefaultAsync(d => d.Id == job.SourceDocumentId, ct);
-        if (document is null || document.ImportStatus != SourceDocumentImportStatus.Rendered || document.Pages.Count == 0)
+        // The ONE render run the job was requested against (DOC-015). Its pages are what the
+        // engine reads; a later re-render does not change what this job sees.
+        var render = await _db.DocumentRenderRuns.AsNoTracking().Include(r => r.Pages)
+            .FirstOrDefaultAsync(r => r.Id == job.RenderRunId && r.SourceDocumentId == job.SourceDocumentId, ct);
+        if (render is null || render.Outcome != RenderRunOutcome.Succeeded || render.Pages.Count == 0)
         {
             return FailedRun(job, started, OcrFailureCategory.DocumentUnavailable);
         }
 
         var pages = new List<RecognizedPage>();
-        var toProcess = document.Pages.OrderBy(p => p.PageNumber).Take(_options.MaxPagesPerJob).ToList();
+        var toProcess = render.Pages.OrderBy(p => p.PageNumber).Take(_options.MaxPagesPerJob).ToList();
         foreach (var page in toProcess)
         {
             ct.ThrowIfCancellationRequested();
@@ -185,7 +187,7 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
             using var pageTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             pageTimeout.CancelAfter(TimeSpan.FromSeconds(_options.PageTimeoutSeconds));
 
-            var recognized = await RecognizeUprightAsync(page.PageNumber, png, page.RenderDpi, pageTimeout.Token);
+            var recognized = await RecognizeUprightAsync(page.PageNumber, png, render.RenderDpi, pageTimeout.Token);
             if (recognized is null)
             {
                 return FailedRun(job, started, OcrFailureCategory.ResourceLimitExceeded);
@@ -218,7 +220,7 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
 
         var candidates = chosen.Map(pages);
         var run = new OcrRun(
-            job.Id, job.SourceDocumentId, _workerId, _engine.EngineName, _engine.EngineVersion, _engine.ModelIdentifiers,
+            job.Id, job.SourceDocumentId, job.RenderRunId, _workerId, _engine.EngineName, _engine.EngineVersion, _engine.ModelIdentifiers,
             _preprocessor.Version, chosen.TemplateId, identified, started, _clock.UtcNow,
             OcrRunOutcome.Succeeded, OcrFailureCategory.None, pages.Count);
 
@@ -302,6 +304,6 @@ public sealed class OcrJobProcessor : IOcrJobProcessor
     }
 
     private OcrRun FailedRun(OcrJob job, DateTimeOffset started, OcrFailureCategory category)
-        => new(job.Id, job.SourceDocumentId, _workerId, _engine.EngineName, _engine.EngineVersion, _engine.ModelIdentifiers,
+        => new(job.Id, job.SourceDocumentId, job.RenderRunId, _workerId, _engine.EngineName, _engine.EngineVersion, _engine.ModelIdentifiers,
                _preprocessor.Version, null, false, started, _clock.UtcNow, OcrRunOutcome.Failed, category, 0);
 }

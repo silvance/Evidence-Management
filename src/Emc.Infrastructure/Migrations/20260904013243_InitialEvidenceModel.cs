@@ -623,12 +623,10 @@ namespace Emc.Infrastructure.Migrations
                     OriginalFilename = table.Column<string>(type: "nvarchar(260)", maxLength: 260, nullable: false),
                     ContentLength = table.Column<long>(type: "bigint", nullable: false),
                     Sha256 = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
-                    PageCount = table.Column<int>(type: "int", nullable: false),
                     StorageKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     ReceivedByUserId = table.Column<int>(type: "int", nullable: false),
                     ReceivedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     ClassificationMarking = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
-                    ImportStatus = table.Column<int>(type: "int", nullable: false),
                     ProvenanceNotes = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true)
                 },
                 constraints: table =>
@@ -838,7 +836,7 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "OcrJobs",
+                name: "DocumentRenderJobs",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
@@ -857,51 +855,23 @@ namespace Emc.Infrastructure.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_OcrJobs", x => x.Id);
+                    table.PrimaryKey("PK_DocumentRenderJobs", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_OcrJobs_EvidenceRooms_EvidenceRoomId",
+                        name: "FK_DocumentRenderJobs_EvidenceRooms_EvidenceRoomId",
                         column: x => x.EvidenceRoomId,
                         principalTable: "EvidenceRooms",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_OcrJobs_SourceDocuments_SourceDocumentId",
+                        name: "FK_DocumentRenderJobs_SourceDocuments_SourceDocumentId",
                         column: x => x.SourceDocumentId,
                         principalTable: "SourceDocuments",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_OcrJobs_Users_RequestedByUserId",
+                        name: "FK_DocumentRenderJobs_Users_RequestedByUserId",
                         column: x => x.RequestedByUserId,
                         principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "SourceDocumentPages",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
-                    PageNumber = table.Column<int>(type: "int", nullable: false),
-                    WidthPx = table.Column<int>(type: "int", nullable: false),
-                    HeightPx = table.Column<int>(type: "int", nullable: false),
-                    RenderDpi = table.Column<int>(type: "int", nullable: false),
-                    StorageKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
-                    Sha256 = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
-                    ContentLength = table.Column<long>(type: "bigint", nullable: false),
-                    RendererVersion = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
-                    RenderedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_SourceDocumentPages", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_SourceDocumentPages_SourceDocuments_SourceDocumentId",
-                        column: x => x.SourceDocumentId,
-                        principalTable: "SourceDocuments",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -940,6 +910,113 @@ namespace Emc.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "DocumentRenderRuns",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    RenderJobId = table.Column<int>(type: "int", nullable: false),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    WorkerId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    RendererVersion = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    StartedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    CompletedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Outcome = table.Column<int>(type: "int", nullable: false),
+                    FailureCategory = table.Column<int>(type: "int", nullable: false),
+                    PageCount = table.Column<int>(type: "int", nullable: true),
+                    RenderDpi = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DocumentRenderRuns", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_DocumentRenderRuns_DocumentRenderJobs_RenderJobId",
+                        column: x => x.RenderJobId,
+                        principalTable: "DocumentRenderJobs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_DocumentRenderRuns_SourceDocuments_SourceDocumentId",
+                        column: x => x.SourceDocumentId,
+                        principalTable: "SourceDocuments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "DocumentRenderPages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    RenderRunId = table.Column<int>(type: "int", nullable: false),
+                    PageNumber = table.Column<int>(type: "int", nullable: false),
+                    WidthPx = table.Column<int>(type: "int", nullable: false),
+                    HeightPx = table.Column<int>(type: "int", nullable: false),
+                    StorageKey = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Sha256 = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
+                    ContentLength = table.Column<long>(type: "bigint", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DocumentRenderPages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_DocumentRenderPages_DocumentRenderRuns_RenderRunId",
+                        column: x => x.RenderRunId,
+                        principalTable: "DocumentRenderRuns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OcrJobs",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    RenderRunId = table.Column<int>(type: "int", nullable: false),
+                    EvidenceRoomId = table.Column<int>(type: "int", nullable: false),
+                    RequestedByUserId = table.Column<int>(type: "int", nullable: false),
+                    RequestedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    Attempts = table.Column<int>(type: "int", nullable: false),
+                    LeasedByWorkerId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    LeaseExpiresUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    FinishedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    LastFailureCategory = table.Column<int>(type: "int", nullable: false),
+                    ConcurrencyStamp = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OcrJobs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_DocumentRenderRuns_RenderRunId",
+                        column: x => x.RenderRunId,
+                        principalTable: "DocumentRenderRuns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_EvidenceRooms_EvidenceRoomId",
+                        column: x => x.EvidenceRoomId,
+                        principalTable: "EvidenceRooms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_SourceDocuments_SourceDocumentId",
+                        column: x => x.SourceDocumentId,
+                        principalTable: "SourceDocuments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_OcrJobs_Users_RequestedByUserId",
+                        column: x => x.RequestedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "OcrRuns",
                 columns: table => new
                 {
@@ -947,6 +1024,7 @@ namespace Emc.Infrastructure.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     OcrJobId = table.Column<int>(type: "int", nullable: false),
                     SourceDocumentId = table.Column<int>(type: "int", nullable: false),
+                    RenderRunId = table.Column<int>(type: "int", nullable: false),
                     WorkerId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     EngineName = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     EngineVersion = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
@@ -963,6 +1041,12 @@ namespace Emc.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_OcrRuns", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OcrRuns_DocumentRenderRuns_RenderRunId",
+                        column: x => x.RenderRunId,
+                        principalTable: "DocumentRenderRuns",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_OcrRuns_OcrJobs_OcrJobId",
                         column: x => x.OcrJobId,
@@ -1185,6 +1269,48 @@ namespace Emc.Infrastructure.Migrations
                 column: "UserId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderJobs_EvidenceRoomId",
+                table: "DocumentRenderJobs",
+                column: "EvidenceRoomId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderJobs_RequestedByUserId",
+                table: "DocumentRenderJobs",
+                column: "RequestedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderJobs_SourceDocumentId",
+                table: "DocumentRenderJobs",
+                column: "SourceDocumentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderJobs_Status_RequestedAtUtc",
+                table: "DocumentRenderJobs",
+                columns: new[] { "Status", "RequestedAtUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderPages_RenderRunId_PageNumber",
+                table: "DocumentRenderPages",
+                columns: new[] { "RenderRunId", "PageNumber" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderPages_StorageKey",
+                table: "DocumentRenderPages",
+                column: "StorageKey",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderRuns_RenderJobId",
+                table: "DocumentRenderRuns",
+                column: "RenderJobId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DocumentRenderRuns_SourceDocumentId_Outcome_CompletedAtUtc",
+                table: "DocumentRenderRuns",
+                columns: new[] { "SourceDocumentId", "Outcome", "CompletedAtUtc" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_EvidenceItems_SerialNumber",
                 table: "EvidenceItems",
                 column: "SerialNumber");
@@ -1270,6 +1396,11 @@ namespace Emc.Infrastructure.Migrations
                 column: "EvidenceRoomId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_OcrJobs_RenderRunId",
+                table: "OcrJobs",
+                column: "RenderRunId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_OcrJobs_RequestedByUserId",
                 table: "OcrJobs",
                 column: "RequestedByUserId");
@@ -1300,6 +1431,11 @@ namespace Emc.Infrastructure.Migrations
                 name: "IX_OcrRuns_OcrJobId",
                 table: "OcrRuns",
                 column: "OcrJobId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OcrRuns_RenderRunId",
+                table: "OcrRuns",
+                column: "RenderRunId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_OcrRuns_SourceDocumentId_CompletedAtUtc",
@@ -1438,18 +1574,6 @@ namespace Emc.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_SourceDocumentPages_SourceDocumentId_PageNumber",
-                table: "SourceDocumentPages",
-                columns: new[] { "SourceDocumentId", "PageNumber" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_SourceDocumentPages_StorageKey",
-                table: "SourceDocumentPages",
-                column: "StorageKey",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_SourceDocuments_CaseId",
                 table: "SourceDocuments",
                 column: "CaseId");
@@ -1543,6 +1667,9 @@ namespace Emc.Infrastructure.Migrations
                 name: "CustodianDutyAssumptions");
 
             migrationBuilder.DropTable(
+                name: "DocumentRenderPages");
+
+            migrationBuilder.DropTable(
                 name: "FieldVerifications");
 
             migrationBuilder.DropTable(
@@ -1565,9 +1692,6 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "RoleAssignments");
-
-            migrationBuilder.DropTable(
-                name: "SourceDocumentPages");
 
             migrationBuilder.DropTable(
                 name: "StorageLocations");
@@ -1616,6 +1740,12 @@ namespace Emc.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "OcrJobs");
+
+            migrationBuilder.DropTable(
+                name: "DocumentRenderRuns");
+
+            migrationBuilder.DropTable(
+                name: "DocumentRenderJobs");
 
             migrationBuilder.DropTable(
                 name: "SourceDocuments");

@@ -51,6 +51,17 @@ public class OcrVerificationHttpTests : IClassFixture<EmcWebFactory>, IClassFixt
         var viewUrl = upload.Headers.Location!.ToString();
         var documentId = int.Parse(viewUrl.Split('/')[^1]);
 
+        // Rendering is the worker's; OCR cannot be requested before it has happened. (The document
+        // page offers no OCR form yet, so the token comes from the upload page.)
+        token = await _registered.GetAntiForgeryTokenAsync(client, uploadUrl);
+        using (var tooEarly = await client.PostAsync(viewUrl + "?handler=RequestOcr", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token })))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, tooEarly.StatusCode);
+        }
+
+        Assert.Empty(await ReadOpenOcrJobsAsync());
+        Assert.Equal(1, await _registered.RenderPendingAsync());
+
         // Request OCR from the document page.
         token = await _registered.GetAntiForgeryTokenAsync(client, viewUrl);
         using var request = await client.PostAsync(viewUrl + "?handler=RequestOcr", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
@@ -110,6 +121,13 @@ public class OcrVerificationHttpTests : IClassFixture<EmcWebFactory>, IClassFixt
             using var denied = await outsider.GetAsync(url);
             Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
         }
+    }
+
+    private async Task<List<int>> ReadOpenOcrJobsAsync()
+    {
+        using var scope = _registered.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IEmcDbContext>();
+        return await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.OcrJobs.Select(j => j.Id));
     }
 
     private sealed class StubEngine : IOcrEngine

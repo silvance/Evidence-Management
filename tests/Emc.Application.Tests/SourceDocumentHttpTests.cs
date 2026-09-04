@@ -43,6 +43,22 @@ public class SourceDocumentHttpTests : IClassFixture<EmcWebFactory>, IClassFixtu
         var viewUrl = upload.Headers.Location!.ToString();
         Assert.StartsWith("/Documents/View/", viewUrl, StringComparison.Ordinal);
 
+        // Straight after receipt the document has no page images and says so; the web host
+        // never rendered anything (DOC-014).
+        using (var beforeRender = await client.GetAsync(viewUrl))
+        {
+            var pending = await beforeRender.Content.ReadAsStringAsync();
+            Assert.Contains("Queued", pending, StringComparison.Ordinal);
+            Assert.Contains("No page images are available", pending, StringComparison.Ordinal);
+        }
+
+        using (var noPage = await client.GetAsync(viewUrl + "?handler=Page&pageNumber=1"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, noPage.StatusCode);
+        }
+
+        Assert.Equal(1, await _registered.RenderPendingAsync());
+
         using var view = await client.GetAsync(viewUrl);
         Assert.Equal(HttpStatusCode.OK, view.StatusCode);
         var html = await view.Content.ReadAsStringAsync();
@@ -50,6 +66,8 @@ public class SourceDocumentHttpTests : IClassFixture<EmcWebFactory>, IClassFixtu
         Assert.DoesNotContain("<embed", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<object", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<iframe", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rendered", html, StringComparison.Ordinal);
+        Assert.Contains("(current)", html, StringComparison.Ordinal);
 
         using var page = await client.GetAsync(viewUrl + "?handler=Page&pageNumber=1");
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);

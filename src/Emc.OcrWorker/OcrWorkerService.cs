@@ -8,7 +8,11 @@ using Microsoft.Extensions.Options;
 
 namespace Emc.OcrWorker;
 
-/// <summary>Polls for queued jobs; processes one at a time. Backs off to the poll interval when the queue is empty.</summary>
+/// <summary>
+/// Polls for queued work; processes one job at a time. Render jobs first (a document's pages
+/// exist before anyone can ask for OCR over them), then OCR jobs. Backs off to the poll interval
+/// when both queues are empty.
+/// </summary>
 public sealed class OcrWorkerService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopes;
@@ -31,7 +35,8 @@ public sealed class OcrWorkerService : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
-                processed = await scope.ServiceProvider.GetRequiredService<IOcrJobProcessor>().ProcessNextAsync(stoppingToken);
+                processed = await scope.ServiceProvider.GetRequiredService<Emc.Application.Documents.IDocumentRenderProcessor>().ProcessNextAsync(stoppingToken)
+                    || await scope.ServiceProvider.GetRequiredService<IOcrJobProcessor>().ProcessNextAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

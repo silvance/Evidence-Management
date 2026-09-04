@@ -57,6 +57,12 @@ public sealed class MalformedPdfException : Exception
     public MalformedPdfException(string message, Exception? inner = null) : base(message, inner) { }
 }
 
+/// <summary>The rendering process died, was killed on timeout, or produced no usable output. Carries no document content.</summary>
+public sealed class RendererCrashedException : Exception
+{
+    public RendererCrashedException(string message, Exception? inner = null) : base(message, inner) { }
+}
+
 /// <summary>Limits and locations. Bound from configuration; every limit is enforced in code as well as at the framework.</summary>
 public sealed class SourceDocumentOptions
 {
@@ -75,7 +81,17 @@ public sealed class SourceDocumentOptions
 
     public int RenderDpi { get; set; } = 150;
 
+    /// <summary>Hard timeout per page. In the worker this kills the rendering child process; it is a real timeout (DOC-014).</summary>
     public int RenderTimeoutSeconds { get; set; } = 60;
+
+    /// <summary>Path to the rendering helper executable (the worker itself, run in "render" mode). Empty means render in-process (tests only).</summary>
+    public string RenderHelperPath { get; set; } = string.Empty;
+
+    /// <summary>Private working folder for the render helper's per-invocation files.</summary>
+    public string RenderWorkRoot { get; set; } = string.Empty;
+
+    public int RenderLeaseSeconds { get; set; } = 900;
+    public int MaxRenderAttempts { get; set; } = Emc.Domain.Documents.DocumentRenderJob.DefaultMaxAttempts;
 
     /// <summary>The same bytes, by the same user, for the same voucher, within this window is a repeated request, not a second document (DOC-010).</summary>
     public int DuplicateRequestWindowSeconds { get; set; } = 120;

@@ -31,6 +31,9 @@ public interface IEmcDbContext
     DbSet<Emc.Domain.Filing.PhysicalFileContainer> PhysicalFileContainers { get; }
     DbSet<Emc.Domain.Filing.PhysicalVoucherDocument> PhysicalVoucherDocuments { get; }
     DbSet<Emc.Domain.Documents.SourceDocument> SourceDocuments { get; }
+    DbSet<Emc.Domain.Documents.DocumentRenderJob> DocumentRenderJobs { get; }
+    DbSet<Emc.Domain.Documents.DocumentRenderRun> DocumentRenderRuns { get; }
+    DbSet<Emc.Domain.Documents.DocumentRenderPage> DocumentRenderPages { get; }
     DbSet<Emc.Domain.Ocr.OcrJob> OcrJobs { get; }
     DbSet<Emc.Domain.Ocr.OcrRun> OcrRuns { get; }
     DbSet<Emc.Domain.Reconciliation.ReconciliationFinding> ReconciliationFindings { get; }

@@ -49,12 +49,13 @@ public static class DependencyInjection
         services.AddScoped<Emc.Application.Filing.IPhysicalDigitalConsistencyService, Emc.Application.Filing.PhysicalDigitalConsistencyService>();
         services.AddScoped<Emc.Application.Filing.IRetentionDashboardService, Emc.Application.Filing.RetentionDashboardService>();
 
-        // Source documents: immutable filesystem store outside the web root, PDFium rendering, and
-        // the ingestion/view/download service. Options come from the SourceDocuments section.
+        // Source documents: immutable filesystem store outside the web root and the
+        // receipt/view/download service. NO rasterizer is registered here: the web process never
+        // parses a PDF (DOC-014). It validates the envelope, stores and hashes the bytes and
+        // queues a render job; the worker renders in a killable child process. See AddEmcOcrWorker.
         services.AddOptions<Emc.Application.Documents.SourceDocumentOptions>()
             .BindConfiguration(Emc.Application.Documents.SourceDocumentOptions.SectionName);
         services.AddSingleton<Emc.Application.Documents.ISourceDocumentStore, Emc.Infrastructure.Documents.FileSystemSourceDocumentStore>();
-        services.AddSingleton<Emc.Application.Documents.IPdfRasterizer, Emc.Infrastructure.Documents.PdfiumRasterizer>();
         services.AddScoped<Emc.Application.Documents.ISourceDocumentService, Emc.Application.Documents.SourceDocumentService>();
         // OCR, web side: request, status, verification. The engine is NOT registered here; the
         // web process never runs it (Phase 3C). See AddEmcOcrWorker.
@@ -73,14 +74,17 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// The OCR worker's additions: the Tesseract process engine, the Skia preprocessor, the
-    /// template mappers in identification order (fallback last), and the job processor. Called
-    /// only by Emc.OcrWorker. Constructing the engine verifies the binary and the models are
-    /// present and fails the host's start-up otherwise (Phase 12).
+    /// The worker's additions: the isolated PDF rasterizer and the render-job processor
+    /// (DOC-014, DOC-015); the Tesseract process engine, the Skia preprocessor, the template
+    /// mappers in identification order (fallback last), and the OCR job processor. Called only
+    /// by Emc.OcrWorker. Constructing the engine verifies the binary and the models are present
+    /// and fails the host's start-up otherwise (Phase 12).
     /// </summary>
     public static IServiceCollection AddEmcOcrWorker(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.AddSingleton<Emc.Application.Documents.IPdfRasterizer, Emc.Infrastructure.Documents.IsolatedPdfRasterizer>();
+        services.AddScoped<Emc.Application.Documents.IDocumentRenderProcessor, Emc.Application.Documents.DocumentRenderProcessor>();
         services.AddSingleton<Emc.Application.Ocr.IOcrEngine, Emc.Infrastructure.Ocr.TesseractProcessOcrEngine>();
         services.AddSingleton<Emc.Application.Ocr.IImagePreprocessor>(sp =>
             new Emc.Infrastructure.Ocr.SkiaImagePreprocessor(

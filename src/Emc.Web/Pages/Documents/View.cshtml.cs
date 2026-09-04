@@ -30,6 +30,7 @@ public class ViewModel : PageModel
     public SourceDocumentView? Document { get; private set; }
     public Emc.Application.Ocr.OcrStatusView? Ocr { get; private set; }
     public bool CanRequestOcr { get; private set; }
+    public bool CanRequestRender { get; private set; }
     public PageMessages Messages { get; } = new();
 
     public async Task<IActionResult> OnGetAsync(int id)
@@ -41,8 +42,10 @@ public class ViewModel : PageModel
         }
 
         Ocr = await _ocr.GetStatusAsync(id);
-        CanRequestOcr = Document.ImportStatus == Emc.Domain.Documents.SourceDocumentImportStatus.Rendered
+        CanRequestOcr = Document.RenderStatus == DocumentRenderStatus.Rendered
             && (await _authorization.CheckAsync(EmcPermissions.RequestOcr, Document.EvidenceRoomId)).IsAllowed;
+        CanRequestRender = !Document.HasOpenRenderJob
+            && (await _authorization.CheckAsync(EmcPermissions.UploadSourceDocument, Document.EvidenceRoomId)).IsAllowed;
 
         if (TempData["Success"] is string success)
         {
@@ -75,6 +78,25 @@ public class ViewModel : PageModel
         }
 
         TempData["Success"] = $"OCR job {result.Value} queued. The worker processes it; refresh this page for status.";
+        TempData["Warnings"] = JsonSerializer.Serialize(result.Warnings.ToList());
+        return RedirectToPage("/Documents/View", new { id });
+    }
+
+    public async Task<IActionResult> OnPostRequestRenderAsync(int id)
+    {
+        var result = await _documents.RequestRenderAsync(id);
+        if (!result.Succeeded)
+        {
+            if (await _documents.GetAsync(id) is null)
+            {
+                return NotFound();
+            }
+
+            TempData["Warnings"] = JsonSerializer.Serialize(new List<string> { result.Error! });
+            return RedirectToPage("/Documents/View", new { id });
+        }
+
+        TempData["Success"] = $"Render job {result.Value} queued. The worker renders the pages in a separate process; refresh this page for status.";
         TempData["Warnings"] = JsonSerializer.Serialize(result.Warnings.ToList());
         return RedirectToPage("/Documents/View", new { id });
     }

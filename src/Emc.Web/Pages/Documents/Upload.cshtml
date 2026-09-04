@@ -22,7 +22,7 @@
         <div class="form-row">
             <label asp-for="Input.File">PDF file</label>
             <input asp-for="Input.File" type="file" accept="application/pdf,.pdf" />
-            <span class="hint">PDF only, validated by content, not by name. Limit 50 MB, 200 pages. Embedded content is never executed; pages are shown as server-rendered images.</span>
+            <span class="hint">PDF only, validated by content, not by name. Limit 50 MB, 200 pages. Embedded content is never executed; the web application never opens the PDF - the worker renders page images in a separate process, and they appear here once it has.</span>
         </div>
         <div class="form-row">
             <label asp-for="Input.DocumentType">Document type</label>

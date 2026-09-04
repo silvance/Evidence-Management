@@ -476,7 +476,7 @@ G-2X's expectations are known. Not V1.
 A scanned document is **hostile input** and a **companion copy**. Both facts shape everything here.
 
 **Companion copy.** `SourceDocument` is an immutable record of what was received: the bytes'
-SHA-256 as stored, size, page count, type, the uploader, and **provenance** — what paper was
+SHA-256 as stored, size, type, the uploader, and **provenance** — what paper was
 scanned (physical original, physical copy, electronic copy, unknown). Provenance is a statement
 about the scan's source, never a claim that the file is the original; the physical original's
 whereabouts live on `PhysicalVoucherDocument` (§4.6), which an upload never touches. No UI text
@@ -487,11 +487,12 @@ calls the file "the original DA Form 4137".
 | Layer | Control |
 |---|---|
 | Request | Kestrel and IIS `MaxRequestBodySize`, multipart body limit, the upload page's `[RequestSizeLimit]` — the body is refused before application code runs |
-| Application | `PdfContentValidator` (header near the start, `%%EOF` near the end, size; the filename and declared type are not consulted), page-count limit, page-dimension/pixel limit from the page sizes **before** rendering, a render timeout, active-content detection (script, launch, open actions — reported, never executed) |
+| Application (web) | `PdfContentValidator` (header near the start, `%%EOF` near the end, size; the filename and declared type are not consulted — a byte scan, not a parse), active-content detection by token (script, launch, open actions — reported, never executed). The web process then stores, hashes and queues a render job; it never opens the PDF (DOC-014) |
+| Application (worker) | Page-count limit and page-dimension/pixel limit from the page sizes **before** any page is rendered; a hard per-page timeout; every attempt an immutable `DocumentRenderRun` (DOC-015) |
 | Storage | `FileSystemSourceDocumentStore`: generated keys, atomic partial-then-move writes, hash computed from the bytes written, key re-validation on every read, root containment check |
 
-Display is by **server-rendered PNG page images** (`IPdfRasterizer`, PDFium through NuGet
-runtime assets). The PDF is never handed to the browser inline; the original is available only
+Display is by **server-rendered PNG page images**, rendered by the worker (PDFium through NuGet
+runtime assets, in a child process — below). The PDF is never handed to the browser inline; the original is available only
 as an attachment download under the separate `source-document.download` permission, audited.
 Every page-image and download request authorizes on the owning evidence room **before** the
 store is opened — a spy-store test proves zero reads for an unauthorized caller — and an
@@ -506,19 +507,34 @@ deployer creates it; the application-pool identity gets Modify on it and no othe
 does; no static-file provider is mapped to it; it is backed up with the database. The store
 refuses to start without a configured root.
 
-**Isolation.** PDFium parses untrusted bytes in-process for the display render, under the page,
-pixel and timeout limits above. The OCR worker (`Emc.OcrWorker`, §9.1) is the hard isolation
-boundary — a separate process that can crash, hang or be killed without taking IIS down — and is
-where every engine that reads a page runs.
+**Isolation (DOC-014).** Nothing in the IIS process parses a PDF. `AddEmcInfrastructure` registers
+no `IPdfRasterizer`, and `SourceDocumentService` has no dependency that could rasterize — a test
+asserts both. Receipt writes the bytes and a `DocumentRenderJob`; the worker (`Emc.OcrWorker`,
+§9.1) leases the job and renders each page through `IsolatedPdfRasterizer`, which starts the
+worker's own executable in `render` mode as a **child process per invocation**: argument list
+(never a shell line), a private per-invocation folder under `SourceDocuments:RenderWorkRoot`,
+a minimal explicit environment, stdout/stderr consumed and discarded, a hard timeout that kills
+the process tree, an exit code that is a category (0 ok, 2 malformed, 3 usage, 1 other), and an
+output file the parent validates as bytes (PNG signature and IHDR size) rather than trusting a
+claim. Timeout and crash are transient (requeued up to `MaxRenderAttempts`); malformed input and
+limit breaches are final on the first attempt. The worker refuses to start without
+`SourceDocuments:RenderHelperPath`.
+
+**Every attempt is a record (DOC-015).** `DocumentRenderRun` is append-only: renderer version,
+timing, outcome, failure category, page count, and — on success — the page images with their
+hashes. "Is this document rendered" and "which pages are current" are derived from the newest
+successful run; the document row never changes. A person may request a fresh render (a new job,
+a new run); an OCR job names the one successful run it reads at request time (`OcrJobs.RenderRunId`),
+so a later re-render never changes what an already-requested OCR job sees.
 
 ### 9.1 The OCR worker
 
 **[DESIGN] / [CONTROL].** `Emc.OcrWorker` is a console host (a Windows Service in deployment)
 that runs `OcrJobProcessor` in a loop. It has no HTTP surface and no listener of any kind.
 
-- **Queue = a table.** `OcrJobs` rows are leased by writing the worker's id and a lease expiry
-  under the row's concurrency stamp; two workers racing for one job produce one winner and one
-  conflict. An expired lease (the worker died) is taken over. Transient failures (timeout,
+- **Queue = a table.** `DocumentRenderJobs` and `OcrJobs` rows are leased by writing the worker's
+  id and a lease expiry under the row's concurrency stamp; two workers racing for one job produce
+  one winner and one conflict. Render jobs are drained before OCR jobs. An expired lease (the worker died) is taken over. Transient failures (timeout,
   engine crash, resource limit) requeue up to `MaxAttempts`; the rest are final. No broker, no
   queue service, nothing that is not SQL Server.
 - **Engine = an external process.** Tesseract 5 is started with an argument list (never a shell
@@ -546,10 +562,13 @@ that runs `OcrJobProcessor` in a loop. It has no HTTP surface and no listener of
   unauthenticated with no grants; nothing it does goes through authorization because nothing it
   does is a user's act.
 
-**Deployment (ACLs).** A dedicated service account: read on `SourceDocuments:RootPath`; modify on
-`Ocr:WorkRoot` and nothing else on disk; execute on the Tesseract install folder; a SQL login with
-SELECT on `SourceDocuments`, `SourceDocumentPages`, and SELECT/INSERT/UPDATE on `OcrJobs`,
-SELECT/INSERT on `OcrRuns` and `ExtractedFields`. No `db_owner`, no DDL, no web-application
+**Deployment (ACLs).** A dedicated service account: modify on `SourceDocuments:RootPath` (page
+images are written there), on `SourceDocuments:RenderWorkRoot` and on `Ocr:WorkRoot`, and nothing
+else on disk; execute on the Tesseract install folder; a SQL login with
+SELECT on `SourceDocuments`, SELECT/INSERT/UPDATE on `DocumentRenderJobs` and `OcrJobs`,
+SELECT/INSERT on `DocumentRenderRuns`, `DocumentRenderPages`, `OcrRuns`, `OcrRunPages` and
+`ExtractedFields`; modify on `SourceDocuments:RootPath` (it writes page images there) and on
+`SourceDocuments:RenderWorkRoot`. No `db_owner`, no DDL, no web-application
 folders. Outbound network access for the account: none, enforced by host firewall policy — the
 process needs none and asks for none.
 

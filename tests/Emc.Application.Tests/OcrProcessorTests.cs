@@ -52,10 +52,11 @@ public class OcrProcessorTests : IDisposable
         await _harness.Vouchers.AddItemAsync(new AddItemRequest(voucher.Value, "One item", "1", null, null, false, false, false, null));
 
         var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock,
-            _store, new PdfiumRasterizer(), Options.Create(_docOptions));
+            _store, Options.Create(_docOptions));
         var result = await documents.UploadAsync(new UploadSourceDocumentRequest(
             _harness.EvidenceRoomId, null, voucher.Value, SourceDocumentType.DaForm4137, ScanProvenance.PhysicalOriginal, "scan.pdf", SyntheticPdf.Pages(pages), "UNCLASSIFIED"));
         Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(1, await TestRendering.RenderAllAsync(_harness.Db, _store, _harness.Clock, _docOptions));
         return result.Value;
     }
 
@@ -168,7 +169,7 @@ public class OcrProcessorTests : IDisposable
     {
         var documentId = await UploadedDocumentAsync();
         await Jobs().RequestAsync(documentId);
-        var page = await _harness.Db.Set<SourceDocumentPage>().AsNoTracking().SingleAsync(p => p.SourceDocumentId == documentId);
+        var page = await _harness.Db.Set<DocumentRenderPage>().AsNoTracking().SingleAsync(p => p.Run!.SourceDocumentId == documentId);
         File.Delete(Path.Combine(_root, page.StorageKey.Replace('/', Path.DirectorySeparatorChar)));
 
         Assert.True(await Processor(new FakeEngine([("x", 90m)]), "worker-a").ProcessNextAsync());

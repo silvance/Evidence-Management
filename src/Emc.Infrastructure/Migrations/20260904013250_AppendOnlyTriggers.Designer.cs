@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Emc.Infrastructure.Migrations
 {
     [DbContext(typeof(EmcDbContext))]
-    [Migration("20260904005329_InitialEvidenceModel")]
-    partial class InitialEvidenceModel
+    [Migration("20260904013250_AppendOnlyTriggers")]
+    partial class AppendOnlyTriggers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -557,6 +557,158 @@ namespace Emc.Infrastructure.Migrations
                     b.ToTable("SystemConfigurations", (string)null);
                 });
 
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderJob", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EvidenceRoomId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("FinishedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("LastFailureCategory")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LeasedByWorkerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTimeOffset>("RequestedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RequestedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceRoomId");
+
+                    b.HasIndex("RequestedByUserId");
+
+                    b.HasIndex("SourceDocumentId");
+
+                    b.HasIndex("Status", "RequestedAtUtc");
+
+                    b.ToTable("DocumentRenderJobs", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderPage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<long>("ContentLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("HeightPx")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RenderRunId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("WidthPx")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("RenderRunId", "PageNumber")
+                        .IsUnique();
+
+                    b.ToTable("DocumentRenderPages", (string)null);
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderRun", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CompletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("FailureCategory")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RenderDpi")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RenderJobId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RendererVersion")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StartedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("WorkerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RenderJobId");
+
+                    b.HasIndex("SourceDocumentId", "Outcome", "CompletedAtUtc");
+
+                    b.ToTable("DocumentRenderRuns", (string)null);
+                });
+
             modelBuilder.Entity("Emc.Domain.Documents.SourceDocument", b =>
                 {
                     b.Property<int>("Id")
@@ -582,16 +734,10 @@ namespace Emc.Infrastructure.Migrations
                     b.Property<int>("EvidenceRoomId")
                         .HasColumnType("int");
 
-                    b.Property<int>("ImportStatus")
-                        .HasColumnType("int");
-
                     b.Property<string>("OriginalFilename")
                         .IsRequired()
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
-
-                    b.Property<int>("PageCount")
-                        .HasColumnType("int");
 
                     b.Property<int>("Provenance")
                         .HasColumnType("int");
@@ -634,62 +780,6 @@ namespace Emc.Infrastructure.Migrations
                     b.HasIndex("EvidenceRoomId", "Sha256");
 
                     b.ToTable("SourceDocuments", (string)null);
-                });
-
-            modelBuilder.Entity("Emc.Domain.Documents.SourceDocumentPage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<long>("ContentLength")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("HeightPx")
-                        .HasColumnType("int");
-
-                    b.Property<int>("PageNumber")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RenderDpi")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("RenderedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("RendererVersion")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("Sha256")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nchar(64)")
-                        .IsFixedLength();
-
-                    b.Property<int>("SourceDocumentId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("StorageKey")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<int>("WidthPx")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StorageKey")
-                        .IsUnique();
-
-                    b.HasIndex("SourceDocumentId", "PageNumber")
-                        .IsUnique();
-
-                    b.ToTable("SourceDocumentPages", (string)null);
                 });
 
             modelBuilder.Entity("Emc.Domain.Events.CustodyParty", b =>
@@ -1432,6 +1522,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int>("RenderRunId")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset>("RequestedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -1447,6 +1540,8 @@ namespace Emc.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("EvidenceRoomId");
+
+                    b.HasIndex("RenderRunId");
 
                     b.HasIndex("RequestedByUserId");
 
@@ -1500,6 +1595,9 @@ namespace Emc.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<int>("RenderRunId")
+                        .HasColumnType("int");
+
                     b.Property<int>("SourceDocumentId")
                         .HasColumnType("int");
 
@@ -1521,6 +1619,8 @@ namespace Emc.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OcrJobId");
+
+                    b.HasIndex("RenderRunId");
 
                     b.HasIndex("SourceDocumentId", "CompletedAtUtc");
 
@@ -2130,6 +2230,55 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Voucher");
                 });
 
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderJob", b =>
+                {
+                    b.HasOne("Emc.Domain.Storage.EvidenceRoom", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceRoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Documents.SourceDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderPage", b =>
+                {
+                    b.HasOne("Emc.Domain.Documents.DocumentRenderRun", "Run")
+                        .WithMany("Pages")
+                        .HasForeignKey("RenderRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderRun", b =>
+                {
+                    b.HasOne("Emc.Domain.Documents.DocumentRenderJob", null)
+                        .WithMany()
+                        .HasForeignKey("RenderJobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Documents.SourceDocument", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Emc.Domain.Documents.SourceDocument", b =>
                 {
                     b.HasOne("Emc.Domain.Cases.Case", null)
@@ -2153,17 +2302,6 @@ namespace Emc.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("VoucherId")
                         .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("Emc.Domain.Documents.SourceDocumentPage", b =>
-                {
-                    b.HasOne("Emc.Domain.Documents.SourceDocument", "Document")
-                        .WithMany("Pages")
-                        .HasForeignKey("SourceDocumentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Document");
                 });
 
             modelBuilder.Entity("Emc.Domain.Events.CustodyParty", b =>
@@ -2356,6 +2494,12 @@ namespace Emc.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Emc.Domain.Documents.DocumentRenderRun", null)
+                        .WithMany()
+                        .HasForeignKey("RenderRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Emc.Domain.Identity.User", null)
                         .WithMany()
                         .HasForeignKey("RequestedByUserId")
@@ -2374,6 +2518,12 @@ namespace Emc.Infrastructure.Migrations
                     b.HasOne("Emc.Domain.Ocr.OcrJob", null)
                         .WithMany()
                         .HasForeignKey("OcrJobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Emc.Domain.Documents.DocumentRenderRun", null)
+                        .WithMany()
+                        .HasForeignKey("RenderRunId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -2512,7 +2662,7 @@ namespace Emc.Infrastructure.Migrations
                     b.Navigation("Lines");
                 });
 
-            modelBuilder.Entity("Emc.Domain.Documents.SourceDocument", b =>
+            modelBuilder.Entity("Emc.Domain.Documents.DocumentRenderRun", b =>
                 {
                     b.Navigation("Pages");
                 });

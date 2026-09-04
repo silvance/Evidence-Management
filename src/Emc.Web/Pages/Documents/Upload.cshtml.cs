@@ -72,7 +72,7 @@ public class UploadModel : PageModel
             return Page();
         }
 
-        TempData["Success"] = "Companion copy stored and hashed. It is not the original DA Form 4137.";
+        TempData["Success"] = "Companion copy stored and hashed; its page images are being rendered by the worker. It is not the original DA Form 4137.";
         TempData["Warnings"] = System.Text.Json.JsonSerializer.Serialize(result.Warnings);
         return RedirectToPage("/Documents/View", new { id = result.Value });
     }

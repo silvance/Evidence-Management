@@ -230,28 +230,49 @@ public static class AppendOnlyTriggers
         END;
         """;
 
-    public const string CreateSourceDocumentPagesUpdateTrigger = """
-        CREATE OR ALTER TRIGGER TR_SourceDocumentPages_AppendOnly_Update
-        ON dbo.SourceDocumentPages
+    public const string CreateDocumentRenderRunsUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_DocumentRenderRuns_AppendOnly_Update
+        ON dbo.DocumentRenderRuns
         INSTEAD OF UPDATE
         AS
         BEGIN
             SET NOCOUNT ON;
-            THROW 50017, 'SourceDocumentPages is append-only and cannot be modified.', 1;
+            THROW 50017, 'DocumentRenderRuns is append-only and cannot be modified. A render attempt is a fact; a new attempt is a new row (DOC-015).', 1;
         END;
         """;
 
-    public const string CreateSourceDocumentPagesDeleteTrigger = """
-        CREATE OR ALTER TRIGGER TR_SourceDocumentPages_AppendOnly_Delete
-        ON dbo.SourceDocumentPages
+    public const string CreateDocumentRenderRunsDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_DocumentRenderRuns_AppendOnly_Delete
+        ON dbo.DocumentRenderRuns
         INSTEAD OF DELETE
         AS
         BEGIN
             SET NOCOUNT ON;
-            THROW 50018, 'SourceDocumentPages is append-only and cannot be deleted.', 1;
+            THROW 50018, 'DocumentRenderRuns is append-only and cannot be deleted.', 1;
         END;
         """;
 
+    public const string CreateDocumentRenderPagesUpdateTrigger = """
+        CREATE OR ALTER TRIGGER TR_DocumentRenderPages_AppendOnly_Update
+        ON dbo.DocumentRenderPages
+        INSTEAD OF UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50029, 'DocumentRenderPages is append-only and cannot be modified.', 1;
+        END;
+        """;
+
+    public const string CreateDocumentRenderPagesDeleteTrigger = """
+        CREATE OR ALTER TRIGGER TR_DocumentRenderPages_AppendOnly_Delete
+        ON dbo.DocumentRenderPages
+        INSTEAD OF DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            THROW 50030, 'DocumentRenderPages is append-only and cannot be deleted.', 1;
+        END;
+        """;
 
     public const string CreateOcrRunsUpdateTrigger = """
         CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Update
@@ -383,8 +404,10 @@ public static class AppendOnlyTriggers
         CreatePhysicalDocumentEventsDeleteTrigger,
         CreateSourceDocumentsUpdateTrigger,
         CreateSourceDocumentsDeleteTrigger,
-        CreateSourceDocumentPagesUpdateTrigger,
-        CreateSourceDocumentPagesDeleteTrigger,
+        CreateDocumentRenderRunsUpdateTrigger,
+        CreateDocumentRenderRunsDeleteTrigger,
+        CreateDocumentRenderPagesUpdateTrigger,
+        CreateDocumentRenderPagesDeleteTrigger,
         CreateOcrRunsUpdateTrigger,
         CreateOcrRunsDeleteTrigger,
         CreateExtractedFieldsUpdateTrigger,
@@ -415,8 +438,10 @@ public static class AppendOnlyTriggers
         "DROP TRIGGER IF EXISTS TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_SourceDocuments_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_SourceDocuments_AppendOnly_Delete;",
-        "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Update;",
-        "DROP TRIGGER IF EXISTS TR_SourceDocumentPages_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_DocumentRenderRuns_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_DocumentRenderRuns_AppendOnly_Delete;",
+        "DROP TRIGGER IF EXISTS TR_DocumentRenderPages_AppendOnly_Update;",
+        "DROP TRIGGER IF EXISTS TR_DocumentRenderPages_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_OcrRuns_AppendOnly_Update;",
         "DROP TRIGGER IF EXISTS TR_OcrRuns_AppendOnly_Delete;",
         "DROP TRIGGER IF EXISTS TR_ExtractedFields_AppendOnly_Update;",

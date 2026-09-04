@@ -19,11 +19,11 @@
         <tbody>
             <tr><th>Voucher</th><td>@if (d.VoucherId is not null) { <a asp-page="/Vouchers/Details" asp-route-id="@d.VoucherId">@d.VoucherIdentifier</a> }</td></tr>
             <tr><th>Original filename (metadata only)</th><td>@d.OriginalFilename</td></tr>
-            <tr><th>Size</th><td>@d.ContentLength.ToString("N0") bytes, @d.PageCount page(s)</td></tr>
+            <tr><th>Size</th><td>@d.ContentLength.ToString("N0") bytes@(d.PageCount is int pc ? $", {pc} page(s)" : "")</td></tr>
             <tr><th>SHA-256</th><td><code>@d.Sha256</code></td></tr>
             <tr><th>Received</th><td>@d.ReceivedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z by @d.ReceivedByName</td></tr>
             <tr><th>Marking</th><td>@d.ClassificationMarking</td></tr>
-            <tr><th>Import</th><td>@d.ImportStatus</td></tr>
+            <tr><th>Rendering</th><td>@d.RenderStatus@(d.RenderStatus == Emc.Application.Documents.DocumentRenderStatus.Failed ? $" ({d.LastRenderFailure})" : "")@(d.HasOpenRenderJob && d.RenderStatus == Emc.Application.Documents.DocumentRenderStatus.Rendered ? " — a new render is queued" : "")</td></tr>
             @if (d.ProvenanceNotes is not null) { <tr><th>Notes</th><td>@d.ProvenanceNotes</td></tr> }
         </tbody>
     </table>
@@ -31,6 +31,55 @@
         <a asp-page="/Documents/View" asp-route-id="@d.Id" asp-page-handler="Download">Download the original PDF</a>
         <span class="hint">(requires the download permission; every download is audit logged)</span>
     </p>
+</div>
+
+<div class="panel">
+    <h2>Page images</h2>
+    <p class="regulatory-note">
+        Pages are rendered by the worker in a separate, killable process; the web application never
+        opens the PDF. Every attempt is kept; the newest successful one is the page set shown below.
+    </p>
+    @if (d.RenderJobs.Count > 0)
+    {
+        <table>
+            <thead><tr><th>Render job</th><th>Status</th><th>Attempts</th><th>Requested</th><th>Finished</th><th>Last failure</th></tr></thead>
+            <tbody>
+            @foreach (var j in d.RenderJobs)
+            {
+                <tr>
+                    <td>@j.JobId</td><td>@j.Status</td><td>@j.Attempts</td>
+                    <td>@j.RequestedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+                    <td>@(j.FinishedAtUtc?.ToString("dd MMM yy HH:mm").ToUpperInvariant() is { } f ? f + "Z" : "—")</td>
+                    <td>@(j.LastFailureCategory == Emc.Domain.Documents.RenderFailureCategory.None ? "—" : j.LastFailureCategory.ToString())</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    @if (d.RenderRuns.Count > 0)
+    {
+        <table>
+            <thead><tr><th>Attempt</th><th>Outcome</th><th>Pages</th><th>Completed</th><th>Renderer</th></tr></thead>
+            <tbody>
+            @foreach (var r in d.RenderRuns)
+            {
+                <tr class="@(r.RunId == d.CurrentRenderRunId ? "current" : "")">
+                    <td>@r.RunId@(r.RunId == d.CurrentRenderRunId ? " (current)" : "")</td>
+                    <td>@r.Outcome@(r.Outcome == Emc.Domain.Documents.RenderRunOutcome.Failed ? $" ({r.FailureCategory})" : "")</td>
+                    <td class="numeric">@(r.PageCount?.ToString() ?? "—")</td>
+                    <td>@r.CompletedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
+                    <td>@r.RendererVersion</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+    @if (Model.CanRequestRender && d.RenderStatus != Emc.Application.Documents.DocumentRenderStatus.Queued && d.RenderStatus != Emc.Application.Documents.DocumentRenderStatus.Rendering)
+    {
+        <form method="post" asp-page-handler="RequestRender" asp-route-id="@d.Id">
+            <button type="submit">@(d.RenderStatus == Emc.Application.Documents.DocumentRenderStatus.Rendered ? "Render again" : "Retry rendering")</button>
+        </form>
+    }
 </div>
 
 <div class="panel">
@@ -91,7 +140,7 @@
 @foreach (var pg in d.Pages)
 {
     <div class="panel">
-        <h2>Page @pg.PageNumber of @d.PageCount</h2>
+        <h2>Page @pg.PageNumber of @d.PageCount (render attempt @d.CurrentRenderRunId)</h2>
         <img src="@Url.Page("/Documents/View", "Page", new { id = d.Id, pageNumber = pg.PageNumber })"
              alt="Rendered page @pg.PageNumber" width="@pg.WidthPx" height="@pg.HeightPx"
              style="max-width:100%;height:auto;border:1px solid #999;" />
@@ -100,5 +149,5 @@
 
 @if (d.Pages.Count == 0)
 {
-    <div class="panel"><p>No page images are available for this document.</p></div>
+    <div class="panel"><p>No page images are available for this document yet: rendering is @d.RenderStatus.ToString().ToLowerInvariant().</p></div>
 }

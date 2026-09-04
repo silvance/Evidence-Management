@@ -13,7 +13,7 @@ public class OcrModelTests
     private static readonly DateTimeOffset T0 = new(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
 
     private static OcrRun SucceededRun()
-        => new(1, 1, "worker-a", "tesseract", "5.3.4", "eng@sha256:00;osd@sha256:00", "prep/1", "test", true, T0, T0.AddSeconds(3), OcrRunOutcome.Succeeded, OcrFailureCategory.None, 1);
+        => new(1, 1, 1, "worker-a", "tesseract", "5.3.4", "eng@sha256:00;osd@sha256:00", "prep/1", "test", true, T0, T0.AddSeconds(3), OcrRunOutcome.Succeeded, OcrFailureCategory.None, 1);
 
     [Theory]
     [InlineData(100, ConfidenceBand.High)]
@@ -118,12 +118,12 @@ public class OcrModelTests
     [Fact]
     public void AFailedRunCarriesACategoryAndNoFields_AndASuccessfulRunCarriesNoCategory()
     {
-        var failed = new OcrRun(1, 1, "w", "tesseract", "5", "m", "p", null, false, T0, T0, OcrRunOutcome.Failed, OcrFailureCategory.Timeout, 0);
+        var failed = new OcrRun(1, 1, 1, "w", "tesseract", "5", "m", "p", null, false, T0, T0, OcrRunOutcome.Failed, OcrFailureCategory.Timeout, 0);
         Assert.Throws<DomainRuleViolationException>(() => failed.AddField("Page[1].Line[1]", 1, "x", null, 50m, 0, 0, 1, 1));
 
-        Assert.Throws<DomainRuleViolationException>(() => new OcrRun(1, 1, "w", "t", "5", "m", "p", null, false, T0, T0, OcrRunOutcome.Failed, OcrFailureCategory.None, 0));
-        Assert.Throws<DomainRuleViolationException>(() => new OcrRun(1, 1, "w", "t", "5", "m", "p", null, false, T0, T0, OcrRunOutcome.Succeeded, OcrFailureCategory.Timeout, 0));
-        Assert.Throws<DomainRuleViolationException>(() => new OcrRun(1, 1, "w", "t", "5", "m", "p", null, false, T0, T0.AddSeconds(-1), OcrRunOutcome.Succeeded, OcrFailureCategory.None, 0));
+        Assert.Throws<DomainRuleViolationException>(() => new OcrRun(1, 1, 1, "w", "t", "5", "m", "p", null, false, T0, T0, OcrRunOutcome.Failed, OcrFailureCategory.None, 0));
+        Assert.Throws<DomainRuleViolationException>(() => new OcrRun(1, 1, 1, "w", "t", "5", "m", "p", null, false, T0, T0, OcrRunOutcome.Succeeded, OcrFailureCategory.Timeout, 0));
+        Assert.Throws<DomainRuleViolationException>(() => new OcrRun(1, 1, 1, "w", "t", "5", "m", "p", null, false, T0, T0.AddSeconds(-1), OcrRunOutcome.Succeeded, OcrFailureCategory.None, 0));
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public class OcrModelTests
     [Fact]
     public void AJobIsLeasedOnce_RetriedOnTransientFailure_AndExhausts()
     {
-        var job = new OcrJob(1, 1, 5, T0);
+        var job = new OcrJob(1, 1, 1, 5, T0);
         Assert.Equal(OcrJobStatus.Queued, job.Status);
 
         job.Lease("w1", T0, TimeSpan.FromMinutes(10));
@@ -170,7 +170,7 @@ public class OcrModelTests
     [Fact]
     public void ANonTransientFailureIsFinalOnTheFirstAttempt()
     {
-        var job = new OcrJob(1, 1, 5, T0);
+        var job = new OcrJob(1, 1, 1, 5, T0);
         job.Lease("w1", T0, TimeSpan.FromMinutes(10));
         job.Fail("w1", T0.AddSeconds(1), OcrFailureCategory.ModelMissing);
         Assert.Equal(OcrJobStatus.Failed, job.Status);

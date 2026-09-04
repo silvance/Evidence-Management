@@ -534,7 +534,7 @@
     @if (Model.SourceDocuments.Count > 0)
     {
         <table>
-            <thead><tr><th>#</th><th>Type</th><th>What was scanned</th><th>Filename (metadata)</th><th>Pages</th><th>Received</th><th>Status</th></tr></thead>
+            <thead><tr><th>#</th><th>Type</th><th>What was scanned</th><th>Filename (metadata)</th><th>Pages</th><th>Received</th><th>Rendering</th></tr></thead>
             <tbody>
             @foreach (var doc in Model.SourceDocuments)
             {
@@ -543,9 +543,9 @@
                     <td>@doc.DocumentType</td>
                     <td>@doc.Provenance</td>
                     <td>@doc.OriginalFilename</td>
-                    <td class="numeric">@doc.PageCount</td>
+                    <td class="numeric">@(doc.PageCount?.ToString() ?? "—")</td>
                     <td>@doc.ReceivedAtUtc.ToString("dd MMM yy HH:mm").ToUpperInvariant()Z</td>
-                    <td>@doc.ImportStatus</td>
+                    <td>@doc.RenderStatus</td>
                 </tr>
             }
             </tbody>

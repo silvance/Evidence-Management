@@ -101,7 +101,7 @@ public class DaForm4137MappingTests : IDisposable
         Assert.Contains("RETURNED TO OWNER", Value(fields, OcrFieldCatalog.DispositionAction) ?? "", StringComparison.Ordinal);
 
         // Every high-consequence field the mapper emitted is flagged for verification by the domain.
-        var run = new OcrRun(1, 1, "w", "tesseract", "5", "m", "p", DaForm4137TemplateMapper.Id, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, OcrRunOutcome.Succeeded, OcrFailureCategory.None, 2);
+        var run = new OcrRun(1, 1, 1, "w", "tesseract", "5", "m", "p", DaForm4137TemplateMapper.Id, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, OcrRunOutcome.Succeeded, OcrFailureCategory.None, 2);
         foreach (var c in fields) run.AddField(c.FieldKey, c.PageNumber, c.RawText, c.NormalizedCandidate, c.Confidence, c.Left, c.Top, c.Width, c.Height);
         Assert.All(run.Fields.Where(f => f.IsHighConsequence), f => Assert.True(f.RequiresVerification));
         Assert.Contains(run.Fields, f => f.FieldKey == OcrFieldCatalog.DocumentNumber && f.IsHighConsequence);
@@ -179,7 +179,7 @@ public class DaForm4137MappingTests : IDisposable
         Assert.True(docNo.RawText.Length == 0 || docNo.NormalizedCandidate is null, $"an unreadable block must not yield a candidate, got '{docNo.RawText}'");
         Assert.True(docNo.Confidence < ConfidenceBanding.MediumThreshold);
 
-        var run = new OcrRun(1, 1, "w", "tesseract", "5", "m", "p", DaForm4137TemplateMapper.Id, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, OcrRunOutcome.Succeeded, OcrFailureCategory.None, 1);
+        var run = new OcrRun(1, 1, 1, "w", "tesseract", "5", "m", "p", DaForm4137TemplateMapper.Id, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, OcrRunOutcome.Succeeded, OcrFailureCategory.None, 1);
         var field = run.AddField(docNo.FieldKey, docNo.PageNumber, docNo.RawText, docNo.NormalizedCandidate, docNo.Confidence, docNo.Left, docNo.Top, docNo.Width, docNo.Height);
         Assert.Equal(ConfidenceBand.LowOrUnreadable, field.Band);
         Assert.True(field.RequiresVerification);

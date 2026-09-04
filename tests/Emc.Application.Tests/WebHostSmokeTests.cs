@@ -376,6 +376,18 @@ public class EmcWebFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>GETs a page and returns the anti-forgery token it rendered, for tests that build their own POST bodies (multipart uploads).</summary>
+    /// <summary>The render worker in miniature over the host's own database and store (DOC-014): the web host itself never renders.</summary>
+    public async Task<int> RenderPendingAsync()
+    {
+        using var scope = Services.CreateScope();
+        var sp = scope.ServiceProvider;
+        return await TestRendering.RenderAllAsync(
+            sp.GetRequiredService<IEmcDbContext>(), sp.GetRequiredService<Emc.Application.Documents.ISourceDocumentStore>(),
+            sp.GetRequiredService<Emc.Domain.Common.IClock>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Emc.Application.Documents.SourceDocumentOptions>>().Value,
+            workerId: "test-render-worker");
+    }
+
     public async Task<string> GetAntiForgeryTokenAsync(HttpClient client, string url)
     {
         using var getResponse = await client.GetAsync(url);

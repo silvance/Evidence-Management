@@ -41,7 +41,7 @@ public class ReconciliationPatchTests : IDisposable
 
     private IOcrJobService Ocr() => new OcrJobService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store);
     private IReconciliationService Service() => new ReconciliationService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, Ocr(), _harness.Reads, _harness.Vouchers);
-    private ISourceDocumentService Documents() => new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, new PdfiumRasterizer(), Options.Create(_docOptions));
+    private ISourceDocumentService Documents() => new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, Options.Create(_docOptions));
 
     private async Task<(int VoucherId, int ItemId)> DraftWithItemAsync(AddItemRequest? item = null)
     {
@@ -59,6 +59,7 @@ public class ReconciliationPatchTests : IDisposable
     {
         var upload = await Documents().UploadAsync(new UploadSourceDocumentRequest(_harness.EvidenceRoomId, null, voucherId, SourceDocumentType.DaForm4137, ScanProvenance.PhysicalOriginal, "scan.pdf", SyntheticPdf.Pages(2), "UNCLASSIFIED"));
         Assert.True(upload.Succeeded, upload.Error);
+        await TestRendering.RenderAllAsync(_harness.Db, _store, _harness.Clock, _docOptions);
         return await RerunAsync(upload.Value, fields, verify);
     }
 

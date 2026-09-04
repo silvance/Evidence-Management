@@ -67,9 +67,10 @@ public class ReconciliationTests : IDisposable
     /// <summary>Uploads a page, runs OCR with a mapper that emits the given DA 4137 fields at 95, and verifies every field as read.</summary>
     private async Task<int> DocumentWithVerifiedFieldsAsync(int voucherId, params (string Key, string Value)[] fields)
     {
-        var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, new PdfiumRasterizer(), Options.Create(_docOptions));
+        var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, Options.Create(_docOptions));
         var upload = await documents.UploadAsync(new UploadSourceDocumentRequest(_harness.EvidenceRoomId, null, voucherId, SourceDocumentType.DaForm4137, ScanProvenance.PhysicalOriginal, "scan.pdf", SyntheticPdf.SinglePage(), "UNCLASSIFIED"));
         Assert.True(upload.Succeeded, upload.Error);
+        await TestRendering.RenderAllAsync(_harness.Db, _store, _harness.Clock, _docOptions);
         Assert.True((await Ocr().RequestAsync(upload.Value)).Succeeded);
 
         var processor = new OcrJobProcessor(_harness.Db, _store, new OcrProcessorTests.FakeEngine([("x", 95m)]), new Passthrough(), [new FixedMapper(fields)], _harness.Clock,
@@ -155,8 +156,9 @@ public class ReconciliationTests : IDisposable
     public async Task NothingIsAppliedWhileMandatoryVerificationIsOutstanding()
     {
         var voucherId = await VoucherAsync(accept: false);
-        var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, new PdfiumRasterizer(), Options.Create(_docOptions));
+        var documents = new SourceDocumentService(_harness.Db, _harness.Authorization, _harness.CurrentUser, _harness.Audit, _harness.Clock, _store, Options.Create(_docOptions));
         var upload = await documents.UploadAsync(new UploadSourceDocumentRequest(_harness.EvidenceRoomId, null, voucherId, SourceDocumentType.DaForm4137, ScanProvenance.PhysicalOriginal, "scan.pdf", SyntheticPdf.SinglePage(), "UNCLASSIFIED"));
+        await TestRendering.RenderAllAsync(_harness.Db, _store, _harness.Clock, _docOptions);
         await Ocr().RequestAsync(upload.Value);
         var processor = new OcrJobProcessor(_harness.Db, _store, new OcrProcessorTests.FakeEngine([("x", 95m)]), new Passthrough(),
             [new FixedMapper([("Item[1].ItemNumber", "1"), ("Item[1].Description", "ONE TEST MOBILE TELEPHONE, BLACK, CRACKED"), ("Item[1].SerialNumber", "TESTSERIAL000009")])],

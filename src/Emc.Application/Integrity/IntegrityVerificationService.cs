@@ -2,6 +2,7 @@ using Emc.Application.Abstractions;
 using Emc.Application.Audit;
 using Emc.Application.Authorization;
 using Emc.Domain.Common;
+using Emc.Domain.Documents;
 using Emc.Domain.Events;
 using Microsoft.EntityFrameworkCore;
 
@@ -140,9 +141,16 @@ public sealed class IntegrityVerificationService : IIntegrityVerificationService
         if (_store is not null)
         {
             var documents = await _db.SourceDocuments.AsNoTracking()
-                .Include(d => d.Pages)
                 .Where(d => d.EvidenceRoomId == evidenceRoomId)
-                .Select(d => new { d.Id, d.EvidenceRoomId, d.StorageKey, d.Sha256, Pages = d.Pages.Select(p => new { p.StorageKey, p.Sha256 }).ToList() })
+                .Select(d => new { d.Id, d.EvidenceRoomId, d.StorageKey, d.Sha256 })
+                .ToListAsync(ct);
+            var documentIds = documents.Select(d => d.Id).ToList();
+
+            // Every page of every SUCCESSFUL render run: the pages a person may have looked at, on
+            // any run, must still be the bytes recorded when they were rendered.
+            var renderedPages = await _db.DocumentRenderRuns.AsNoTracking()
+                .Where(r => documentIds.Contains(r.SourceDocumentId) && r.Outcome == RenderRunOutcome.Succeeded)
+                .Join(_db.DocumentRenderPages.AsNoTracking(), r => r.Id, p => p.RenderRunId, (r, p) => new { r.SourceDocumentId, p.StorageKey, p.Sha256 })
                 .ToListAsync(ct);
 
             foreach (var d in documents)
@@ -154,7 +162,8 @@ public sealed class IntegrityVerificationService : IIntegrityVerificationService
                     : DocumentHashStatus.Mismatch;
 
                 var pagesMismatched = 0;
-                foreach (var p in d.Pages)
+                var pages = renderedPages.Where(p => p.SourceDocumentId == d.Id).ToList();
+                foreach (var p in pages)
                 {
                     var pageHash = await _store.ComputeSha256Async(p.StorageKey, ct);
                     if (!string.Equals(pageHash, p.Sha256, StringComparison.Ordinal))
@@ -165,7 +174,7 @@ public sealed class IntegrityVerificationService : IIntegrityVerificationService
 
                 if (status != DocumentHashStatus.Match || pagesMismatched > 0)
                 {
-                    documentFindings.Add(new DocumentIntegrityRow(d.Id, d.EvidenceRoomId, status, d.Pages.Count, pagesMismatched));
+                    documentFindings.Add(new DocumentIntegrityRow(d.Id, d.EvidenceRoomId, status, pages.Count, pagesMismatched));
                 }
             }
         }

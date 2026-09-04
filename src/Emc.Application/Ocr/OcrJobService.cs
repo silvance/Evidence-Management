@@ -105,9 +105,14 @@ public sealed class OcrJobService : IOcrJobService
             return OperationResult<int>.Failure("The document was not found.", "OCR-010");
         }
 
-        if (document.ImportStatus != SourceDocumentImportStatus.Rendered)
+        // OCR reads the pages of ONE successful render run, named on the job now (DOC-015).
+        var renderRunId = await _db.DocumentRenderRuns.AsNoTracking()
+            .Where(r => r.SourceDocumentId == sourceDocumentId && r.Outcome == RenderRunOutcome.Succeeded)
+            .OrderByDescending(r => r.CompletedAtUtc).ThenByDescending(r => r.Id)
+            .Select(r => (int?)r.Id).FirstOrDefaultAsync(ct);
+        if (renderRunId is null)
         {
-            return OperationResult<int>.Failure("The document has no rendered pages; OCR reads the rendered pages.", "OCR-010");
+            return OperationResult<int>.Failure("The document has no rendered pages yet; OCR reads the rendered pages. Wait for the worker to render it, or request a render if the last attempt failed.", "OCR-010");
         }
 
         var open = await _db.OcrJobs.AnyAsync(j => j.SourceDocumentId == sourceDocumentId && (j.Status == OcrJobStatus.Queued || j.Status == OcrJobStatus.Running), ct);
@@ -116,7 +121,7 @@ public sealed class OcrJobService : IOcrJobService
             return OperationResult<int>.Failure("OCR is already queued or running for this document.", "OCR-010");
         }
 
-        var job = new OcrJob(sourceDocumentId, document.EvidenceRoomId, _currentUser.UserId, _clock.UtcNow);
+        var job = new OcrJob(sourceDocumentId, renderRunId.Value, document.EvidenceRoomId, _currentUser.UserId, _clock.UtcNow);
         _db.OcrJobs.Add(job);
         _audit.Record(AuditEventType.AccountabilityActionRecorded, nameof(OcrJob), null,
             newValue: $"OCR requested for source document {sourceDocumentId} in room {document.EvidenceRoomId}", reason: "OCR-010");
