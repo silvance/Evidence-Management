@@ -350,6 +350,18 @@ public class PhysicalDocumentTests
     }
 
     [Fact]
+    public void TheReasonForACopyMustBeOneOfParagraph2_4g()
+    {
+        var active = Active();
+        var inactive = Inactive(5, 2026, 10);
+        var d = Filed(active);
+        var ex = Assert.Throws<DomainRuleViolationException>(() => d.FileCopyInactiveBecauseOriginalUnavailable(inactive, active, CopyRetentionReason.None, "x", User, new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero)));
+        Assert.Equal("FIL-008", ex.RequirementId);
+        Assert.Equal("FIL-008", Assert.Throws<DomainRuleViolationException>(() => d.FileCopyInactiveBecauseOriginalUnavailable(inactive, active, CopyRetentionReason.OriginalTransferredToGainingRoom, "x", User, new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero))).RequirementId);
+        Assert.Equal(1, active.FiledVoucherCount);
+    }
+
+    [Fact]
     public void AnActiveRecordCannotBeDestroyed()
     {
         var d = Filed(Active());
