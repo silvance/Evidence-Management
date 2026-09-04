@@ -1,8 +1,9 @@
 # OCR engine evaluation — local, offline, for DA Form 4137 companion scans
 
 **[DESIGN] / [CONTROL].** Nothing in this document is an AR 195-5 requirement. The regulation
-says nothing about OCR. What it does say — that the original DA Form 4137 and the bound ledger
-are the accountability record (2-5c), that the custodian reviews the submitted form and has the
+says nothing about OCR. What it does say — that the custodian keeps and files the original
+DA Form 4137 (2-4d, 2-4f) and the bound ledger accounts for it (2-5a), that the custodian
+reviews the submitted form and has the
 agent correct and initial errors (2-3g) — is why every extracted value is a *proposal* that a
 person verifies, and why no engine choice below changes what is authoritative.
 

@@ -67,7 +67,7 @@ public class OcrProcessorTests : IDisposable
 
         var request = await Jobs().RequestAsync(documentId);
         Assert.True(request.Succeeded, request.Error);
-        Assert.Contains(request.Warnings, w => w.Contains("remains authoritative", StringComparison.Ordinal));
+        Assert.Contains(request.Warnings, w => w.Contains("remains the accountability record", StringComparison.Ordinal) && w.Contains("2-4d", StringComparison.Ordinal));
 
         // A second request while one is open is refused, not duplicated.
         var again = await Jobs().RequestAsync(documentId);

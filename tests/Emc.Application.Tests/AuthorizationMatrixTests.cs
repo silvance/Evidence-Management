@@ -39,6 +39,9 @@ public class AuthorizationMatrixTests : IDisposable
         EmcPermissions.RecordOfficialDocumentNumber,
         EmcPermissions.ReturnVoucherForCorrection,
         EmcPermissions.RecordCorrection,
+        EmcPermissions.RecordCustodyEvent,
+        EmcPermissions.ReleaseTemporarily,
+        EmcPermissions.ReturnFromTemporaryRelease,
         EmcPermissions.ConductInspection,
         EmcPermissions.ParticipateInInventory,
         EmcPermissions.VerifyIntegrity,
@@ -46,21 +49,24 @@ public class AuthorizationMatrixTests : IDisposable
     ];
 
     // Expected, in the order of Permissions above. Y allowed, . denied.
+    // Columns 8-10 (custody event, temporary release, return) are custodian acts that need an
+    // active appointment (IAM-005, IAM-006): a role alone, the administrator and the commander
+    // are all denied (SUSP-001, COC-001).
     private static readonly Dictionary<string, string> Expected = new(StringComparer.Ordinal)
     {
-        ["1 unauthenticated"]              = "...........",
-        ["2 unregistered principal"]       = "...........",
-        ["3 administrator"]                = ".........YY",
-        ["4 agent, room A"]                = "YYY........",
-        ["5 agent, room B only"]           = "...........",
+        ["1 unauthenticated"]              = "..............",
+        ["2 unregistered principal"]       = "..............",
+        ["3 administrator"]                = "............YY",
+        ["4 agent, room A"]                = "YYY...........",
+        ["5 agent, room B only"]           = "..............",
         // Custodians take part in the 3-1b(2) joint inventory; VerifyIntegrity is administrative
         // and is held by the administrator alone. An appointed alternate who has not assumed
         // duties may still take part in an inventory - that is not a custodian act.
-        ["6 primary custodian, appointed"] = "YYYYYYY.Y..",
-        ["7 alternate, role only"]         = "YYY.....Y..",
-        ["8 alternate, duties assumed"]    = "YYYYYYY.Y..",
-        ["9 commander / SAC"]              = "Y......YY..",
-        ["10 inspector / inventory"]       = "Y.......Y.."
+        ["6 primary custodian, appointed"] = "YYYYYYYYYY.Y..",
+        ["7 alternate, role only"]         = "YYY........Y..",
+        ["8 alternate, duties assumed"]    = "YYYYYYYYYY.Y..",
+        ["9 commander / SAC"]              = "Y.........YY..",
+        ["10 inspector / inventory"]       = "Y..........Y.."
     };
 
     private async Task<string> RowAsync()

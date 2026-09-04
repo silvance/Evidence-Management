@@ -127,7 +127,7 @@ public sealed class OcrJobService : IOcrJobService
             newValue: $"OCR requested for source document {sourceDocumentId} in room {document.EvidenceRoomId}", reason: "OCR-010");
         await _db.SaveChangesAsync(ct);
         return OperationResult<int>.Success(job.Id,
-            "OCR output is a proposal for a person to verify. The physical original DA Form 4137 remains authoritative (AR 195-5 2-5c).");
+            "OCR output is a proposal for a person to verify. The physical original DA Form 4137 the custodian keeps and files (AR 195-5 2-4d, 2-4f) remains the accountability record; nothing here changes it.");
     }
 
     public async Task<OcrStatusView?> GetStatusAsync(int sourceDocumentId, CancellationToken ct = default)

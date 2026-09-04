@@ -20,7 +20,8 @@ namespace Emc.Application.Tests.SqlServer;
 /// 50005/50006 OfficialDocumentNumberAssignments, 50007/50008 VoucherReviewActions,
 /// 50009-50012 form revisions and lines, 50013/50014 PhysicalVoucherDocumentEvents,
 /// 50015-50018 SourceDocuments and pages, 50019-50024 OcrRuns/ExtractedFields/FieldVerifications,
-/// 50025/50026 OcrRunPages, 50027/50028 ReconciliationFindings.
+/// 50025/50026 OcrRunPages, 50027/50028 ReconciliationFindings, 50029/50030 DocumentRenderPages,
+/// 50031/50032 TemporaryReleaseEvents, 50033/50034 SuspenseContacts.
 /// Unique-index violations: 2601 (index) / 2627 (constraint).
 /// </summary>
 public class SqlServerReleaseValidationTests
@@ -96,6 +97,25 @@ public class SqlServerReleaseValidationTests
             var count = harness.Scalar<int>(
                 $"SELECT COUNT(*) FROM sys.triggers WHERE name = N'{trigger}' AND is_disabled = 0");
             Assert.True(count == 1, $"Trigger {trigger} is missing or disabled.");
+        }
+    }
+
+    [SqlServerFact]
+    public void EveryAccountabilityTableExists()
+    {
+        using var harness = SqlServerHarness.Create();
+
+        foreach (var table in new[]
+        {
+            "ItemEvents", "CustodyParties", "AuditEvents", "OfficialDocumentNumberAssignments",
+            "PhysicalFileContainers", "PhysicalVoucherDocuments", "PhysicalVoucherDocumentEvents",
+            "SourceDocuments", "DocumentRenderJobs", "DocumentRenderRuns", "DocumentRenderPages",
+            "OcrJobs", "OcrRuns", "OcrRunPages", "ExtractedFields", "FieldVerifications", "ReconciliationFindings",
+            "TemporaryReleases", "TemporaryReleaseItems", "TemporaryReleaseEvents", "SuspenseContacts"
+        })
+        {
+            var count = harness.Scalar<int>($"SELECT COUNT(*) FROM sys.tables WHERE name = N'{table}'");
+            Assert.True(count == 1, $"Table {table} is missing.");
         }
     }
 

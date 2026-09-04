@@ -339,8 +339,13 @@ return mechanics.
 (**2-4f(3)**: USACIL, ADJUDICATION, PENDING DISPOSITION APPROVAL) and EMC keeps those exact
 categories; the entry points are a usability choice above them.
 
-**Blocks:** nothing. Flagged so it is decided during suspense implementation rather than by
-default.
+**Decided (suspense slice):** one entity, `TemporaryRelease`, with the regulation's three
+categories. Entry points: the release form on the voucher page (laboratory fields shown for the
+USACIL category, accountable mail as a recipient kind for the USACIL only, 2-7e), the
+multi-recipient request for copies (2-7b), and the release page for contact, return and
+not-returned accounting. No second workflow was built.
+
+**Blocks:** nothing.
 
 ---
 
@@ -356,5 +361,5 @@ default.
 | DEC-06 | Accredited classification | SEC-005 | UNCLASSIFIED + prohibition; **decide before real data** |
 | DEC-07 | ARIMS/RRS-A status of EMC data | RET-008 | Retain all pending determination |
 | DEC-08 | Restricted-reporting data | — | Prohibit in V1 |
-| DEC-09 | Temporary-release entry points | — | One entity, two entry points |
+| DEC-09 | Temporary-release entry points | SUSP-002, SUSP-003 | **Decided:** one entity; voucher-page form, multi-recipient request, release page |
 | DEC-10 | Year-first document numbers (`26-01`) | VCH-023 | Recorded as a LOCAL layout; cite the SOP/waiver or leave flagged as awaiting validation. AR 195-5 does not authorize it. |

@@ -14,8 +14,10 @@ public sealed record PaperConsistencyAdvisory(string Code, string Regulation, st
 /// <summary>
 /// Cross-checks between the PHYSICAL DA Form 4137 record (where the original and its copies are)
 /// and the DIGITAL companion (item states, companion copies, verified scans). Every result is an
-/// advisory: the software cannot know which side is wrong, and under AR 195-5 2-5c the paper
-/// and the ledger are authoritative, so it says what disagrees and to whom, and changes nothing.
+/// advisory: the software cannot know which side is wrong, and under AR 195-5 the original
+/// DA Form 4137 the custodian keeps and files (2-4d, 2-4f, 2-4f(2), 2-4g, 2-4h, 2-7b, 2-7g) and
+/// the ledger (2-5a) are the accountability record, so it says what disagrees and to whom, and
+/// changes nothing.
 /// </summary>
 public interface IPhysicalDigitalConsistencyService
 {
