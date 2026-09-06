@@ -132,6 +132,33 @@ foreach ($e in $entries.Values | Sort-Object id, version) {
     }
 }
 
+# 3b. Apphost packs for the runtimes pinned in Directory.Build.props (RuntimeIdentifiers).
+#     A framework-dependent publish for a runtime needs Microsoft.NETCore.App.Host.<rid> at the
+#     SDK's bundled runtime version. NuGet fetches it as a PackageDownload, which packages.lock.json
+#     does NOT record, so the lock-driven copy above never sees it; without this step an offline
+#     publish for that runtime fails. The SDK carries the pack for its own platform in its packs
+#     folder, so a pack that is not in the cache is not an error - it is noted. The RUNTIME packs
+#     are not needed: Directory.Build.props sets EnableRuntimePackDownload=false, because the
+#     publish is never self-contained.
+$props = Get-Content (Join-Path $repo 'Directory.Build.props') -Raw
+$rids = [regex]::Match($props, '<RuntimeIdentifiers>([^<]+)</RuntimeIdentifiers>').Groups[1].Value -split ';' | Where-Object { $_ }
+$hostVersion = (dotnet msbuild (Join-Path $repo 'src\Emc.OcrWorker\Emc.OcrWorker.csproj') -getProperty:BundledNETCoreAppPackageVersion).Trim()
+if (-not $hostVersion) { throw 'Could not read BundledNETCoreAppPackageVersion from the SDK' }
+foreach ($rid in $rids) {
+    $id = "Microsoft.NETCore.App.Host.$rid"
+    $src = Join-Path $globalPackages $id.ToLowerInvariant() $hostVersion ("$id.$hostVersion.nupkg".ToLowerInvariant())
+    if (-not (Test-Path $src)) { Write-Host "Apphost pack $id $hostVersion is not in the cache: the SDK supplies it from its packs folder for its own platform."; continue }
+    $dst = Join-Path $packagesOut (Split-Path $src -Leaf)
+    Copy-Item $src $dst -Force
+    $manifest += [ordered]@{
+        name = $id; version = $hostVersion; file = "packages/$(Split-Path $dst -Leaf)"
+        sha256 = (Get-FileHash $dst -Algorithm SHA256).Hash.ToLowerInvariant()
+        origin = 'https://api.nuget.org/v3/index.json'; retrievedUtc = (Get-Date).ToUniversalTime().ToString('o'); license = 'MIT'
+        classification = 'build-only'; auditStatus = 'no findings'; auditDateUtc = $auditDate; reviewStatus = 'pending import review'
+    }
+    Write-Host "Included apphost pack $id $hostVersion (release bundle publish for $rid)."
+}
+
 # 4. Prerequisites, as supplied.
 foreach ($pair in @(@('sdk', $SdkInstaller), @('hosting-bundle', $HostingBundleInstaller))) {
     $kind, $path = $pair

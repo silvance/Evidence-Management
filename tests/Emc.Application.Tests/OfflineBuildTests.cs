@@ -191,4 +191,99 @@ public class OfflineBuildTests
             Assert.Contains(kind, sh, StringComparison.Ordinal);
         }
     }
+
+    // ----- Release bundle (docs/release-bundle.md, SEC-013) -----
+
+    [Fact]
+    public void TheReleaseBundleIsNotCommitted()
+    {
+        var gitignore = File.ReadAllText(Path.Combine(Root, ".gitignore"));
+        Assert.Contains("release/", gitignore, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRuntimesArePinnedSolutionWide_NeverSelfContained_AndEveryLockFileCarriesThem()
+    {
+        // A publish for a runtime flows that runtime into every referenced project, so the pin
+        // lives in Directory.Build.props and every lock file carries the runtime-specific graph;
+        // otherwise an offline LOCKED restore for the release publish fails.
+        var props = File.ReadAllText(Path.Combine(Root, "Directory.Build.props"));
+        var rids = Regex.Match(props, "<RuntimeIdentifiers>([^<]+)</RuntimeIdentifiers>").Groups[1].Value.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains("win-x64", rids);
+        Assert.Contains("<SelfContained>false</SelfContained>", props, StringComparison.Ordinal);
+        Assert.Contains("<EnableRuntimePackDownload>false</EnableRuntimePackDownload>", props, StringComparison.Ordinal);
+        Assert.DoesNotContain("PublishSingleFile", props, StringComparison.Ordinal);
+        Assert.DoesNotContain("PublishTrimmed", props, StringComparison.Ordinal);
+        Assert.Matches("<VersionPrefix>\\d+\\.\\d+\\.\\d+</VersionPrefix>", props);
+
+        foreach (var project in ProjectFiles())
+        {
+            var lockFile = File.ReadAllText(Path.Combine(Path.GetDirectoryName(project)!, "packages.lock.json"));
+            foreach (var rid in rids)
+            {
+                Assert.True(lockFile.Contains($"\"net10.0/{rid}\"", StringComparison.Ordinal), $"{Path.GetFileName(project)}: packages.lock.json has no net10.0/{rid} target; run a connected restore with --force-evaluate.");
+            }
+        }
+    }
+
+    [Fact]
+    public void TheDependencyBundleExportCarriesTheApphostPacks()
+    {
+        // NuGet fetches Microsoft.NETCore.App.Host.<rid> as a package download the lock files do
+        // not record; the export must add it or the offline publish cannot produce an executable.
+        var export = File.ReadAllText(Path.Combine(Root, "scripts", "staging", "Export-DependencyBundle.ps1"));
+        Assert.Contains("Microsoft.NETCore.App.Host.", export, StringComparison.Ordinal);
+        Assert.Contains("BundledNETCoreAppPackageVersion", export, StringComparison.Ordinal);
+        Assert.Contains("<RuntimeIdentifiers>", export, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheReleaseScriptsReachNoNetwork_RestoreLocked_AndAgreeOnTheBundle()
+    {
+        var dir = Path.Combine(Root, "scripts", "release");
+        var producers = new[] { "New-ReleaseBundle.ps1", "new-release-bundle.sh" }.Select(f => (Name: f, Text: File.ReadAllText(Path.Combine(dir, f)))).ToList();
+        var verifiers = new[] { "Verify-ReleaseBundle.ps1", "verify-release-bundle.sh" }.Select(f => (Name: f, Text: File.ReadAllText(Path.Combine(dir, f)))).ToList();
+
+        foreach (var (name, text) in producers.Concat(verifiers))
+        {
+            // The loopback address the smoke test binds the published web host to is not a network.
+            var withoutLoopback = text.Replace("http://127.0.0.1", string.Empty, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("http://", withoutLoopback, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("https://", withoutLoopback, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("emc-release-bundle/1", text, StringComparison.Ordinal);
+        }
+
+        foreach (var (name, text) in producers)
+        {
+            // Offline by default: the dependency bundle is verified and restore is locked and
+            // reads NuGet.Offline.Config with EMC_OFFLINE=true; nothing is restored after that.
+            Assert.Contains("NuGet.Offline.Config", text, StringComparison.Ordinal);
+            Assert.Contains("--locked-mode", text, StringComparison.Ordinal);
+            Assert.Contains("EMC_OFFLINE=true", text, StringComparison.Ordinal);
+            Assert.Contains("--no-restore", text, StringComparison.Ordinal);
+            Assert.Contains("--self-contained false", text, StringComparison.Ordinal);
+            Assert.Contains("SourceRevisionId", text, StringComparison.Ordinal);
+            Assert.Contains("appsettings.Development.json", text, StringComparison.Ordinal);
+            Assert.Contains("db/schema-v1.sql", text.Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("docs/release-bundle.md", text.Replace('\\', '/'), StringComparison.Ordinal);
+            Assert.Contains("MANIFEST.sha256", text, StringComparison.Ordinal);
+            Assert.Contains("STAGING DRY RUN", text, StringComparison.Ordinal);
+            Assert.Contains("dirty", text, StringComparison.OrdinalIgnoreCase);
+            // A publish without a test run is marked, never silent.
+            Assert.Contains("tests", text, StringComparison.Ordinal);
+            Assert.Contains("verify-release-bundle.sh", text, StringComparison.Ordinal);
+            Assert.Contains("Verify-ReleaseBundle.ps1", text, StringComparison.Ordinal);
+        }
+
+        foreach (var (name, text) in verifiers)
+        {
+            Assert.Contains("MANIFEST.sha256", text, StringComparison.Ordinal);
+            Assert.Contains("release-manifest.json", text, StringComparison.Ordinal);
+            Assert.Contains("aspNetCore processPath=", text, StringComparison.Ordinal);
+            Assert.Contains("appsettings.Development.json", text, StringComparison.Ordinal);
+            Assert.Contains("password=", text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("entryPoint", text, StringComparison.Ordinal);
+            Assert.Contains("STAGING DRY RUN", text, StringComparison.Ordinal);
+        }
+    }
 }

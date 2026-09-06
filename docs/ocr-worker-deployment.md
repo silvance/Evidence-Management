@@ -12,7 +12,7 @@ requires, or is allowed, an Internet connection.
 
 | Item | Where it comes from | Why |
 |---|---|---|
-| `Emc.OcrWorker` published folder | `dotnet publish src/Emc.OcrWorker -c Release -r win-x64 --self-contained false` on the air-gapped build host, from the offline restore | The service executable; also the render child (`Emc.OcrWorker.exe render ...`) |
+| `Emc.OcrWorker` published folder | the release bundle's `worker/` folder (`docs/release-bundle.md`: `scripts/release/New-ReleaseBundle.ps1` on the air-gapped build host, from the offline locked restore; equivalent to `dotnet publish src/Emc.OcrWorker -c Release -r win-x64 --self-contained false`) | The service executable; also the render child (`Emc.OcrWorker.exe render ...`) |
 | ASP.NET Core Hosting Bundle for the pinned runtime | bundle `prerequisites/` | The shared framework the worker runs on |
 | Tesseract 5 engine | bundle `artifacts/ocr-engine/` | Installed to `C:\Program Files\Tesseract-OCR` |
 | `eng.traineddata`, `osd.traineddata` | bundle `artifacts/ocr-model/` | Copied to the engine's `tessdata` folder |
@@ -23,8 +23,8 @@ requires, or is allowed, an Internet connection.
 
 ## Steps
 
-1. **Publish** on the air-gapped build host and copy the output to the worker host, e.g.
-   `C:\Emc\OcrWorker`. Copy nothing else there.
+1. **Verify the release bundle** (`scripts/verify/Verify-ReleaseBundle.ps1`) and copy its
+   `worker/` folder to the worker host, e.g. `C:\Emc\OcrWorker`. Copy nothing else there.
 2. **Install the engine** from the bundle's `artifacts/ocr-engine/` and copy the models into
    its `tessdata` folder.
 3. **Write the configuration** from parameters and the manifest — no editing by hand of

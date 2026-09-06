@@ -55,7 +55,9 @@ The script:
    finding**. The report is written to the bundle as `audit-report.txt`. A finding is resolved, or
    assessed and recorded in `docs/dependency-advisories.md`, before an export succeeds;
 3. copies **exactly the packages the lock files name** out of the global packages folder — never
-   the whole cache;
+   the whole cache — plus the **apphost packs** for the runtimes pinned in
+   `Directory.Build.props`, which NuGet fetches as package downloads the lock files do not
+   record and which an offline publish for that runtime needs (`docs/release-bundle.md`);
 4. copies the SDK and Hosting Bundle installers, when supplied;
 5. writes `manifest.json` (name, version, file, SHA-256, origin, retrieval date, licence where
    declared, classification runtime / build-only / test-only, audit status and date, review
@@ -91,6 +93,21 @@ dotnet test    Emc.sln --no-build   -c Release -p:EMC_OFFLINE=true
 `NuGet.Offline.Config` clears every inherited package source and names only
 `dependency-bundle/packages`, so nothing can fall back to nuget.org or to a feed configured
 elsewhere on the machine. It contains no credentials and never will.
+
+## Producing the release bundle (air-gapped)
+
+```
+pwsh scripts/release/New-ReleaseBundle.ps1
+```
+
+verifies the dependency bundle, restores from it alone in locked mode, builds, runs the tests,
+publishes `Emc.Web` and `Emc.OcrWorker` framework-dependent for `win-x64`, and packages one
+archive with the schema script, the deploy and verify scripts, the deployment documents, a
+manifest (commit, SDK, runtime, restore source, test counts, every file's SHA-256) and the
+archive's own hash. A failing test, a dirty working tree, an SDK other than the pinned one or a
+credential-like value in a published configuration file stops it. `docs/release-bundle.md` has
+the layout, the verification and the deployment steps. The runtime is never bundled into the
+applications: the Hosting Bundle from `prerequisites/` supplies it, and is patched on its own.
 
 ## Vulnerability auditing — stated precisely
 

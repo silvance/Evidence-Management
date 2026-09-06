@@ -87,6 +87,14 @@ Air-gapped (the real thing): `scripts/airgap/Restore-Build-Test-Offline.ps1`, wh
 dependency bundle's hashes, restores from it alone in locked mode, builds and tests with no
 network. See `docs/air-gapped-build-and-maintenance.md`.
 
+Release: `scripts/release/New-ReleaseBundle.ps1` does the same and then publishes `Emc.Web` and
+`Emc.OcrWorker` for `win-x64` into **one archive** with the executables, the schema script, the
+deploy and verify scripts, the deployment documents and a manifest that names the commit, the
+SDK, the restore source, the test counts and every file's SHA-256. `new-release-bundle.sh` is the
+Linux test-lane counterpart (`--rid linux-x64 --smoke` runs the published executables). Verify a
+bundle with `scripts/release/Verify-ReleaseBundle.ps1` before deploying it. See
+`docs/release-bundle.md`.
+
 **361 tests** (211 domain, 150 application, of which the 10 in the SQL Server lane are skipped unless opted in). Three lanes:
 
 - **Domain** — pure rules, no database.
@@ -148,9 +156,12 @@ is built on top of it.
    output. It is a release gate.
 3. **Export and verify the dependency bundle** per `docs/air-gapped-build-and-maintenance.md`;
    the bundle's audit report is the vulnerability assessment of record.
-4. **Apply least privilege** to the application's SQL login (`db/README.md`) so the running
+4. **Produce the release bundle** inside the air gap with `scripts/release/New-ReleaseBundle.ps1`
+   (`docs/release-bundle.md`) and deploy only from a bundle that `Verify-ReleaseBundle.ps1`
+   accepts; record the archive's SHA-256 and commit.
+5. **Apply least privilege** to the application's SQL login (`db/README.md`) so the running
    application cannot drop the append-only triggers it depends on.
-5. **Configure each evidence room's time zone** with an id the IIS host resolves natively
+6. **Configure each evidence room's time zone** with an id the IIS host resolves natively
    (`Eastern Standard Time`, not `America/New_York`): the build is invariant-globalization and
    does no Windows/IANA conversion.
 

@@ -9,6 +9,30 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <InvariantGlobalization>true</InvariantGlobalization>
 
+    <!-- Product version. Pre-1.0 while disposition, inspection and inventory are not built.
+         scripts/release/New-ReleaseBundle.ps1 stamps the commit into the informational version
+         (SourceRevisionId) so a deployed binary names the source it was built from. -->
+    <VersionPrefix>0.9.0</VersionPrefix>
+    <Deterministic>true</Deterministic>
+
+    <!-- RELEASE BUNDLE (docs/release-bundle.md). The runtimes scripts/release may publish for:
+         win-x64 is the deployment target (IIS in-process; the OCR worker as a Windows Service);
+         linux-x64 exists for the test lane only. A publish for a runtime flows that runtime into
+         every referenced project, so the identifiers are pinned here, solution-wide, and every
+         packages.lock.json carries the runtime-specific graph: an offline, LOCKED restore from
+         the dependency bundle can then publish without resolving anything new. Never
+         self-contained: the ASP.NET Core Hosting Bundle from the dependency bundle supplies the
+         runtime on the server, and the apphost packs travel in the bundle (Export-DependencyBundle). -->
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
+    <!-- With runtimes pinned, the SDK would also download the RUNTIME packs
+         (Microsoft.NETCore.App.Runtime.<rid>, Microsoft.AspNetCore.App.Runtime.<rid>) as
+         package downloads the lock files never record - about 175 MB per runtime that a
+         framework-dependent publish never uses. Off, so an offline restore from the bundle needs
+         only what the lock files name plus the apphost packs. A self-contained publish is
+         therefore impossible by construction, which is the intent. -->
+    <EnableRuntimePackDownload>false</EnableRuntimePackDownload>
+
     <!-- Dependency advisories are audited, including transitives, at every severity, and a
          finding FAILS THE BUILD. On .NET 8 two advisories in
          Microsoft.AspNetCore.Authentication.Negotiate had no patched release, which forced
