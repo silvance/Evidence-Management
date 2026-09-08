@@ -23,7 +23,10 @@ dotnet ef migrations script --idempotent \
     --output db/schema-v1.sql
 ```
 
-`db/schema-v1.sql` is a committed copy for review. **Regenerate it whenever a migration is
+`db/schema-v1.sql` is a committed copy for review. The append-only triggers appear in it as
+`EXEC(N'CREATE OR ALTER TRIGGER ...')`: the idempotent script wraps every statement in an
+`IF NOT EXISTS ... BEGIN ... END` block, and SQL Server rejects a bare CREATE TRIGGER there
+(error 111, "must be the first statement in a query batch"). **Regenerate it whenever a migration is
 added**, so a reviewer can see the schema change without running the tooling.
 
 ## Seeding a new installation

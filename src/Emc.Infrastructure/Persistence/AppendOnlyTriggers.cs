@@ -430,7 +430,17 @@ public static class AppendOnlyTriggers
         END;
         """;
 
-    public static IReadOnlyList<string> All =>
+    /// <summary>
+    /// The CREATE statements, each wrapped so it is the first statement of its own batch.
+    /// SQL Server rejects a CREATE TRIGGER that is not first in its batch (error 111), and the
+    /// idempotent migration script EF generates for the DBA wraps every migration statement in
+    /// an IF NOT EXISTS ... BEGIN ... END block. Executing the definition through EXEC(N'...')
+    /// keeps the script applicable as generated; Database.Migrate() is unaffected either way.
+    /// </summary>
+    public static IReadOnlyList<string> All => Definitions.Select(AsOwnBatch).ToList();
+
+    /// <summary>One statement per trigger, as written above.</summary>
+    public static IReadOnlyList<string> Definitions =>
     [
         CreateItemEventsUpdateTrigger,
         CreateItemEventsDeleteTrigger,
@@ -467,6 +477,10 @@ public static class AppendOnlyTriggers
         CreateSuspenseContactsUpdateTrigger,
         CreateSuspenseContactsDeleteTrigger
     ];
+
+    /// <summary>Runs a trigger definition in its own batch: EXEC(N'...') with quotes doubled.</summary>
+    public static string AsOwnBatch(string createTrigger)
+        => "EXEC(N'" + createTrigger.Replace("'", "''", StringComparison.Ordinal) + "');";
 
     public static IReadOnlyList<string> DropAll =>
     [

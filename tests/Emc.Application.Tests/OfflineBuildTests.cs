@@ -286,4 +286,76 @@ public class OfflineBuildTests
             Assert.Contains("STAGING DRY RUN", text, StringComparison.Ordinal);
         }
     }
+
+    // ----- The SQL Server lane and the DBA schema script, checked without a SQL Server -----
+
+    private static Dictionary<string, HashSet<string>> SchemaColumns()
+    {
+        var script = File.ReadAllText(Path.Combine(Root, "db", "schema-v1.sql"));
+        var tables = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match table in Regex.Matches(script, @"CREATE TABLE \[(?<name>\w+)\] \((?<body>.*?)\n\s*\);", RegexOptions.Singleline))
+        {
+            tables[table.Groups["name"].Value] = Regex.Matches(table.Groups["body"].Value, @"\n\s+\[(?<col>\w+)\]")
+                .Select(m => m.Groups["col"].Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        Assert.NotEmpty(tables);
+        return tables;
+    }
+
+    [Fact]
+    public void TheSqlServerLaneNamesOnlyColumnsTheSchemaHas()
+    {
+        // The lane runs only against a real SQL Server, so a column it misnames surfaces there as
+        // error 207 instead of the trigger or index error the test expects. Check its statements
+        // against the committed schema script here, where every run sees them.
+        var tables = SchemaColumns();
+        var lane = File.ReadAllText(Path.Combine(Root, "tests", "Emc.Application.Tests", "SqlServer", "SqlServerReleaseValidationTests.cs"));
+
+        foreach (Match insert in Regex.Matches(lane, @"INSERT INTO (?<table>\w+)\s*\((?<cols>[^)]*)\)", RegexOptions.Singleline))
+        {
+            var table = insert.Groups["table"].Value;
+            Assert.True(tables.ContainsKey(table), $"lane inserts into unknown table {table}");
+            foreach (var column in insert.Groups["cols"].Value.Split(',').Select(c => c.Trim()).Where(c => c.Length > 0))
+            {
+                Assert.True(tables[table].Contains(column), $"lane inserts into {table}.{column}, which the schema does not have");
+            }
+
+            // Every NOT NULL column without a default must be supplied, or the insert fails with 515.
+            var body = Regex.Match(File.ReadAllText(Path.Combine(Root, "db", "schema-v1.sql")), @"CREATE TABLE \[" + table + @"\] \((?<body>.*?)\n\s*\);", RegexOptions.Singleline).Groups["body"].Value;
+            foreach (Match col in Regex.Matches(body, @"\n\s+\[(?<col>\w+)\] [^,\n]*? NOT NULL(?<rest>[^,\n]*)"))
+            {
+                var name = col.Groups["col"].Value;
+                if (col.Groups["rest"].Value.Contains("IDENTITY", StringComparison.Ordinal) || col.Groups["rest"].Value.Contains("DEFAULT", StringComparison.Ordinal)) continue;
+                Assert.True(insert.Groups["cols"].Value.Split(',').Select(c => c.Trim()).Contains(name, StringComparer.OrdinalIgnoreCase),
+                    $"lane insert into {table} omits NOT NULL column {name}");
+            }
+        }
+
+        foreach (Match update in Regex.Matches(lane, @"UPDATE (?<table>\w+) SET (?<col>\w+) ="))
+        {
+            var table = update.Groups["table"].Value;
+            Assert.True(tables.ContainsKey(table) && tables[table].Contains(update.Groups["col"].Value), $"lane updates {table}.{update.Groups["col"].Value}, which the schema does not have");
+        }
+    }
+
+    [Fact]
+    public void EveryTriggerInTheSchemaScriptIsItsOwnBatch()
+    {
+        // SQL Server error 111: CREATE TRIGGER must be the first statement in a batch. The
+        // idempotent script wraps each migration statement in IF NOT EXISTS ... BEGIN ... END, so
+        // a bare CREATE TRIGGER there fails for the DBA; each must run through EXEC(N'...').
+        var script = File.ReadAllText(Path.Combine(Root, "db", "schema-v1.sql"));
+        var wrapped = Regex.Matches(script, @"EXEC\(N'CREATE OR ALTER TRIGGER (?<name>TR_\w+)").Select(m => m.Groups["name"].Value).ToList();
+        var bare = Regex.Matches(script, @"^\s*CREATE (OR ALTER )?TRIGGER", RegexOptions.Multiline).Count;
+
+        Assert.Equal(0, bare);
+        Assert.Equal(Emc.Infrastructure.Persistence.AppendOnlyTriggers.Definitions.Count, wrapped.Count);
+        Assert.Equal(wrapped.Count, wrapped.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(Emc.Infrastructure.Persistence.AppendOnlyTriggers.All, sql => Assert.StartsWith("EXEC(N'CREATE OR ALTER TRIGGER ", sql, StringComparison.Ordinal));
+        // Every THROW number is distinct, so a test can tell the triggers apart.
+        var numbers = Regex.Matches(script, @"THROW (5\d{4})").Select(m => m.Groups[1].Value).ToList();
+        Assert.Equal(numbers.Count, numbers.Distinct().Count());
+        Assert.Equal(wrapped.Count, numbers.Count);
+    }
 }

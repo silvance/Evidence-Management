@@ -251,10 +251,10 @@ public class SqlServerReleaseValidationTests
         var error = harness.TryExecuteOutOfBand(
             @"INSERT INTO CustodianAppointments
                 (EvidenceRoomId, UserId, AppointmentType, PersonnelCategory, EffectiveFrom, EffectiveTo, AppointmentOrderReference,
-                 AppointingAuthority, EligibilityAttested, EligibilityStatement, RecordedByUserId, RecordedAtUtc, SupersedesAppointmentId)
+                 AppointingAuthority, EligibilityAttested, SupersedesAppointmentId, SupersededByAppointmentId, RecordedByUserId, RecordedAtUtc, Notes, ConcurrencyStamp)
               SELECT EvidenceRoomId, UserId, AppointmentType, PersonnelCategory, EffectiveFrom, NULL, N'ORDERS DUPLICATE',
-                     AppointingAuthority, EligibilityAttested, EligibilityStatement, RecordedByUserId, RecordedAtUtc, NULL
-              FROM CustodianAppointments WHERE EvidenceRoomId = @r AND AppointmentType = 1 AND EffectiveTo IS NULL",
+                     AppointingAuthority, EligibilityAttested, NULL, NULL, RecordedByUserId, RecordedAtUtc, NULL, NEWID()
+              FROM CustodianAppointments WHERE EvidenceRoomId = @r AND AppointmentType = 1 AND EffectiveTo IS NULL AND SupersededByAppointmentId IS NULL",
             new SqlParameter("@r", harness.EvidenceRoomId));
 
         Assert.Contains(error, new[] { UniqueIndex, UniqueConstraint });

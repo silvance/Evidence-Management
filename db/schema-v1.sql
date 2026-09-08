@@ -1789,16 +1789,16 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_ItemEvents_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_ItemEvents_AppendOnly_Update
     ON dbo.ItemEvents
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
         THROW 50001,
-            'ItemEvents is append-only and cannot be modified. AR 195-5 para 2-5b(5) requires an erroneous entry to remain readable - it is voided with a single line and initialed, never erased. Record a correction instead.',
+            ''ItemEvents is append-only and cannot be modified. AR 195-5 para 2-5b(5) requires an erroneous entry to remain readable - it is voided with a single line and initialed, never erased. Record a correction instead.'',
             1;
-    END;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1806,16 +1806,16 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_ItemEvents_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_ItemEvents_AppendOnly_Delete
     ON dbo.ItemEvents
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
         THROW 50002,
-            'ItemEvents is append-only and cannot be deleted. AR 195-5 para 2-5b(5) prohibits erasing an entry; para 1-7c(3) requires the error and the corrective action to be documented. Record a correction instead.',
+            ''ItemEvents is append-only and cannot be deleted. AR 195-5 para 2-5b(5) prohibits erasing an entry; para 1-7c(3) requires the error and the corrective action to be documented. Record a correction instead.'',
             1;
-    END;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1823,14 +1823,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_AuditEvents_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_AuditEvents_AppendOnly_Update
     ON dbo.AuditEvents
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50003, 'AuditEvents is append-only and cannot be modified.', 1;
-    END;
+        THROW 50003, ''AuditEvents is append-only and cannot be modified.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1838,14 +1838,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_AuditEvents_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_AuditEvents_AppendOnly_Delete
     ON dbo.AuditEvents
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50004, 'AuditEvents is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50004, ''AuditEvents is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1853,16 +1853,16 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_DocumentNumbers_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_DocumentNumbers_AppendOnly_Update
     ON dbo.OfficialDocumentNumberAssignments
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
         THROW 50005,
-            'OfficialDocumentNumberAssignments is append-only and cannot be modified. AR 195-5 para 2-7g supersedes a prior document number with a new assignment and keeps the prior one legible; it does not overwrite it.',
+            ''OfficialDocumentNumberAssignments is append-only and cannot be modified. AR 195-5 para 2-7g supersedes a prior document number with a new assignment and keeps the prior one legible; it does not overwrite it.'',
             1;
-    END;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1870,16 +1870,16 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_DocumentNumbers_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_DocumentNumbers_AppendOnly_Delete
     ON dbo.OfficialDocumentNumberAssignments
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
         THROW 50006,
-            'OfficialDocumentNumberAssignments is append-only and cannot be deleted.',
+            ''OfficialDocumentNumberAssignments is append-only and cannot be deleted.'',
             1;
-    END;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1887,16 +1887,16 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Update
     ON dbo.VoucherReviewActions
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
         THROW 50007,
-            'VoucherReviewActions is append-only and cannot be modified. The record of a custodian review under AR 195-5 para 2-3g is kept as it happened.',
+            ''VoucherReviewActions is append-only and cannot be modified. The record of a custodian review under AR 195-5 para 2-3g is kept as it happened.'',
             1;
-    END;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1904,14 +1904,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_VoucherReviewActions_AppendOnly_Delete
     ON dbo.VoucherReviewActions
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50008, 'VoucherReviewActions is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50008, ''VoucherReviewActions is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1919,14 +1919,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_VoucherFormRevisions_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_VoucherFormRevisions_AppendOnly_Update
     ON dbo.VoucherFormRevisions
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50009, 'VoucherFormRevisions is append-only and cannot be modified. A submitted DA Form 4137 revision is kept as it was submitted (AR 195-5 para 2-3g).', 1;
-    END;
+        THROW 50009, ''VoucherFormRevisions is append-only and cannot be modified. A submitted DA Form 4137 revision is kept as it was submitted (AR 195-5 para 2-3g).'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1934,14 +1934,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_VoucherFormRevisions_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_VoucherFormRevisions_AppendOnly_Delete
     ON dbo.VoucherFormRevisions
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50010, 'VoucherFormRevisions is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50010, ''VoucherFormRevisions is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1949,14 +1949,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_VoucherFormRevisionLines_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_VoucherFormRevisionLines_AppendOnly_Update
     ON dbo.VoucherFormRevisionLines
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50011, 'VoucherFormRevisionLines is append-only and cannot be modified.', 1;
-    END;
+        THROW 50011, ''VoucherFormRevisionLines is append-only and cannot be modified.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1964,14 +1964,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_VoucherFormRevisionLines_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_VoucherFormRevisionLines_AppendOnly_Delete
     ON dbo.VoucherFormRevisionLines
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50012, 'VoucherFormRevisionLines is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50012, ''VoucherFormRevisionLines is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1979,14 +1979,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_PhysicalVoucherDocumentEvents_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_PhysicalVoucherDocumentEvents_AppendOnly_Update
     ON dbo.PhysicalVoucherDocumentEvents
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50013, 'PhysicalVoucherDocumentEvents is append-only and cannot be modified.', 1;
-    END;
+        THROW 50013, ''PhysicalVoucherDocumentEvents is append-only and cannot be modified.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -1994,14 +1994,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_PhysicalVoucherDocumentEvents_AppendOnly_Delete
     ON dbo.PhysicalVoucherDocumentEvents
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50014, 'PhysicalVoucherDocumentEvents is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50014, ''PhysicalVoucherDocumentEvents is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2009,14 +2009,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_SourceDocuments_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_SourceDocuments_AppendOnly_Update
     ON dbo.SourceDocuments
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50015, 'SourceDocuments is append-only and cannot be modified. A source document is an immutable companion copy; its recorded hash is what receipt recorded.', 1;
-    END;
+        THROW 50015, ''SourceDocuments is append-only and cannot be modified. A source document is an immutable companion copy; its recorded hash is what receipt recorded.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2024,14 +2024,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_SourceDocuments_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_SourceDocuments_AppendOnly_Delete
     ON dbo.SourceDocuments
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50016, 'SourceDocuments is append-only and cannot be deleted. Digital retention is undetermined (DEC-07); nothing is destroyed.', 1;
-    END;
+        THROW 50016, ''SourceDocuments is append-only and cannot be deleted. Digital retention is undetermined (DEC-07); nothing is destroyed.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2039,14 +2039,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_DocumentRenderRuns_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_DocumentRenderRuns_AppendOnly_Update
     ON dbo.DocumentRenderRuns
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50017, 'DocumentRenderRuns is append-only and cannot be modified. A render attempt is a fact; a new attempt is a new row (DOC-015).', 1;
-    END;
+        THROW 50017, ''DocumentRenderRuns is append-only and cannot be modified. A render attempt is a fact; a new attempt is a new row (DOC-015).'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2054,14 +2054,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_DocumentRenderRuns_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_DocumentRenderRuns_AppendOnly_Delete
     ON dbo.DocumentRenderRuns
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50018, 'DocumentRenderRuns is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50018, ''DocumentRenderRuns is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2069,14 +2069,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_DocumentRenderPages_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_DocumentRenderPages_AppendOnly_Update
     ON dbo.DocumentRenderPages
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50029, 'DocumentRenderPages is append-only and cannot be modified.', 1;
-    END;
+        THROW 50029, ''DocumentRenderPages is append-only and cannot be modified.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2084,14 +2084,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_DocumentRenderPages_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_DocumentRenderPages_AppendOnly_Delete
     ON dbo.DocumentRenderPages
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50030, 'DocumentRenderPages is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50030, ''DocumentRenderPages is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2099,14 +2099,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Update
     ON dbo.OcrRuns
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50019, 'OcrRuns is append-only and cannot be modified: a run is a fact about what an engine read; re-run instead.', 1;
-    END;
+        THROW 50019, ''OcrRuns is append-only and cannot be modified: a run is a fact about what an engine read; re-run instead.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2114,14 +2114,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_OcrRuns_AppendOnly_Delete
     ON dbo.OcrRuns
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50020, 'OcrRuns is append-only and cannot be deleted: a run is a fact about what an engine read; re-run instead.', 1;
-    END;
+        THROW 50020, ''OcrRuns is append-only and cannot be deleted: a run is a fact about what an engine read; re-run instead.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2129,14 +2129,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_ExtractedFields_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_ExtractedFields_AppendOnly_Update
     ON dbo.ExtractedFields
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50021, 'ExtractedFields is append-only and cannot be modified: the raw extraction is never edited (OCR-004); record a verification.', 1;
-    END;
+        THROW 50021, ''ExtractedFields is append-only and cannot be modified: the raw extraction is never edited (OCR-004); record a verification.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2144,14 +2144,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_ExtractedFields_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_ExtractedFields_AppendOnly_Delete
     ON dbo.ExtractedFields
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50022, 'ExtractedFields is append-only and cannot be deleted: the raw extraction is never edited (OCR-004); record a verification.', 1;
-    END;
+        THROW 50022, ''ExtractedFields is append-only and cannot be deleted: the raw extraction is never edited (OCR-004); record a verification.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2159,14 +2159,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_FieldVerifications_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_FieldVerifications_AppendOnly_Update
     ON dbo.FieldVerifications
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50023, 'FieldVerifications is append-only and cannot be modified: a second look is a second row.', 1;
-    END;
+        THROW 50023, ''FieldVerifications is append-only and cannot be modified: a second look is a second row.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2174,14 +2174,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_FieldVerifications_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_FieldVerifications_AppendOnly_Delete
     ON dbo.FieldVerifications
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50024, 'FieldVerifications is append-only and cannot be deleted: a second look is a second row.', 1;
-    END;
+        THROW 50024, ''FieldVerifications is append-only and cannot be deleted: a second look is a second row.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2189,14 +2189,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_OcrRunPages_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_OcrRunPages_AppendOnly_Update
     ON dbo.OcrRunPages
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50025, 'OcrRunPages is append-only and cannot be modified: it is the image the engine read.', 1;
-    END;
+        THROW 50025, ''OcrRunPages is append-only and cannot be modified: it is the image the engine read.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2204,14 +2204,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_OcrRunPages_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_OcrRunPages_AppendOnly_Delete
     ON dbo.OcrRunPages
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50026, 'OcrRunPages is append-only and cannot be deleted: it is the image the engine read.', 1;
-    END;
+        THROW 50026, ''OcrRunPages is append-only and cannot be deleted: it is the image the engine read.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2219,14 +2219,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_ReconciliationFindings_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_ReconciliationFindings_AppendOnly_Update
     ON dbo.ReconciliationFindings
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50027, 'ReconciliationFindings is append-only and cannot be modified: a later decision is a later row.', 1;
-    END;
+        THROW 50027, ''ReconciliationFindings is append-only and cannot be modified: a later decision is a later row.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2234,14 +2234,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_ReconciliationFindings_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_ReconciliationFindings_AppendOnly_Delete
     ON dbo.ReconciliationFindings
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50028, 'ReconciliationFindings is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50028, ''ReconciliationFindings is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2249,14 +2249,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_TemporaryReleaseEvents_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_TemporaryReleaseEvents_AppendOnly_Update
     ON dbo.TemporaryReleaseEvents
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50031, 'TemporaryReleaseEvents is append-only and cannot be modified.', 1;
-    END;
+        THROW 50031, ''TemporaryReleaseEvents is append-only and cannot be modified.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2264,14 +2264,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_TemporaryReleaseEvents_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_TemporaryReleaseEvents_AppendOnly_Delete
     ON dbo.TemporaryReleaseEvents
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50032, 'TemporaryReleaseEvents is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50032, ''TemporaryReleaseEvents is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2279,14 +2279,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_SuspenseContacts_AppendOnly_Update
+    EXEC(N'CREATE OR ALTER TRIGGER TR_SuspenseContacts_AppendOnly_Update
     ON dbo.SuspenseContacts
     INSTEAD OF UPDATE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50033, 'SuspenseContacts is append-only and cannot be modified. A contact is the record that AR 195-5 2-7a was met (SUSP-005).', 1;
-    END;
+        THROW 50033, ''SuspenseContacts is append-only and cannot be modified. A contact is the record that AR 195-5 2-7a was met (SUSP-005).'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
@@ -2294,14 +2294,14 @@ IF NOT EXISTS (
     WHERE [MigrationId] = N'20260904022921_AppendOnlyTriggers'
 )
 BEGIN
-    CREATE OR ALTER TRIGGER TR_SuspenseContacts_AppendOnly_Delete
+    EXEC(N'CREATE OR ALTER TRIGGER TR_SuspenseContacts_AppendOnly_Delete
     ON dbo.SuspenseContacts
     INSTEAD OF DELETE
     AS
     BEGIN
         SET NOCOUNT ON;
-        THROW 50034, 'SuspenseContacts is append-only and cannot be deleted.', 1;
-    END;
+        THROW 50034, ''SuspenseContacts is append-only and cannot be deleted.'', 1;
+    END;');
 END;
 
 IF NOT EXISTS (
