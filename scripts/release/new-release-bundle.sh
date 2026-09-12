@@ -49,8 +49,13 @@ fi
 version="$(sed -n 's/.*<VersionPrefix>\([^<]*\)<\/VersionPrefix>.*/\1/p' Directory.Build.props | head -1)"
 [ -n "$version" ] || { echo "No <VersionPrefix> in Directory.Build.props" >&2; exit 1; }
 pinned="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' global.json | head -1)"
-installed="$(dotnet --version)"
-[ "$installed" = "$pinned" ] || { echo "Installed SDK $installed is not the pinned $pinned (rollForward is disabled)." >&2; exit 1; }
+command -v dotnet >/dev/null || { echo "No 'dotnet' on this machine. Install exactly the .NET SDK $pinned - from the dependency bundle's prerequisites folder inside the air gap, or in staging from Microsoft's download page. rollForward is disabled, so no other version qualifies." >&2; exit 1; }
+installed="$(dotnet --version 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+if [ -z "$installed" ]; then
+  found="$(dotnet --list-sdks 2>/dev/null | grep -E '^[0-9]' | tr '\n' ';' || true)"
+  echo "The pinned .NET SDK $pinned is not installed on this machine (${found:+installed SDKs: $found}${found:-no .NET SDK is installed at all}). Install exactly $pinned; rollForward is disabled, so no other version qualifies." >&2; exit 1
+fi
+[ "$installed" = "$pinned" ] || { echo "Installed SDK $installed is not the pinned $pinned (rollForward is disabled). Install exactly $pinned from the dependency bundle's prerequisites folder." >&2; exit 1; }
 
 name="emc-$version-$rid-$sha"; [ "$mode" = "connected" ] && name="$name-staging-dryrun"
 stage="$out_root/$name"; zipfile="$out_root/$name.zip"

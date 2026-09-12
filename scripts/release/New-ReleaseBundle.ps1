@@ -64,8 +64,18 @@ if (-not $version) { throw 'No <VersionPrefix> in Directory.Build.props' }
 Push-Location $repo
 try {
     $pinned = (Get-Content global.json | ConvertFrom-Json).sdk.version
-    $installed = (dotnet --version)
-    if ($installed -ne $pinned) { throw "Installed SDK $installed is not the pinned $pinned (rollForward is disabled). Install the SDK from the dependency bundle's prerequisites folder." }
+    $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if (-not $dotnet) { throw "No 'dotnet' on this machine. Install exactly the .NET SDK $pinned (x64) - from the dependency bundle's prerequisites folder inside the air gap, or in staging from Microsoft's download page - then open a new shell. rollForward is disabled, so no other version qualifies." }
+    # With rollForward disabled, dotnet itself refuses to run when the pinned SDK is absent and
+    # prints its own explanation; capture it so the outcome is stated once, plainly.
+    $probe = & dotnet --version 2>&1
+    $installed = ($probe | Where-Object { $_ -is [string] -and $_ -match '^\d+\.\d+\.\d+' } | Select-Object -First 1)
+    if (-not $installed) {
+        $found = & dotnet --list-sdks 2>&1 | Where-Object { $_ -match '^\d' }
+        $have = if ($found) { "installed SDKs: $($found -join '; ')" } else { 'no .NET SDK is installed at all' }
+        throw "The pinned .NET SDK $pinned is not installed on this machine ($have). Install exactly $pinned (x64) - from the dependency bundle's prerequisites folder inside the air gap, or in staging from Microsoft's download page. rollForward is disabled, so no other version qualifies."
+    }
+    if ($installed -ne $pinned) { throw "Installed SDK $installed is not the pinned $pinned (rollForward is disabled). Install exactly $pinned from the dependency bundle's prerequisites folder." }
 
     $shaFull = (git rev-parse HEAD).Trim(); $sha = (git rev-parse --short HEAD).Trim(); $branch = (git rev-parse --abbrev-ref HEAD).Trim()
     $dirty = [bool](git status --porcelain)
